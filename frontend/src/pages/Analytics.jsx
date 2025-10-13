@@ -309,7 +309,7 @@ const Analytics = () => {
 
         <Card className="border-0 shadow-lg">
           <CardContent className="pt-6">
-            <ReactECharts option={encountersByTypeChart} style={{ height: '350px' }} />
+            <ReactECharts option={payerTypeChart} style={{ height: '350px' }} />
           </CardContent>
         </Card>
       </div>
