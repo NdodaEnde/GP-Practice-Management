@@ -6,6 +6,7 @@ import PatientEHR from './pages/PatientEHR';
 import NewEncounter from './pages/NewEncounter';
 import ValidationInterface from './pages/ValidationInterface';
 import DocumentDigitization from './pages/DocumentDigitization';
+import GPPatientDigitization from './pages/GPPatientDigitization';
 import Billing from './pages/Billing';
 import Analytics from './pages/Analytics';
 import Layout from './components/Layout';
