@@ -349,16 +349,44 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {Object.keys(vitals).length > 0 ? (
-                    Object.entries(vitals).map(([key, value]) => (
-                      <div key={key} className="flex flex-col">
-                        <label className="text-sm font-medium text-gray-600 capitalize mb-1">
-                          {key.replace(/_/g, ' ')}
-                        </label>
-                        <div className="p-2 bg-gray-50 rounded border">
-                          {typeof value === 'object' ? JSON.stringify(value) : value || 'Not recorded'}
+                    Object.entries(vitals).map(([key, value]) => {
+                      // Handle array of vital signs records
+                      if (key === 'vital_signs_records' && Array.isArray(value)) {
+                        return (
+                          <div key={key} className="space-y-2">
+                            <label className="text-sm font-medium text-gray-600 capitalize">
+                              Vital Signs Records
+                            </label>
+                            {value.map((record, idx) => (
+                              <div key={idx} className="p-3 bg-gray-50 rounded border space-y-1">
+                                {Object.entries(record).map(([field, val]) => (
+                                  <div key={field} className="flex justify-between text-sm">
+                                    <span className="text-gray-600 capitalize">
+                                      {field.replace(/_/g, ' ')}:
+                                    </span>
+                                    <span className="font-medium">
+                                      {typeof val === 'object' ? JSON.stringify(val) : val || 'N/A'}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      }
+                      
+                      // Handle other fields
+                      return (
+                        <div key={key} className="flex flex-col">
+                          <label className="text-sm font-medium text-gray-600 capitalize mb-1">
+                            {key.replace(/_/g, ' ')}
+                          </label>
+                          <div className="p-2 bg-gray-50 rounded border">
+                            {typeof value === 'object' ? JSON.stringify(value, null, 2) : value || 'Not recorded'}
+                          </div>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   ) : (
                     <p className="text-gray-500">No vital signs data extracted</p>
                   )}
