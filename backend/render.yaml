@@ -1,0 +1,96 @@
+# Render deployment configuration for SurgiScan Document Processor
+services:
+  - type: web
+    name: surgiscan-document-processor
+    env: docker
+    plan: standard  # Adjust based on your needs: starter, standard, pro
+    region: oregon  # Choose your preferred region
+    
+    # Build settings
+    dockerfilePath: ./Dockerfile
+    dockerContext: ./
+    
+    # Runtime settings
+    healthCheckPath: /health
+    numInstances: 1  # Start with 1, scale as needed
+    
+    # Environment variables
+    envVars:
+      - key: PYTHONPATH
+        value: /app
+      - key: LOG_LEVEL
+        value: INFO
+      - key: DEBUG
+        value: false
+      - key: PROCESSING_TIMEOUT_SECONDS
+        value: 300
+      - key: MAX_CONCURRENT_PROCESSING
+        value: 10
+      - key: MAX_FILE_SIZE_MB
+        value: 50
+      - key: DEFAULT_PROCESSING_MODE
+        value: smart
+      - key: RATE_LIMIT_PER_MINUTE
+        value: 60
+      - key: RATE_LIMIT_PER_HOUR
+        value: 1000
+      - key: STORAGE_TYPE
+        value: local  # Change to s3 or gcs for cloud storage
+      
+      # Secret environment variables (set these in Render dashboard)
+      - key: SECRET_KEY
+        generateValue: true
+      - key: API_KEY
+        generateValue: true
+      - key: MONGODB_URL
+        fromDatabase:
+          name: surgiscan-mongodb
+          property: connectionString
+      - key: LANDING_AI_API_KEY
+        sync: false  # Set manually in dashboard
+      - key: OPENAI_API_KEY
+        sync: false  # Set manually in dashboard
+      - key: SENTRY_DSN
+        sync: false  # Optional: Set manually for error tracking
+      
+      # CORS origins (adjust for your frontend domains)
+      - key: CORS_ORIGINS
+        value: "https://surgiscan.onrender.com,https://your-frontend-domain.com"
+      
+      # Cloud storage (if using S3)
+      - key: AWS_ACCESS_KEY_ID
+        sync: false  # Set manually if using S3
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false  # Set manually if using S3
+      - key: AWS_REGION
+        value: us-east-1
+      - key: AWS_BUCKET_NAME
+        value: surgiscan-documents
+      
+      # Integration settings
+      - key: SURGISCAN_WEBHOOK_URL
+        sync: false  # Set to your main app's webhook endpoint
+      - key: SURGISCAN_API_KEY
+        sync: false  # API key for integrating with main SurgiScan app
+
+# Database configuration
+databases:
+  - name: surgiscan-mongodb
+    plan: free  # Start with free plan, upgrade as needed
+    region: oregon
+    
+    # MongoDB specific settings
+    databaseUser: surgiscan
+    
+    # Environment variables for database
+    envVars:
+      - key: DATABASE_NAME
+        value: surgiscan_documents
+
+# Additional services (optional)
+# Uncomment if you want Redis for caching/background jobs
+# - type: redis
+#   name: surgiscan-redis
+#   plan: free
+#   region: oregon
+#   maxmemoryPolicy: allkeys-lru
