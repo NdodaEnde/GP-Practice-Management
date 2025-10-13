@@ -36,7 +36,7 @@ export const gpAPI = {
           headers: {
             'Content-Type': 'multipart/form-data',
           },
-          timeout: 120000, // 2 minute timeout
+          timeout: 180000, // 3 minute timeout (processing can take 2+ minutes)
         }
       );
 
