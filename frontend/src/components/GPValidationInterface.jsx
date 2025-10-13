@@ -26,13 +26,27 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
     }
   };
 
-  console.log('GPValidationInterface received patientData:', patientData);
+  console.log('=== GPValidationInterface Debug ===');
+  console.log('1. patientData:', patientData);
+  console.log('2. patientData.data:', patientData?.data);
+  console.log('3. patientData.data.data:', patientData?.data?.data);
 
-  const extractedData = patientData?.data?.extractions || {};
+  // Handle nested data structure from microservice
+  const responseData = patientData?.data?.data || patientData?.data || {};
+  const extractedData = responseData.extractions || {};
   const demographics = extractedData.demographics || {};
   const chronicSummary = extractedData.chronic_summary || {};
   const vitals = extractedData.vitals || {};
   const clinicalNotes = extractedData.clinical_notes || {};
+  
+  const processingTime = responseData.processing_time;
+  const pagesProcessed = responseData.pages_processed;
+  const modelUsed = responseData.model_used || 'LandingAI';
+  const chunks = responseData.chunks || [];
+
+  console.log('4. Extracted data:', extractedData);
+  console.log('5. Demographics:', demographics);
+  console.log('6. Chunks:', chunks.length);
 
   return (
     <div className="h-screen flex flex-col bg-gray-50">
