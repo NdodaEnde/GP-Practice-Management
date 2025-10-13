@@ -5,6 +5,7 @@ import PatientRegistry from './pages/PatientRegistry';
 import PatientDetails from './pages/PatientDetails';
 import NewEncounter from './pages/NewEncounter';
 import ValidationInterface from './pages/ValidationInterface';
+import DocumentDigitization from './pages/DocumentDigitization';
 import Billing from './pages/Billing';
 import Layout from './components/Layout';
 import '@/App.css';
@@ -17,6 +18,7 @@ function App() {
           <Route path="/" element={<Layout />}>
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
+            <Route path="digitize" element={<DocumentDigitization />} />
             <Route path="patients" element={<PatientRegistry />} />
             <Route path="patients/:patientId" element={<PatientDetails />} />
             <Route path="encounters/new/:patientId" element={<NewEncounter />} />
