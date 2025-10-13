@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Activity, FileText, Pill, FlaskConical, FolderOpen, Calendar, AlertCircle, Heart, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Activity, FileText, Pill, FlaskConical, FolderOpen, Calendar, AlertCircle, Heart, TrendingUp, Plus, Upload } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
