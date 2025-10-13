@@ -67,12 +67,17 @@ const DocumentDigitization = () => {
       const formData = new FormData();
       formData.append('parsed_doc_id', parsedDocId);
       
-      // Extract identifiers from parsed data
+      // CRITICAL: Use VALIDATED data for matching (after human has corrected OCR errors)
       if (validatedData.patient_demographics) {
         const demo = validatedData.patient_demographics;
+        // Extract from validated name field or individual fields
+        const fullName = demo.name || '';
+        const firstName = demo.first_name || fullName.split(' ')[0] || '';
+        const lastName = demo.last_name || fullName.split(' ').slice(1).join(' ') || '';
+        
         if (demo.id_number) formData.append('id_number', demo.id_number);
-        if (demo.first_name) formData.append('first_name', demo.first_name);
-        if (demo.last_name) formData.append('last_name', demo.last_name);
+        if (firstName) formData.append('first_name', firstName);
+        if (lastName) formData.append('last_name', lastName);
         if (demo.dob) formData.append('dob', demo.dob);
       }
 
