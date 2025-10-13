@@ -1266,7 +1266,7 @@ async def proxy_gp_upload(
             data['patient_id'] = patient_id
         
         # Forward to microservice
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with httpx.AsyncClient(timeout=180.0) as client:
             response = await client.post(
                 f"{MICROSERVICE_URL}/api/v1/gp/upload-patient-file",
                 files=files,
