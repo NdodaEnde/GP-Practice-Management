@@ -155,7 +155,7 @@ const GPPatientUpload = ({ onProcessingComplete }) => {
       case 'uploading':
         return 'Uploading file...';
       case 'processing':
-        return 'Processing with AI - this may take 20-30 seconds...';
+        return 'Processing with AI - this may take up to 2-3 minutes...';
       case 'success':
         return 'Processing complete!';
       case 'error':
