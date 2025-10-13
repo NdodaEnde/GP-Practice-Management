@@ -253,6 +253,14 @@ const DocumentDigitization = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
+            <Alert className="mb-6 border-amber-200 bg-amber-50">
+              <AlertCircle className="w-4 h-4 text-amber-600" />
+              <AlertDescription className="text-amber-800">
+                <strong>Important:</strong> Carefully review and correct all extracted data, especially ID numbers and names. 
+                OCR errors in these fields can cause duplicate patient records. Patient matching happens AFTER you validate this data.
+              </AlertDescription>
+            </Alert>
+
             <Tabs defaultValue="demographics" className="w-full">
               <TabsList className="grid w-full grid-cols-5">
                 <TabsTrigger value="demographics">Demographics</TabsTrigger>
@@ -263,16 +271,52 @@ const DocumentDigitization = () => {
               </TabsList>
 
               <TabsContent value="demographics" className="space-y-4 mt-4">
+                <div className="p-4 bg-blue-50 rounded-lg border border-blue-200 mb-4">
+                  <p className="text-sm text-blue-800 font-medium">
+                    ⚠️ These fields are used for patient matching. Please verify accuracy!
+                  </p>
+                </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label>Full Name</Label>
+                    <Label className="font-semibold">Full Name *</Label>
                     <Input
                       value={validatedData.patient_demographics?.name || ''}
                       onChange={(e) => setValidatedData({
                         ...validatedData,
                         patient_demographics: {...validatedData.patient_demographics, name: e.target.value}
                       })}
+                      placeholder="e.g., John Smith"
+                      className="mt-1"
                     />
+                    <p className="text-xs text-slate-500 mt-1">Used for fuzzy matching</p>
+                  </div>
+                  <div>
+                    <Label className="font-semibold">ID Number * (Critical)</Label>
+                    <Input
+                      value={validatedData.patient_demographics?.id_number || ''}
+                      onChange={(e) => setValidatedData({
+                        ...validatedData,
+                        patient_demographics: {...validatedData.patient_demographics, id_number: e.target.value}
+                      })}
+                      placeholder="e.g., 8001155555083"
+                      className="mt-1 border-amber-300 focus:border-amber-500"
+                    />
+                    <p className="text-xs text-amber-600 mt-1 font-medium">
+                      Primary matching field - verify carefully!
+                    </p>
+                  </div>
+                  <div>
+                    <Label className="font-semibold">Date of Birth *</Label>
+                    <Input
+                      type="date"
+                      value={validatedData.patient_demographics?.dob || ''}
+                      onChange={(e) => setValidatedData({
+                        ...validatedData,
+                        patient_demographics: {...validatedData.patient_demographics, dob: e.target.value}
+                      })}
+                      className="mt-1"
+                    />
+                    <p className="text-xs text-slate-500 mt-1">Used with name for matching</p>
                   </div>
                   <div>
                     <Label>Age</Label>
@@ -283,6 +327,7 @@ const DocumentDigitization = () => {
                         ...validatedData,
                         patient_demographics: {...validatedData.patient_demographics, age: parseInt(e.target.value)}
                       })}
+                      className="mt-1"
                     />
                   </div>
                   <div>
@@ -293,6 +338,20 @@ const DocumentDigitization = () => {
                         ...validatedData,
                         patient_demographics: {...validatedData.patient_demographics, gender: e.target.value}
                       })}
+                      placeholder="Male/Female/Other"
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label>Contact Number</Label>
+                    <Input
+                      value={validatedData.patient_demographics?.contact_number || ''}
+                      onChange={(e) => setValidatedData({
+                        ...validatedData,
+                        patient_demographics: {...validatedData.patient_demographics, contact_number: e.target.value}
+                      })}
+                      placeholder="e.g., 0821234567"
+                      className="mt-1"
                     />
                   </div>
                 </div>
