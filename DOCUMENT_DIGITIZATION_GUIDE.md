@@ -57,47 +57,69 @@ POST /api/documents/upload-standalone
 
 ---
 
-### Step 2: Review & Edit Extracted Data
+### Step 2: Review & Edit Extracted Data (CRITICAL STEP)
+
+**⚠️ IMPORTANT:** This step happens BEFORE patient matching to prevent duplicates!
 
 **What You See:**
 - Tabbed interface with 5 sections:
-  - **Demographics**: Name, Age, Gender
+  - **Demographics**: Name, ID Number, DOB, Age, Gender, Contact
   - **Medical History**: Conditions with diagnosis dates
   - **Medications**: Current medications with dosage and frequency
   - **Allergies**: List of known allergies
   - **Lab Results**: Test results with values
 
+**Why This Order Matters:**
+
+**Problem Scenario:**
+```
+Real patient ID: 0098 (existing patient)
+OCR reads: 0068 (error)
+
+Wrong Flow:
+Upload → Parse → Match using "0068" → Not found → Creates duplicate ❌
+
+Correct Flow:
+Upload → Parse → Human corrects "0068" to "0098" → Match using "0098" → Found! ✅
+```
+
 **Actions:**
-1. Review all extracted data
-2. Edit any incorrect fields
-3. Add missing information
-4. Click "Proceed to Patient Matching"
+1. **Carefully review ID number** - Most critical field for matching
+2. **Verify patient name** - Used for fuzzy matching
+3. **Check date of birth** - Used with name for matching
+4. Edit any incorrect fields (OCR errors are common)
+5. Add missing information
+6. Click "Proceed to Patient Matching"
 
 **What Happens:**
 - Validated data stored in memory
-- System prepares for patient matching
+- **Patient matching will use THIS corrected data, not raw OCR**
+- System prepares for patient matching with clean, human-verified identifiers
 
 ---
 
-### Step 3: Patient Matching
+### Step 3: Patient Matching (Using Validated Data)
 
 **Automatic Matching Process:**
 
-The system attempts to match using:
+The system attempts to match using **YOUR CORRECTED DATA**:
 
-**Priority 1: ID Number**
+**Priority 1: ID Number (Highest Confidence)**
 ```
-If extracted ID number matches existing patient → High confidence match
-```
-
-**Priority 2: Name + DOB**
-```
-If first_name + last_name + dob match → High confidence match
+Uses: The ID number YOU verified/corrected in Step 2
+If match found → 99% confidence it's the same patient
 ```
 
-**Priority 3: Fuzzy Name**
+**Priority 2: Name + DOB (High Confidence)**
 ```
-If names partially match → Medium confidence, show multiple possibilities
+Uses: The name and DOB YOU verified in Step 2  
+If match found → High confidence match
+```
+
+**Priority 3: Fuzzy Name (Medium Confidence)**
+```
+Uses: Name similarity matching
+If matches found → Shows multiple possibilities for manual selection
 ```
 
 **Priority 4: No Match**
