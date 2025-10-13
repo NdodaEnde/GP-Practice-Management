@@ -2,7 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
 import PatientRegistry from './pages/PatientRegistry';
-import PatientDetails from './pages/PatientDetails';
+import PatientEHR from './pages/PatientEHR';
 import NewEncounter from './pages/NewEncounter';
 import ValidationInterface from './pages/ValidationInterface';
 import DocumentDigitization from './pages/DocumentDigitization';
@@ -20,7 +20,7 @@ function App() {
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="digitize" element={<DocumentDigitization />} />
             <Route path="patients" element={<PatientRegistry />} />
-            <Route path="patients/:patientId" element={<PatientDetails />} />
+            <Route path="patients/:patientId" element={<PatientEHR />} />
             <Route path="encounters/new/:patientId" element={<NewEncounter />} />
             <Route path="validation/:encounterId" element={<ValidationInterface />} />
             <Route path="billing" element={<Billing />} />
