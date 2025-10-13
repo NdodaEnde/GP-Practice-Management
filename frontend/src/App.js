@@ -21,6 +21,7 @@ function App() {
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="digitize" element={<DocumentDigitization />} />
+            <Route path="gp-digitize" element={<GPPatientDigitization />} />
             <Route path="patients" element={<PatientRegistry />} />
             <Route path="patients/:patientId" element={<PatientEHR />} />
             <Route path="encounters/new/:patientId" element={<NewEncounter />} />
