@@ -446,7 +446,229 @@ const PatientEHR = () => {
           </Card>
         </TabsContent>
 
-        {/* Tab 3: Vitals & Labs - CONTINUED IN NEXT MESSAGE DUE TO LENGTH */}
+        {/* Tab 3: Vitals & Labs */}
+        <TabsContent value="vitals" className="mt-6">
+          <div className="space-y-6">
+            {/* Vitals Trends Chart */}
+            <Card className="border-0 shadow-lg">
+              <CardHeader>
+                <CardTitle className="text-lg font-bold text-slate-800">Vital Signs Trends</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ReactECharts option={vitalsChartOption} style={{ height: '400px' }} />
+              </CardContent>
+            </Card>
+
+            {/* Recent Lab Results */}
+            <Card className="border-0 shadow-lg">
+              <CardHeader>
+                <CardTitle className="text-lg font-bold text-slate-800">Recent Lab Results</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {mockLabResults.map((lab, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-4 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
+                      <div className="flex-1">
+                        <p className="font-semibold text-slate-800">{lab.test}</p>
+                        <p className="text-sm text-slate-600">Normal range: {lab.range}</p>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="text-right">
+                          <p className="font-bold text-lg text-slate-800">{lab.value}</p>
+                          <p className="text-sm text-slate-600">{lab.unit}</p>
+                        </div>
+                        <Badge className={
+                          lab.status === 'high' ? 'bg-red-100 text-red-700' :
+                          lab.status === 'low' ? 'bg-amber-100 text-amber-700' :
+                          'bg-emerald-100 text-emerald-700'
+                        }>
+                          {lab.status}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* Tab 4: Medications */}
+        <TabsContent value="medications" className="mt-6">
+          <Card className="border-0 shadow-lg">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-lg font-bold text-slate-800">Medication History</CardTitle>
+              <Button className="bg-gradient-to-r from-teal-500 to-cyan-600 text-white">
+                <Plus className="w-4 h-4 mr-2" />
+                Add Medication
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {/* Active Medications */}
+              <div className="mb-8">
+                <h3 className="text-lg font-semibold text-slate-800 mb-4">Active Medications</h3>
+                <div className="space-y-3">
+                  {mockMedications.filter(m => m.status === 'active').map((med, idx) => (
+                    <div key={idx} className="p-5 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Badge className="bg-emerald-500">Active</Badge>
+                            <h4 className="text-lg font-bold text-slate-800">{med.name}</h4>
+                          </div>
+                          <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                            <div>
+                              <span className="text-slate-600">Dosage:</span>
+                              <span className="ml-2 font-semibold text-slate-800">{med.dosage}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-600">Frequency:</span>
+                              <span className="ml-2 font-semibold text-slate-800">{med.frequency}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-600">Start Date:</span>
+                              <span className="ml-2 font-semibold text-slate-800">{med.startDate}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-600">Prescribed by:</span>
+                              <span className="ml-2 font-semibold text-slate-800">{med.prescriber}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <Pill className="w-8 h-8 text-emerald-600" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Discontinued Medications */}
+              <div>
+                <h3 className="text-lg font-semibold text-slate-800 mb-4">Discontinued Medications</h3>
+                <div className="space-y-3">
+                  {mockMedications.filter(m => m.status === 'discontinued').map((med, idx) => (
+                    <div key={idx} className="p-5 bg-slate-50 rounded-lg border border-slate-200 opacity-75">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Badge className="bg-slate-400">Discontinued</Badge>
+                            <h4 className="text-lg font-bold text-slate-600">{med.name}</h4>
+                          </div>
+                          <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                            <div>
+                              <span className="text-slate-500">Dosage:</span>
+                              <span className="ml-2 font-semibold text-slate-600">{med.dosage}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500">End Date:</span>
+                              <span className="ml-2 font-semibold text-slate-600">{med.endDate}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Tab 5: Investigations */}
+        <TabsContent value="investigations" className="mt-6">
+          <Card className="border-0 shadow-lg">
+            <CardHeader>
+              <CardTitle className="text-lg font-bold text-slate-800">Investigations & Procedures</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {mockInvestigations.map((inv, idx) => (
+                  <div key={idx} className="p-5 bg-gradient-to-r from-slate-50 to-blue-50 rounded-lg border border-slate-200">
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <Badge className={
+                            inv.type === 'Laboratory' ? 'bg-purple-100 text-purple-700' :
+                            inv.type === 'Imaging' ? 'bg-blue-100 text-blue-700' :
+                            'bg-cyan-100 text-cyan-700'
+                          }>
+                            {inv.type}
+                          </Badge>
+                          <Badge className="bg-emerald-100 text-emerald-700">{inv.status}</Badge>
+                        </div>
+                        <h4 className="text-lg font-bold text-slate-800 mb-1">{inv.name}</h4>
+                        <p className="text-sm text-slate-600">
+                          Date: {new Date(inv.date).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric'
+                          })}
+                        </p>
+                      </div>
+                      <FlaskConical className="w-8 h-8 text-slate-400" />
+                    </div>
+                    <div className="p-3 bg-white rounded border border-slate-200">
+                      <p className="text-sm font-semibold text-slate-700 mb-1">Result:</p>
+                      <p className="text-sm text-slate-600">{inv.result}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Tab 6: Documents */}
+        <TabsContent value="documents" className="mt-6">
+          <Card className="border-0 shadow-lg">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-lg font-bold text-slate-800">Documents & Attachments</CardTitle>
+              <Link to="/digitize">
+                <Button className="bg-gradient-to-r from-teal-500 to-cyan-600 text-white">
+                  <Upload className="w-4 h-4 mr-2" />
+                  Upload Document
+                </Button>
+              </Link>
+            </CardHeader>
+            <CardContent>
+              {documents.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {documents.map((doc) => (
+                    <div key={doc.document_id} className="p-5 bg-gradient-to-br from-slate-50 to-blue-50 rounded-lg border border-slate-200 hover:shadow-md transition-all cursor-pointer">
+                      <div className="flex items-start gap-3">
+                        <div className="w-12 h-12 rounded-lg bg-teal-100 flex items-center justify-center flex-shrink-0">
+                          <FileText className="w-6 h-6 text-teal-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-slate-800 truncate">{doc.filename}</p>
+                          <p className="text-xs text-slate-500 mt-1">
+                            {new Date(doc.uploaded_at).toLocaleDateString()}
+                          </p>
+                          <Badge className={
+                            doc.status === 'approved' ? 'bg-emerald-100 text-emerald-700 mt-2' :
+                            'bg-amber-100 text-amber-700 mt-2'
+                          }>
+                            {doc.status}
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <FolderOpen className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+                  <p className="text-slate-500 text-lg">No documents uploaded</p>
+                  <Link to="/digitize">
+                    <Button className="mt-4 bg-gradient-to-r from-teal-500 to-cyan-600 text-white">
+                      Upload First Document
+                    </Button>
+                  </Link>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
     </div>
   );
