@@ -460,8 +460,8 @@ async def upload_standalone_document(
         }
         await db.scanned_documents.insert_one(document_doc)
         
-        # Mock ADE parsing (replace with real LandingAI ADE integration)
-        parsed_data = mock_ade_parser(file.filename, file_content)
+        # Call microservice to parse document
+        parsed_data = await call_microservice_parser(file.filename, file_content)
         
         # Store parsed data in MongoDB
         parsed_doc_id = str(uuid.uuid4())
