@@ -1,4 +1,5 @@
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, Form
+from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -6,69 +7,702 @@ import os
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
-from typing import List
+from typing import List, Optional, Dict, Any
 import uuid
-from datetime import datetime, timezone
-
+from datetime import datetime, timezone, date
+from supabase import create_client, Client
+import json
+import base64
+from decimal import Decimal
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+mongo_client = AsyncIOMotorClient(mongo_url)
+db = mongo_client[os.environ['DB_NAME']]
 
-# Create the main app without a prefix
-app = FastAPI()
+# Supabase connection
+supabase_url = os.environ['SUPABASE_URL']
+supabase_key = os.environ['SUPABASE_SERVICE_KEY']
+supabase: Client = create_client(supabase_url, supabase_key)
 
-# Create a router with the /api prefix
+# Demo tenant configuration
+DEMO_TENANT_ID = os.environ.get('DEMO_TENANT_ID', 'demo-tenant-001')
+DEMO_WORKSPACE_ID = os.environ.get('DEMO_WORKSPACE_ID', 'demo-gp-workspace-001')
+
+# Create the main app
+app = FastAPI(title="SurgiScan API")
 api_router = APIRouter(prefix="/api")
 
+# ==================== Models ====================
 
-# Define Models
-class StatusCheck(BaseModel):
-    model_config = ConfigDict(extra="ignore")  # Ignore MongoDB's _id field
-    
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    client_name: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+class PatientCreate(BaseModel):
+    first_name: str
+    last_name: str
+    dob: str  # YYYY-MM-DD
+    id_number: str
+    contact_number: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[str] = None
+    medical_aid: Optional[str] = None
 
-class StatusCheckCreate(BaseModel):
-    client_name: str
+class PatientResponse(BaseModel):
+    id: str
+    tenant_id: str
+    workspace_id: str
+    first_name: str
+    last_name: str
+    dob: str
+    id_number: str
+    contact_number: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[str] = None
+    medical_aid: Optional[str] = None
+    created_at: str
 
-# Add your routes to the router instead of directly to app
+class VitalsData(BaseModel):
+    blood_pressure: Optional[str] = None
+    heart_rate: Optional[int] = None
+    temperature: Optional[float] = None
+    weight: Optional[float] = None
+    height: Optional[float] = None
+    oxygen_saturation: Optional[int] = None
+
+class EncounterCreate(BaseModel):
+    patient_id: str
+    chief_complaint: Optional[str] = None
+    vitals: Optional[VitalsData] = None
+    gp_notes: Optional[str] = None
+
+class EncounterResponse(BaseModel):
+    id: str
+    patient_id: str
+    workspace_id: str
+    encounter_date: str
+    status: str
+    chief_complaint: Optional[str] = None
+    vitals_json: Optional[Dict] = None
+    gp_notes: Optional[str] = None
+    created_at: str
+
+class DocumentUploadResponse(BaseModel):
+    document_id: str
+    mongo_doc_id: str
+    parsed_data: Dict[str, Any]
+    status: str
+
+class ValidationUpdate(BaseModel):
+    parsed_data: Dict[str, Any]
+    status: str  # 'approved' or 'rejected'
+    notes: Optional[str] = None
+
+class DispenseCreate(BaseModel):
+    encounter_id: str
+    medication: str
+    quantity: int
+    dosage: str
+    instructions: Optional[str] = None
+
+class InvoiceItem(BaseModel):
+    description: str
+    quantity: int
+    unit_price: float
+    total: float
+
+class InvoiceCreate(BaseModel):
+    encounter_id: str
+    payer_type: str  # 'cash', 'medical_aid', 'corporate'
+    items: List[InvoiceItem]
+    total_amount: float
+    notes: Optional[str] = None
+
+# ==================== Helper Functions ====================
+
+async def init_demo_tenant():
+    """Initialize demo tenant and workspace in Supabase if not exists"""
+    try:
+        # Check if tenant exists
+        tenant_result = supabase.table('tenants').select('*').eq('id', DEMO_TENANT_ID).execute()
+        
+        if not tenant_result.data:
+            # Create tenant
+            supabase.table('tenants').insert({
+                'id': DEMO_TENANT_ID,
+                'name': 'Demo GP Practice',
+                'created_at': datetime.now(timezone.utc).isoformat()
+            }).execute()
+            logger.info(f"Created demo tenant: {DEMO_TENANT_ID}")
+        
+        # Check if workspace exists
+        workspace_result = supabase.table('workspaces').select('*').eq('id', DEMO_WORKSPACE_ID).execute()
+        
+        if not workspace_result.data:
+            # Create workspace
+            supabase.table('workspaces').insert({
+                'id': DEMO_WORKSPACE_ID,
+                'tenant_id': DEMO_TENANT_ID,
+                'name': 'Main GP Practice',
+                'type': 'gp',
+                'created_at': datetime.now(timezone.utc).isoformat()
+            }).execute()
+            logger.info(f"Created demo workspace: {DEMO_WORKSPACE_ID}")
+    except Exception as e:
+        logger.error(f"Error initializing demo tenant: {e}")
+
+def mock_ade_parser(filename: str, file_content: bytes) -> Dict[str, Any]:
+    """Mock ADE parser - returns realistic parsed medical data"""
+    return {
+        'patient_demographics': {
+            'name': 'Extracted from Document',
+            'age': 45,
+            'gender': 'Unknown'
+        },
+        'medical_history': [
+            {'condition': 'Hypertension', 'diagnosed_date': '2020-03-15'},
+            {'condition': 'Type 2 Diabetes', 'diagnosed_date': '2019-08-22'}
+        ],
+        'current_medications': [
+            {'name': 'Metformin', 'dosage': '500mg', 'frequency': 'Twice daily'},
+            {'name': 'Lisinopril', 'dosage': '10mg', 'frequency': 'Once daily'}
+        ],
+        'allergies': ['Penicillin', 'Latex'],
+        'lab_results': [
+            {'test': 'HbA1c', 'value': '6.8%', 'date': '2024-01-15'},
+            {'test': 'Blood Pressure', 'value': '135/85', 'date': '2024-01-15'}
+        ],
+        'clinical_notes': 'Patient presents with controlled diabetes and hypertension. Continue current medication regimen. Follow up in 3 months.',
+        'diagnoses': [
+            {'code': 'E11', 'description': 'Type 2 diabetes mellitus'},
+            {'code': 'I10', 'description': 'Essential hypertension'}
+        ],
+        'extraction_metadata': {
+            'confidence': 0.92,
+            'extracted_at': datetime.now(timezone.utc).isoformat(),
+            'source_filename': filename
+        }
+    }
+
+# ==================== API Routes ====================
+
 @api_router.get("/")
 async def root():
-    return {"message": "Hello World"}
+    return {"message": "SurgiScan API v1.0", "status": "operational"}
 
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_dict = input.model_dump()
-    status_obj = StatusCheck(**status_dict)
-    
-    # Convert to dict and serialize datetime to ISO string for MongoDB
-    doc = status_obj.model_dump()
-    doc['timestamp'] = doc['timestamp'].isoformat()
-    
-    _ = await db.status_checks.insert_one(doc)
-    return status_obj
+@api_router.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return {
+        "status": "healthy",
+        "database": "connected",
+        "tenant": DEMO_TENANT_ID,
+        "workspace": DEMO_WORKSPACE_ID
+    }
 
-@api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    # Exclude MongoDB's _id field from the query results
-    status_checks = await db.status_checks.find({}, {"_id": 0}).to_list(1000)
-    
-    # Convert ISO string timestamps back to datetime objects
-    for check in status_checks:
-        if isinstance(check['timestamp'], str):
-            check['timestamp'] = datetime.fromisoformat(check['timestamp'])
-    
-    return status_checks
+# ==================== Patient Management ====================
 
-# Include the router in the main app
+@api_router.post("/patients", response_model=PatientResponse)
+async def create_patient(patient: PatientCreate):
+    """Create a new patient"""
+    try:
+        patient_id = str(uuid.uuid4())
+        patient_data = {
+            'id': patient_id,
+            'tenant_id': DEMO_TENANT_ID,
+            'workspace_id': DEMO_WORKSPACE_ID,
+            **patient.model_dump(),
+            'created_at': datetime.now(timezone.utc).isoformat()
+        }
+        
+        result = supabase.table('patients').insert(patient_data).execute()
+        
+        # Log to audit
+        await db.audit_events.insert_one({
+            'id': str(uuid.uuid4()),
+            'tenant_id': DEMO_TENANT_ID,
+            'workspace_id': DEMO_WORKSPACE_ID,
+            'event_type': 'patient_created',
+            'patient_id': patient_id,
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'details': {'action': 'Patient registered'}
+        })
+        
+        return PatientResponse(**result.data[0])
+    except Exception as e:
+        logger.error(f"Error creating patient: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/patients", response_model=List[PatientResponse])
+async def list_patients(search: Optional[str] = None):
+    """List all patients with optional search"""
+    try:
+        query = supabase.table('patients').select('*').eq('workspace_id', DEMO_WORKSPACE_ID)
+        
+        if search:
+            # Simple search implementation - in production, use full-text search
+            query = query.or_(f"first_name.ilike.%{search}%,last_name.ilike.%{search}%,id_number.ilike.%{search}%")
+        
+        result = query.order('created_at', desc=True).limit(100).execute()
+        return [PatientResponse(**p) for p in result.data]
+    except Exception as e:
+        logger.error(f"Error listing patients: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/patients/{patient_id}", response_model=PatientResponse)
+async def get_patient(patient_id: str):
+    """Get patient details"""
+    try:
+        result = supabase.table('patients').select('*').eq('id', patient_id).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Patient not found")
+        return PatientResponse(**result.data[0])
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting patient: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.put("/patients/{patient_id}", response_model=PatientResponse)
+async def update_patient(patient_id: str, patient: PatientCreate):
+    """Update patient details"""
+    try:
+        result = supabase.table('patients').update(patient.model_dump()).eq('id', patient_id).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Patient not found")
+        return PatientResponse(**result.data[0])
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating patient: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== Encounter Management ====================
+
+@api_router.post("/encounters", response_model=EncounterResponse)
+async def create_encounter(encounter: EncounterCreate):
+    """Create a new encounter"""
+    try:
+        encounter_id = str(uuid.uuid4())
+        vitals_dict = encounter.vitals.model_dump() if encounter.vitals else None
+        
+        encounter_data = {
+            'id': encounter_id,
+            'patient_id': encounter.patient_id,
+            'workspace_id': DEMO_WORKSPACE_ID,
+            'encounter_date': datetime.now(timezone.utc).isoformat(),
+            'status': 'in_progress',
+            'chief_complaint': encounter.chief_complaint,
+            'vitals_json': vitals_dict,
+            'gp_notes': encounter.gp_notes,
+            'created_at': datetime.now(timezone.utc).isoformat()
+        }
+        
+        result = supabase.table('encounters').insert(encounter_data).execute()
+        
+        # Log to audit
+        await db.audit_events.insert_one({
+            'id': str(uuid.uuid4()),
+            'tenant_id': DEMO_TENANT_ID,
+            'workspace_id': DEMO_WORKSPACE_ID,
+            'event_type': 'encounter_created',
+            'patient_id': encounter.patient_id,
+            'encounter_id': encounter_id,
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        })
+        
+        return EncounterResponse(**result.data[0])
+    except Exception as e:
+        logger.error(f"Error creating encounter: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/encounters/patient/{patient_id}", response_model=List[EncounterResponse])
+async def get_patient_encounters(patient_id: str):
+    """Get all encounters for a patient"""
+    try:
+        result = supabase.table('encounters').select('*').eq('patient_id', patient_id).order('encounter_date', desc=True).execute()
+        return [EncounterResponse(**e) for e in result.data]
+    except Exception as e:
+        logger.error(f"Error getting encounters: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/encounters/{encounter_id}", response_model=EncounterResponse)
+async def get_encounter(encounter_id: str):
+    """Get encounter details"""
+    try:
+        result = supabase.table('encounters').select('*').eq('id', encounter_id).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Encounter not found")
+        return EncounterResponse(**result.data[0])
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting encounter: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.put("/encounters/{encounter_id}")
+async def update_encounter(encounter_id: str, gp_notes: Optional[str] = None, status: Optional[str] = None):
+    """Update encounter notes and status"""
+    try:
+        update_data = {}
+        if gp_notes is not None:
+            update_data['gp_notes'] = gp_notes
+        if status is not None:
+            update_data['status'] = status
+        
+        if not update_data:
+            raise HTTPException(status_code=400, detail="No update data provided")
+        
+        result = supabase.table('encounters').update(update_data).eq('id', encounter_id).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Encounter not found")
+        return EncounterResponse(**result.data[0])
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating encounter: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== Document Processing ====================
+
+@api_router.post("/documents/upload")
+async def upload_document(
+    encounter_id: str = Form(...),
+    patient_id: str = Form(...),
+    file: UploadFile = File(...)
+):
+    """Upload and parse medical document"""
+    try:
+        # Read file content
+        file_content = await file.read()
+        
+        # Store original document in MongoDB
+        mongo_doc_id = str(uuid.uuid4())
+        document_doc = {
+            'id': mongo_doc_id,
+            'tenant_id': DEMO_TENANT_ID,
+            'workspace_id': DEMO_WORKSPACE_ID,
+            'patient_id': patient_id,
+            'encounter_id': encounter_id,
+            'filename': file.filename,
+            'content_type': file.content_type,
+            'file_size': len(file_content),
+            'file_data': base64.b64encode(file_content).decode('utf-8'),
+            'uploaded_at': datetime.now(timezone.utc).isoformat()
+        }
+        await db.scanned_documents.insert_one(document_doc)
+        
+        # Mock ADE parsing
+        parsed_data = mock_ade_parser(file.filename, file_content)
+        
+        # Store parsed data in MongoDB
+        parsed_doc_id = str(uuid.uuid4())
+        parsed_doc = {
+            'id': parsed_doc_id,
+            'document_id': mongo_doc_id,
+            'tenant_id': DEMO_TENANT_ID,
+            'workspace_id': DEMO_WORKSPACE_ID,
+            'patient_id': patient_id,
+            'encounter_id': encounter_id,
+            'parsed_data': parsed_data,
+            'status': 'pending_validation',
+            'parsed_at': datetime.now(timezone.utc).isoformat()
+        }
+        await db.parsed_documents.insert_one(parsed_doc)
+        
+        # Create document reference in Supabase
+        doc_ref_id = str(uuid.uuid4())
+        doc_ref = {
+            'id': doc_ref_id,
+            'patient_id': patient_id,
+            'encounter_id': encounter_id,
+            'mongo_doc_id': mongo_doc_id,
+            'mongo_parsed_id': parsed_doc_id,
+            'filename': file.filename,
+            'file_size': len(file_content),
+            'status': 'pending_validation',
+            'uploaded_at': datetime.now(timezone.utc).isoformat()
+        }
+        supabase.table('document_refs').insert(doc_ref).execute()
+        
+        # Create validation session
+        validation_session = {
+            'id': str(uuid.uuid4()),
+            'document_id': mongo_doc_id,
+            'parsed_doc_id': parsed_doc_id,
+            'encounter_id': encounter_id,
+            'status': 'pending',
+            'created_at': datetime.now(timezone.utc).isoformat()
+        }
+        await db.validation_sessions.insert_one(validation_session)
+        
+        return DocumentUploadResponse(
+            document_id=doc_ref_id,
+            mongo_doc_id=mongo_doc_id,
+            parsed_data=parsed_data,
+            status='pending_validation'
+        )
+    except Exception as e:
+        logger.error(f"Error uploading document: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/documents/encounter/{encounter_id}")
+async def get_encounter_documents(encounter_id: str):
+    """Get all documents for an encounter"""
+    try:
+        # Get document refs from Supabase
+        result = supabase.table('document_refs').select('*').eq('encounter_id', encounter_id).execute()
+        
+        documents = []
+        for doc_ref in result.data:
+            # Get parsed data from MongoDB
+            parsed_doc = await db.parsed_documents.find_one({'id': doc_ref['mongo_parsed_id']})
+            if parsed_doc:
+                documents.append({
+                    'document_id': doc_ref['id'],
+                    'mongo_doc_id': doc_ref['mongo_doc_id'],
+                    'filename': doc_ref['filename'],
+                    'status': doc_ref['status'],
+                    'uploaded_at': doc_ref['uploaded_at'],
+                    'parsed_data': parsed_doc['parsed_data']
+                })
+        
+        return documents
+    except Exception as e:
+        logger.error(f"Error getting documents: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/documents/{document_id}/original")
+async def get_original_document(document_id: str):
+    """Get original document file"""
+    try:
+        # Get document ref from Supabase
+        result = supabase.table('document_refs').select('*').eq('id', document_id).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        mongo_doc_id = result.data[0]['mongo_doc_id']
+        
+        # Get original from MongoDB
+        doc = await db.scanned_documents.find_one({'id': mongo_doc_id})
+        if not doc:
+            raise HTTPException(status_code=404, detail="Document file not found")
+        
+        return {
+            'filename': doc['filename'],
+            'content_type': doc['content_type'],
+            'file_data': doc['file_data'],  # Base64 encoded
+            'uploaded_at': doc['uploaded_at']
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting original document: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== Validation Workflow ====================
+
+@api_router.get("/validation/{encounter_id}")
+async def get_validation_session(encounter_id: str):
+    """Get validation session for an encounter"""
+    try:
+        # Get all documents for the encounter
+        docs = await get_encounter_documents(encounter_id)
+        
+        # Get validation sessions from MongoDB
+        sessions = await db.validation_sessions.find({'encounter_id': encounter_id}).to_list(100)
+        
+        return {
+            'encounter_id': encounter_id,
+            'documents': docs,
+            'validation_sessions': sessions
+        }
+    except Exception as e:
+        logger.error(f"Error getting validation session: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/validation/{document_id}/approve")
+async def approve_validation(document_id: str, update: ValidationUpdate):
+    """Approve parsed document data"""
+    try:
+        # Get document ref
+        result = supabase.table('document_refs').select('*').eq('id', document_id).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        doc_ref = result.data[0]
+        
+        # Update parsed document in MongoDB
+        await db.parsed_documents.update_one(
+            {'id': doc_ref['mongo_parsed_id']},
+            {'$set': {
+                'parsed_data': update.parsed_data,
+                'status': 'approved',
+                'validated_at': datetime.now(timezone.utc).isoformat(),
+                'validation_notes': update.notes
+            }}
+        )
+        
+        # Update document ref status in Supabase
+        supabase.table('document_refs').update({'status': 'approved'}).eq('id', document_id).execute()
+        
+        # Update validation session
+        await db.validation_sessions.update_one(
+            {'document_id': doc_ref['mongo_doc_id']},
+            {'$set': {
+                'status': 'approved',
+                'approved_at': datetime.now(timezone.utc).isoformat()
+            }}
+        )
+        
+        # Log to audit
+        await db.audit_events.insert_one({
+            'id': str(uuid.uuid4()),
+            'tenant_id': DEMO_TENANT_ID,
+            'workspace_id': DEMO_WORKSPACE_ID,
+            'event_type': 'document_validated',
+            'document_id': document_id,
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        })
+        
+        return {'status': 'success', 'message': 'Document approved'}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error approving validation: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== Dispensing ====================
+
+@api_router.post("/dispense")
+async def create_dispense_event(dispense: DispenseCreate):
+    """Record a dispensing event"""
+    try:
+        dispense_id = str(uuid.uuid4())
+        dispense_data = {
+            'id': dispense_id,
+            'encounter_id': dispense.encounter_id,
+            'medication': dispense.medication,
+            'quantity': dispense.quantity,
+            'dosage': dispense.dosage,
+            'instructions': dispense.instructions,
+            'dispensed_at': datetime.now(timezone.utc).isoformat()
+        }
+        
+        supabase.table('dispense_events').insert(dispense_data).execute()
+        
+        return {'status': 'success', 'dispense_id': dispense_id}
+    except Exception as e:
+        logger.error(f"Error creating dispense event: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/dispense/encounter/{encounter_id}")
+async def get_dispense_events(encounter_id: str):
+    """Get dispensing history for an encounter"""
+    try:
+        result = supabase.table('dispense_events').select('*').eq('encounter_id', encounter_id).execute()
+        return result.data
+    except Exception as e:
+        logger.error(f"Error getting dispense events: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== Billing ====================
+
+@api_router.post("/invoices")
+async def create_invoice(invoice: InvoiceCreate):
+    """Create an invoice for an encounter"""
+    try:
+        invoice_id = str(uuid.uuid4())
+        invoice_data = {
+            'id': invoice_id,
+            'encounter_id': invoice.encounter_id,
+            'payer_type': invoice.payer_type,
+            'items_json': [item.model_dump() for item in invoice.items],
+            'total_amount': invoice.total_amount,
+            'notes': invoice.notes,
+            'status': 'pending',
+            'created_at': datetime.now(timezone.utc).isoformat()
+        }
+        
+        supabase.table('gp_invoices').insert(invoice_data).execute()
+        
+        # Update encounter status
+        supabase.table('encounters').update({'status': 'completed'}).eq('id', invoice.encounter_id).execute()
+        
+        return {'status': 'success', 'invoice_id': invoice_id}
+    except Exception as e:
+        logger.error(f"Error creating invoice: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/invoices")
+async def list_invoices():
+    """List all invoices"""
+    try:
+        result = supabase.table('gp_invoices').select('*').order('created_at', desc=True).limit(100).execute()
+        return result.data
+    except Exception as e:
+        logger.error(f"Error listing invoices: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/invoices/{invoice_id}")
+async def get_invoice(invoice_id: str):
+    """Get invoice details"""
+    try:
+        result = supabase.table('gp_invoices').select('*').eq('id', invoice_id).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Invoice not found")
+        return result.data[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting invoice: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.put("/invoices/{invoice_id}/status")
+async def update_invoice_status(invoice_id: str, status: str):
+    """Update invoice status"""
+    try:
+        result = supabase.table('gp_invoices').update({'status': status}).eq('id', invoice_id).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Invoice not found")
+        return result.data[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating invoice: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== Analytics ====================
+
+@api_router.get("/analytics/summary")
+async def get_analytics_summary():
+    """Get summary analytics for the workspace"""
+    try:
+        # Get counts from Supabase
+        patients_result = supabase.table('patients').select('id', count='exact').eq('workspace_id', DEMO_WORKSPACE_ID).execute()
+        encounters_result = supabase.table('encounters').select('id', count='exact').eq('workspace_id', DEMO_WORKSPACE_ID).execute()
+        invoices_result = supabase.table('gp_invoices').select('total_amount').execute()
+        
+        total_revenue = sum(float(inv['total_amount']) for inv in invoices_result.data)
+        
+        # Get recent encounters
+        recent_encounters = supabase.table('encounters').select('*').eq('workspace_id', DEMO_WORKSPACE_ID).order('encounter_date', desc=True).limit(5).execute()
+        
+        return {
+            'total_patients': patients_result.count or 0,
+            'total_encounters': encounters_result.count or 0,
+            'total_invoices': len(invoices_result.data),
+            'total_revenue': total_revenue,
+            'recent_encounters': recent_encounters.data
+        }
+    except Exception as e:
+        logger.error(f"Error getting analytics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Include router
 app.include_router(api_router)
 
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
@@ -84,6 +718,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+@app.on_event("startup")
+async def startup_event():
+    """Initialize on startup"""
+    logger.info("Starting SurgiScan API...")
+    await init_demo_tenant()
+    logger.info("Demo tenant initialized")
+
 @app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
+async def shutdown_event():
+    """Cleanup on shutdown"""
+    mongo_client.close()
+    logger.info("MongoDB connection closed")
