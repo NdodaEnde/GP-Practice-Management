@@ -7,6 +7,7 @@ const Layout = () => {
 
   const navigation = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
+    { name: 'Digitize Documents', path: '/digitize', icon: FileText },
     { name: 'Patients', path: '/patients', icon: Users },
     { name: 'Billing', path: '/billing', icon: DollarSign },
   ];
