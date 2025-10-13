@@ -14,16 +14,28 @@ const Analytics = () => {
     total_encounters: 0,
     total_revenue: 0,
   });
+  const [operationalData, setOperationalData] = useState(null);
+  const [clinicalData, setClinicalData] = useState(null);
+  const [financialData, setFinancialData] = useState(null);
 
   useEffect(() => {
-    loadAnalytics();
+    loadAllAnalytics();
   }, []);
 
-  const loadAnalytics = async () => {
+  const loadAllAnalytics = async () => {
     try {
       setLoading(true);
-      const response = await analyticsAPI.getSummary();
-      setStats(response.data);
+      const [summaryRes, operationalRes, clinicalRes, financialRes] = await Promise.all([
+        analyticsAPI.getSummary(),
+        analyticsAPI.getOperational(),
+        analyticsAPI.getClinical(),
+        analyticsAPI.getFinancial(),
+      ]);
+      
+      setStats(summaryRes.data);
+      setOperationalData(operationalRes.data);
+      setClinicalData(clinicalRes.data);
+      setFinancialData(financialRes.data);
     } catch (error) {
       console.error('Error loading analytics:', error);
       toast({
