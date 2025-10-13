@@ -132,16 +132,20 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Processing Time:</span>
                       <span className="font-medium">
-                        {patientData?.data?.processing_time?.toFixed(1) || 'N/A'}s
+                        {processingTime ? `${processingTime.toFixed(1)}s` : 'N/A'}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Pages Processed:</span>
-                      <span className="font-medium">{patientData?.data?.pages_processed || 'N/A'}</span>
+                      <span className="font-medium">{pagesProcessed || 'N/A'}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Model Used:</span>
-                      <span className="font-medium">{patientData?.data?.model_used || 'LandingAI'}</span>
+                      <span className="font-medium">{modelUsed}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Chunks Extracted:</span>
+                      <span className="font-medium">{chunks.length}</span>
                     </div>
                   </CardContent>
                 </Card>
