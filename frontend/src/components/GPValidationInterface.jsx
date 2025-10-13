@@ -306,34 +306,80 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {Object.keys(chronicSummary).length > 0 ? (
-                    <div>
-                      <h3 className="font-medium mb-2">Conditions & Medications</h3>
-                      {chronicSummary.conditions && (
-                        <div className="mb-4">
-                          <p className="text-sm text-gray-600 mb-2">Conditions:</p>
-                          <div className="p-2 bg-gray-50 rounded border">
-                            {Array.isArray(chronicSummary.conditions) 
-                              ? chronicSummary.conditions.map((c, i) => (
-                                  <div key={i} className="mb-1">{c.condition || c}</div>
-                                ))
-                              : JSON.stringify(chronicSummary.conditions)
-                            }
-                          </div>
-                        </div>
-                      )}
-                      {chronicSummary.medications && (
+                    <div className="space-y-4">
+                      {chronicSummary.chronic_conditions && (
                         <div>
-                          <p className="text-sm text-gray-600 mb-2">Medications:</p>
-                          <div className="p-2 bg-gray-50 rounded border">
-                            {Array.isArray(chronicSummary.medications) 
-                              ? chronicSummary.medications.map((m, i) => (
-                                  <div key={i} className="mb-1">{m.medication || m}</div>
-                                ))
-                              : JSON.stringify(chronicSummary.medications)
-                            }
+                          <h3 className="font-medium text-gray-700 mb-2">Chronic Conditions</h3>
+                          <div className="space-y-2">
+                            {Array.isArray(chronicSummary.chronic_conditions) ? (
+                              chronicSummary.chronic_conditions.map((condition, idx) => (
+                                <div key={idx} className="p-2 bg-gray-50 rounded border">
+                                  {typeof condition === 'object' ? (
+                                    <div className="space-y-1">
+                                      {Object.entries(condition).map(([key, val]) => (
+                                        <div key={key} className="flex justify-between text-sm">
+                                          <span className="text-gray-600 capitalize">{key.replace(/_/g, ' ')}:</span>
+                                          <span className="font-medium">{val || 'N/A'}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    condition
+                                  )}
+                                </div>
+                              ))
+                            ) : (
+                              <div className="p-2 bg-gray-50 rounded border">
+                                {JSON.stringify(chronicSummary.chronic_conditions)}
+                              </div>
+                            )}
                           </div>
                         </div>
                       )}
+                      
+                      {chronicSummary.current_medications && (
+                        <div>
+                          <h3 className="font-medium text-gray-700 mb-2">Current Medications</h3>
+                          <div className="space-y-2">
+                            {Array.isArray(chronicSummary.current_medications) ? (
+                              chronicSummary.current_medications.map((med, idx) => (
+                                <div key={idx} className="p-2 bg-gray-50 rounded border">
+                                  {typeof med === 'object' ? (
+                                    <div className="space-y-1">
+                                      {Object.entries(med).map(([key, val]) => (
+                                        <div key={key} className="flex justify-between text-sm">
+                                          <span className="text-gray-600 capitalize">{key.replace(/_/g, ' ')}:</span>
+                                          <span className="font-medium">{val || 'N/A'}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    med
+                                  )}
+                                </div>
+                              ))
+                            ) : (
+                              <div className="p-2 bg-gray-50 rounded border">
+                                {JSON.stringify(chronicSummary.current_medications)}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Show other fields */}
+                      {Object.entries(chronicSummary)
+                        .filter(([key]) => key !== 'chronic_conditions' && key !== 'current_medications')
+                        .map(([key, value]) => (
+                          <div key={key}>
+                            <h3 className="font-medium text-gray-700 mb-2 capitalize">
+                              {key.replace(/_/g, ' ')}
+                            </h3>
+                            <div className="p-2 bg-gray-50 rounded border">
+                              {typeof value === 'object' ? JSON.stringify(value, null, 2) : value || 'N/A'}
+                            </div>
+                          </div>
+                        ))}
                     </div>
                   ) : (
                     <p className="text-gray-500">No chronic care data extracted</p>
