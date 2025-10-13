@@ -37,25 +37,31 @@ async def gp_health_check():
     
     try:
         # Check GP processor initialization
-        from app.services.gp_processor import GPDocumentProcessor
-        processor_status = "available"
         try:
-            test_processor = GPDocumentProcessor()
-            processor_status = "initialized"
-        except Exception as e:
-            processor_status = f"error: {str(e)}"
+            from app.services.gp_processor import GPDocumentProcessor
+            processor_status = "available"
+            try:
+                test_processor = GPDocumentProcessor()
+                processor_status = "initialized"
+            except Exception as e:
+                processor_status = f"error: {str(e)}"
+        except ImportError as e:
+            processor_status = f"import_error: {str(e)}"
         
         # Check database connectivity for GP collections
-        # Get global db_manager from main module
-        import app.main
-        db_manager = getattr(app.main, 'db_manager', None)
-        
-        db_status = "not_configured"
-        if db_manager:
-            if db_manager.connected:
-                db_status = "connected"
-            else:
-                db_status = "disconnected"
+        db_status = "not_checked"
+        try:
+            # Try to get global db_manager from main module
+            import main
+            db_manager = getattr(main, 'db_manager', None)
+            
+            if db_manager:
+                if db_manager.connected:
+                    db_status = "connected"
+                else:
+                    db_status = "disconnected"
+        except Exception as e:
+            db_status = f"check_skipped: {str(e)}"
         
         return {
             "status": "healthy",
