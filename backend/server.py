@@ -365,13 +365,88 @@ async def update_encounter(encounter_id: str, gp_notes: Optional[str] = None, st
 
 # ==================== Document Processing ====================
 
+@api_router.post("/documents/upload-standalone")
+async def upload_standalone_document(
+    file: UploadFile = File(...),
+    document_type: str = Form("medical_record")  # 'historical' or 'medical_record'
+):
+    """
+    Upload and parse medical document WITHOUT requiring patient_id or encounter_id.
+    This endpoint handles:
+    1. Historical record digitization
+    2. Day-to-day records where patient may or may not exist
+    
+    Returns parsed data including patient demographics for matching/creation
+    """
+    try:
+        # Read file content
+        file_content = await file.read()
+        
+        # Store original document in MongoDB
+        mongo_doc_id = str(uuid.uuid4())
+        document_doc = {
+            'id': mongo_doc_id,
+            'tenant_id': DEMO_TENANT_ID,
+            'workspace_id': DEMO_WORKSPACE_ID,
+            'patient_id': None,  # Not assigned yet
+            'encounter_id': None,  # Not assigned yet
+            'filename': file.filename,
+            'content_type': file.content_type,
+            'file_size': len(file_content),
+            'file_data': base64.b64encode(file_content).decode('utf-8'),
+            'document_type': document_type,
+            'uploaded_at': datetime.now(timezone.utc).isoformat(),
+            'status': 'uploaded'
+        }
+        await db.scanned_documents.insert_one(document_doc)
+        
+        # Mock ADE parsing (replace with real LandingAI ADE integration)
+        parsed_data = mock_ade_parser(file.filename, file_content)
+        
+        # Store parsed data in MongoDB
+        parsed_doc_id = str(uuid.uuid4())
+        parsed_doc = {
+            'id': parsed_doc_id,
+            'document_id': mongo_doc_id,
+            'tenant_id': DEMO_TENANT_ID,
+            'workspace_id': DEMO_WORKSPACE_ID,
+            'patient_id': None,
+            'encounter_id': None,
+            'parsed_data': parsed_data,
+            'status': 'pending_patient_match',
+            'parsed_at': datetime.now(timezone.utc).isoformat()
+        }
+        await db.parsed_documents.insert_one(parsed_doc)
+        
+        # Log to audit
+        await db.audit_events.insert_one({
+            'id': str(uuid.uuid4()),
+            'tenant_id': DEMO_TENANT_ID,
+            'workspace_id': DEMO_WORKSPACE_ID,
+            'event_type': 'document_uploaded_standalone',
+            'document_id': mongo_doc_id,
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'details': {'filename': file.filename, 'type': document_type}
+        })
+        
+        return {
+            'document_id': mongo_doc_id,
+            'parsed_doc_id': parsed_doc_id,
+            'parsed_data': parsed_data,
+            'status': 'pending_patient_match',
+            'message': 'Document uploaded and parsed. Ready for patient matching and validation.'
+        }
+    except Exception as e:
+        logger.error(f"Error uploading standalone document: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @api_router.post("/documents/upload")
 async def upload_document(
     encounter_id: str = Form(...),
     patient_id: str = Form(...),
     file: UploadFile = File(...)
 ):
-    """Upload and parse medical document"""
+    """Upload and parse medical document for existing encounter"""
     try:
         # Read file content
         file_content = await file.read()
