@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Users, Activity, DollarSign, TrendingUp, Calendar, FileText, Pill, HeartPulse } from 'lucide-react';
 import ReactECharts from 'echarts-for-react';
+import * as echarts from 'echarts';
 import { analyticsAPI } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 
