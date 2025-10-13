@@ -83,6 +83,15 @@ const Analytics = () => {
     { diagnosis: 'Anxiety Disorder', count: 41 },
   ];
 
+  const payerTypeData = financialData?.revenue_by_payer?.map((item, idx) => ({
+    type: item.payer_type.replace('_', ' ').toUpperCase(),
+    value: item.revenue
+  })) || [
+    { type: 'Cash', value: 45000 },
+    { type: 'Medical Aid', value: 89000 },
+    { type: 'Corporate', value: 23000 },
+  ];
+
   // Chart Options
   const patientGrowthChart = {
     title: {
