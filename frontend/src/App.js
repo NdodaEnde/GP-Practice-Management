@@ -7,6 +7,7 @@ import NewEncounter from './pages/NewEncounter';
 import ValidationInterface from './pages/ValidationInterface';
 import DocumentDigitization from './pages/DocumentDigitization';
 import Billing from './pages/Billing';
+import Analytics from './pages/Analytics';
 import Layout from './components/Layout';
 import '@/App.css';
 
@@ -24,6 +25,7 @@ function App() {
             <Route path="encounters/new/:patientId" element={<NewEncounter />} />
             <Route path="validation/:encounterId" element={<ValidationInterface />} />
             <Route path="billing" element={<Billing />} />
+            <Route path="analytics" element={<Analytics />} />
           </Route>
         </Routes>
       </BrowserRouter>
