@@ -33,6 +33,9 @@ supabase: Client = create_client(supabase_url, supabase_key)
 DEMO_TENANT_ID = os.environ.get('DEMO_TENANT_ID', 'demo-tenant-001')
 DEMO_WORKSPACE_ID = os.environ.get('DEMO_WORKSPACE_ID', 'demo-gp-workspace-001')
 
+# Microservice configuration
+MICROSERVICE_URL = os.environ.get('MICROSERVICE_URL', 'http://localhost:5001')
+
 # Create the main app
 app = FastAPI(title="SurgiScan API")
 api_router = APIRouter(prefix="/api")
