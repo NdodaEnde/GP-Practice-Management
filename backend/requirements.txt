@@ -7,6 +7,11 @@ uvicorn[standard]
 pydantic
 pydantic-settings
 
+# Flask (for microservice)
+flask
+flask-cors
+aiofiles
+
 # Document processing - NEW LandingAI ADE library
 landingai-ade
 
