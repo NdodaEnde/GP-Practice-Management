@@ -100,14 +100,87 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
 
       {/* Main Content */}
       <div className="flex-1 overflow-hidden flex">
-        {/* Left Panel - Document Preview (Placeholder) */}
-        <div className="w-1/2 border-r bg-white p-4 overflow-auto">
-          <div className="flex items-center justify-center h-full text-gray-400">
-            <div className="text-center">
-              <FileText className="w-16 h-16 mx-auto mb-4" />
-              <p>Document preview will appear here</p>
-              <p className="text-sm mt-2">PDF viewer coming soon</p>
-            </div>
+        {/* Left Panel - Document Preview with PDF Viewer */}
+        <div className="w-1/2 border-r bg-white overflow-hidden flex flex-col">
+          <div className="p-4 border-b bg-gray-50">
+            <h3 className="font-semibold flex items-center gap-2">
+              <FileText className="w-4 h-4" />
+              Original Document
+            </h3>
+            {numPages && (
+              <div className="flex items-center gap-2 mt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goToPrevPage}
+                  disabled={pageNumber <= 1}
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                <span className="text-sm">
+                  Page {pageNumber} of {numPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goToNextPage}
+                  disabled={pageNumber >= numPages}
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+                <div className="ml-4 flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={zoomOut}>
+                    <ZoomOut className="w-4 h-4" />
+                  </Button>
+                  <span className="text-sm">{Math.round(pdfScale * 100)}%</span>
+                  <Button variant="outline" size="sm" onClick={zoomIn}>
+                    <ZoomIn className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+          
+          <div className="flex-1 overflow-auto p-4 bg-gray-100">
+            {pdfUrl ? (
+              <div className="flex justify-center">
+                <Document
+                  file={pdfUrl}
+                  onLoadSuccess={onDocumentLoadSuccess}
+                  loading={
+                    <div className="flex items-center justify-center p-8">
+                      <div className="text-center">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mx-auto mb-4"></div>
+                        <p className="text-gray-600">Loading PDF...</p>
+                      </div>
+                    </div>
+                  }
+                  error={
+                    <div className="text-center text-red-600 p-8">
+                      <p>Failed to load PDF</p>
+                      <p className="text-sm text-gray-600 mt-2">
+                        Document ID: {documentId}
+                      </p>
+                    </div>
+                  }
+                >
+                  <Page 
+                    pageNumber={pageNumber} 
+                    scale={pdfScale}
+                    renderTextLayer={false}
+                    renderAnnotationLayer={false}
+                  />
+                </Document>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-full text-gray-400">
+                <div className="text-center">
+                  <FileText className="w-16 h-16 mx-auto mb-4" />
+                  <p>Document not available</p>
+                  <p className="text-sm mt-2">PDF path: {filePath || 'Not provided'}</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
