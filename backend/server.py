@@ -1349,6 +1349,30 @@ async def proxy_gp_statistics():
         logger.error(f"GP statistics proxy error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@api_router.get("/gp/document/{document_id}/view")
+async def get_gp_document_view(document_id: str):
+    """Get GP document for viewing"""
+    try:
+        # Get document from MongoDB
+        doc = await db.gp_scanned_documents.find_one({"document_id": document_id})
+        if not doc:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        # Return the file data
+        from fastapi.responses import Response
+        return Response(
+            content=doc["file_data"],
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'inline; filename="{doc["filename"]}"'
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get GP document error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ==================== Application Setup ====================
 
 # Include router
