@@ -10,6 +10,7 @@ const Layout = () => {
     { name: 'Digitize Documents', path: '/digitize', icon: FileText },
     { name: 'Patients', path: '/patients', icon: Users },
     { name: 'Billing', path: '/billing', icon: DollarSign },
+    { name: 'Analytics', path: '/analytics', icon: BarChart3 },
   ];
 
   const isActive = (path) => location.pathname.startsWith(path);
