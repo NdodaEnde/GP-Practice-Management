@@ -1135,8 +1135,8 @@ async def get_clinical_analytics():
 async def get_financial_analytics():
     """Get financial metrics: revenue, payment methods, outstanding"""
     try:
-        # Get all invoices
-        invoices = supabase.table('gp_invoices').select('*').eq('workspace_id', DEMO_WORKSPACE_ID).execute()
+        # Get all invoices (no workspace_id filter since column doesn't exist)
+        invoices = supabase.table('gp_invoices').select('*').execute()
         
         # Revenue over time (last 6 months)
         six_months_ago = (datetime.now(timezone.utc) - timedelta(days=180)).isoformat()
@@ -1159,7 +1159,7 @@ async def get_financial_analytics():
             status = inv['status']
             status_breakdown[status] = status_breakdown.get(status, 0) + 1
         
-        total_revenue = sum(float(inv['total_amount']) for inv in invoices.data)
+        total_revenue = sum(float(inv['total_amount']) for inv in invoices.data) if invoices.data else 0
         pending_revenue = sum(float(inv['total_amount']) for inv in invoices.data if inv['status'] == 'pending')
         paid_revenue = sum(float(inv['total_amount']) for inv in invoices.data if inv['status'] == 'paid')
         
