@@ -172,8 +172,11 @@ async def upload_gp_patient_file(
         from app.services.gp_processor import GPDocumentProcessor
         
         # Get database manager from main module
-        import app.main
-        db_manager = getattr(app.main, 'db_manager', None)
+        try:
+            import main
+            db_manager = getattr(main, 'db_manager', None)
+        except ImportError:
+            db_manager = None
         
         gp_processor = GPDocumentProcessor(db_manager=db_manager)
         
