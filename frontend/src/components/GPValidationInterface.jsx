@@ -25,6 +25,9 @@ import 'react-pdf/dist/Page/TextLayer.css';
 
 const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) => {
   const [activeTab, setActiveTab] = useState('overview');
+  const [numPages, setNumPages] = useState(null);
+  const [pageNumber, setPageNumber] = useState(1);
+  const [pdfScale, setPdfScale] = useState(1.0);
   const { toast } = useToast();
 
   const handleValidate = () => {
@@ -54,10 +57,26 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
   const pagesProcessed = responseData.pages_processed;
   const modelUsed = responseData.model_used || 'LandingAI';
   const chunks = responseData.chunks || [];
+  const filePath = responseData.file_path || '';
+  const documentId = responseData.document_id || '';
 
   console.log('4. Extracted data:', extractedData);
   console.log('5. Demographics:', demographics);
   console.log('6. Chunks:', chunks.length);
+  console.log('7. File path:', filePath);
+
+  // For PDF viewing - we'll need to fetch the document from backend
+  const pdfUrl = filePath ? `${process.env.REACT_APP_BACKEND_URL}/api/gp/document/${documentId}/view` : null;
+
+  function onDocumentLoadSuccess({ numPages }) {
+    setNumPages(numPages);
+    setPageNumber(1);
+  }
+
+  const goToPrevPage = () => setPageNumber(prev => Math.max(prev - 1, 1));
+  const goToNextPage = () => setPageNumber(prev => Math.min(prev + 1, numPages || 1));
+  const zoomIn = () => setPdfScale(prev => Math.min(prev + 0.2, 2.0));
+  const zoomOut = () => setPdfScale(prev => Math.max(prev - 0.2, 0.5));
 
   return (
     <div className="h-screen flex flex-col bg-gray-50">
