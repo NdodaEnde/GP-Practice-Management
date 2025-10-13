@@ -33,3 +33,15 @@ def RequestLogger(logger, request_id: str, operation: str):
     except Exception as e:
         logger.error(f"[{request_id}] Failed {operation}: {e}")
         raise
+
+@contextmanager
+def log_database_operation(operation: str):
+    """Context manager for database operation logging"""
+    logger = get_logger("database")
+    logger.info(f"Starting database operation: {operation}")
+    try:
+        yield
+        logger.info(f"Completed database operation: {operation}")
+    except Exception as e:
+        logger.error(f"Database operation failed: {operation} - {e}")
+        raise
