@@ -26,18 +26,15 @@ class Settings(BaseSettings):
     # Security
     SECRET_KEY: str = os.getenv("SECRET_KEY", secrets.token_urlsafe(32))
     API_KEY: Optional[str] = os.getenv("API_KEY")
-    CORS_ORIGINS: List[str] = []
+    CORS_ORIGINS: Optional[str] = None
     
-    @validator("CORS_ORIGINS", pre=True)
-    def assemble_cors_origins(cls, v):
-        if isinstance(v, str):
-            if v == "*":
-                return ["*"]
-            if not v.startswith("["):
-                return [i.strip() for i in v.split(",")]
-        elif isinstance(v, list):
-            return v
-        return []
+    def get_cors_origins(self) -> List[str]:
+        """Get CORS origins as a list"""
+        if not self.CORS_ORIGINS:
+            return ["*"]
+        if self.CORS_ORIGINS == "*":
+            return ["*"]
+        return [i.strip() for i in self.CORS_ORIGINS.split(",")]
     
     # AI Processing Settings
     LANDING_AI_API_KEY: Optional[str] = os.getenv("LANDING_AI_API_KEY")
