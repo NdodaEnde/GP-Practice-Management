@@ -208,6 +208,84 @@ POST /api/documents/create-patient-from-document
 
 ---
 
+## Why Validation Before Matching is Critical
+
+### The Duplicate Patient Problem
+
+**Scenario: OCR Reads ID Incorrectly**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  WRONG WORKFLOW (Matching Before Validation)                │
+└─────────────────────────────────────────────────────────────┘
+
+Real World:
+  Patient: Sarah Johnson
+  ID: 0098 (exists in database)
+
+Step 1: Scan old medical record
+Step 2: OCR extracts data
+  └─> Name: "Sarah Johnson" ✓
+  └─> ID: "0068" ✗ (OCR mistake: confused 9 with 6)
+
+Step 3: System matches using raw OCR data
+  └─> Search for ID "0068" in database
+  └─> NOT FOUND (because real ID is 0098)
+  └─> Decision: Create NEW patient ❌
+
+Step 4: Human validates (too late!)
+  └─> User corrects "0068" to "0098"
+  └─> But duplicate patient already created! ❌
+
+Result: Sarah Johnson now has TWO profiles in the system!
+  - Profile 1: ID 0098 (original)
+  - Profile 2: ID 0068 (duplicate from OCR error)
+
+
+┌─────────────────────────────────────────────────────────────┐
+│  CORRECT WORKFLOW (Validation Before Matching)              │
+└─────────────────────────────────────────────────────────────┘
+
+Real World:
+  Patient: Sarah Johnson  
+  ID: 0098 (exists in database)
+
+Step 1: Scan old medical record
+Step 2: OCR extracts data
+  └─> Name: "Sarah Johnson" ✓
+  └─> ID: "0068" ✗ (OCR mistake)
+
+Step 3: Human validates FIRST ✓
+  └─> User reviews extracted data
+  └─> Notices "0068" looks wrong
+  └─> Corrects to "0098" based on document
+  └─> All data now accurate!
+
+Step 4: System matches using VALIDATED data
+  └─> Search for ID "0098" in database  
+  └─> FOUND! Sarah Johnson already exists ✓
+  └─> Decision: Link to existing profile ✓
+
+Result: Document linked to Sarah's existing profile!
+  - No duplicate created ✓
+  - Clean data in database ✓
+  - Complete patient history ✓
+```
+
+### Common OCR Errors That Cause Duplicates
+
+| Character | Often Misread As | Example |
+|-----------|------------------|---------|
+| 0 (zero) | O (letter O) | ID "0098" → "O098" |
+| 1 (one) | I (letter i) or l (letter L) | ID "1234" → "I234" |
+| 5 | S or 6 | ID "5678" → "6678" |
+| 8 | 3 or B | ID "8890" → "3890" |
+| 9 | 4 or 6 | ID "9012" → "6012" |
+
+**Each mistake creates a potential duplicate patient!**
+
+---
+
 ## Data Flow Architecture
 
 ```
