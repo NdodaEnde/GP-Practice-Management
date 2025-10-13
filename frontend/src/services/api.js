@@ -51,6 +51,9 @@ export const invoiceAPI = {
 
 export const analyticsAPI = {
   getSummary: () => api.get('/analytics/summary'),
+  getOperational: () => api.get('/analytics/operational'),
+  getClinical: () => api.get('/analytics/clinical'),
+  getFinancial: () => api.get('/analytics/financial'),
 };
 
 export default api;
