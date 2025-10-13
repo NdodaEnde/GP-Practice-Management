@@ -48,8 +48,11 @@ const Analytics = () => {
     }
   };
 
-  // Mock data for analytics charts
-  const patientGrowthData = [
+  // Use real data if available, otherwise use mock data
+  const patientGrowthData = operationalData?.patient_growth?.map(item => ({
+    month: item.month.substring(5), // Get MM from YYYY-MM
+    patients: item.count
+  })) || [
     { month: 'Jul', patients: 45 },
     { month: 'Aug', patients: 58 },
     { month: 'Sep', patients: 72 },
@@ -59,15 +62,10 @@ const Analytics = () => {
     { month: 'Jan', patients: 156 },
   ];
 
-  const encountersByTypeData = [
-    { type: 'General Consultation', value: 245 },
-    { type: 'Follow-up', value: 189 },
-    { type: 'Chronic Disease Management', value: 142 },
-    { type: 'Minor Procedures', value: 78 },
-    { type: 'Vaccination', value: 56 },
-  ];
-
-  const revenueData = [
+  const revenueData = financialData?.revenue_by_month?.map(item => ({
+    month: item.month.substring(5),
+    revenue: item.revenue
+  })) || [
     { month: 'Jul', revenue: 45000 },
     { month: 'Aug', revenue: 52000 },
     { month: 'Sep', revenue: 48000 },
@@ -77,7 +75,7 @@ const Analytics = () => {
     { month: 'Jan', revenue: 73000 },
   ];
 
-  const topDiagnosesData = [
+  const topDiagnosesData = clinicalData?.top_diagnoses || [
     { diagnosis: 'Hypertension', count: 89 },
     { diagnosis: 'Type 2 Diabetes', count: 76 },
     { diagnosis: 'Upper Respiratory Infection', count: 64 },
