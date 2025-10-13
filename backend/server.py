@@ -982,7 +982,7 @@ async def update_invoice_status(invoice_id: str, status: str):
 
 @api_router.get("/analytics/summary")
 async def get_analytics_summary():
-    """Get summary analytics for the workspace"""
+    """Get comprehensive summary analytics for the workspace"""
     try:
         # Get counts from Supabase
         patients_result = supabase.table('patients').select('id', count='exact').eq('workspace_id', DEMO_WORKSPACE_ID).execute()
@@ -1003,6 +1003,184 @@ async def get_analytics_summary():
         }
     except Exception as e:
         logger.error(f"Error getting analytics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/analytics/operational")
+async def get_operational_analytics():
+    """Get operational metrics: patient volume, peak hours, throughput"""
+    try:
+        # Patient volume trends (last 6 months)
+        six_months_ago = (datetime.now(timezone.utc) - timedelta(days=180)).isoformat()
+        
+        patients_over_time = supabase.table('patients').select('created_at').eq('workspace_id', DEMO_WORKSPACE_ID).gte('created_at', six_months_ago).execute()
+        encounters_over_time = supabase.table('encounters').select('encounter_date', count='exact').eq('workspace_id', DEMO_WORKSPACE_ID).gte('encounter_date', six_months_ago).execute()
+        
+        # Group by month
+        patient_monthly = {}
+        for p in patients_over_time.data:
+            month = p['created_at'][:7]  # YYYY-MM
+            patient_monthly[month] = patient_monthly.get(month, 0) + 1
+        
+        encounter_monthly = {}
+        for e in encounters_over_time.data:
+            month = e['encounter_date'][:7]
+            encounter_monthly[month] = encounter_monthly.get(month, 0) + 1
+        
+        # Peak hours analysis (encounters by hour)
+        all_encounters = supabase.table('encounters').select('encounter_date').eq('workspace_id', DEMO_WORKSPACE_ID).execute()
+        hour_distribution = {}
+        for e in all_encounters.data:
+            hour = datetime.fromisoformat(e['encounter_date'].replace('Z', '+00:00')).hour
+            hour_distribution[hour] = hour_distribution.get(hour, 0) + 1
+        
+        # Average consultation duration (mock for now - will be real once we track workstation times)
+        avg_consultation_duration = 15  # minutes
+        
+        return {
+            'patient_growth': [
+                {'month': month, 'count': count} 
+                for month, count in sorted(patient_monthly.items())
+            ],
+            'encounter_volume': [
+                {'month': month, 'count': count}
+                for month, count in sorted(encounter_monthly.items())
+            ],
+            'peak_hours': [
+                {'hour': hour, 'count': count}
+                for hour, count in sorted(hour_distribution.items())
+            ],
+            'avg_consultation_duration': avg_consultation_duration,
+            'total_patients_6m': len(patients_over_time.data),
+            'total_encounters_6m': len(all_encounters.data)
+        }
+    except Exception as e:
+        logger.error(f"Error getting operational analytics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/analytics/clinical")
+async def get_clinical_analytics():
+    """Get clinical metrics: diagnoses, prescriptions, referrals"""
+    try:
+        # Get all parsed documents to analyze medical data
+        parsed_docs = await db.parsed_documents.find({
+            'workspace_id': DEMO_WORKSPACE_ID,
+            'status': {'$in': ['approved', 'linked']}
+        }).to_list(1000)
+        
+        # Aggregate diagnoses
+        diagnosis_counts = {}
+        medication_counts = {}
+        allergy_counts = {}
+        
+        for doc in parsed_docs:
+            parsed_data = doc.get('parsed_data', {})
+            
+            # Count diagnoses
+            for diagnosis in parsed_data.get('diagnoses', []):
+                diag_desc = diagnosis.get('description', 'Unknown')
+                diagnosis_counts[diag_desc] = diagnosis_counts.get(diag_desc, 0) + 1
+            
+            # Count medications
+            for med in parsed_data.get('current_medications', []):
+                med_name = med.get('name', 'Unknown')
+                medication_counts[med_name] = medication_counts.get(med_name, 0) + 1
+            
+            # Count allergies
+            for allergy in parsed_data.get('allergies', []):
+                allergy_counts[allergy] = allergy_counts.get(allergy, 0) + 1
+        
+        # Get top 10 diagnoses
+        top_diagnoses = sorted(diagnosis_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+        top_medications = sorted(medication_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+        top_allergies = sorted(allergy_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+        
+        # Get encounter statistics
+        all_encounters = supabase.table('encounters').select('*').eq('workspace_id', DEMO_WORKSPACE_ID).execute()
+        
+        # Patient age distribution
+        all_patients = supabase.table('patients').select('dob').eq('workspace_id', DEMO_WORKSPACE_ID).execute()
+        age_distribution = {'0-18': 0, '19-35': 0, '36-50': 0, '51-65': 0, '65+': 0}
+        
+        for p in all_patients.data:
+            try:
+                dob = datetime.strptime(p['dob'], '%Y-%m-%d')
+                age = (datetime.now() - dob).days // 365
+                if age <= 18:
+                    age_distribution['0-18'] += 1
+                elif age <= 35:
+                    age_distribution['19-35'] += 1
+                elif age <= 50:
+                    age_distribution['36-50'] += 1
+                elif age <= 65:
+                    age_distribution['51-65'] += 1
+                else:
+                    age_distribution['65+'] += 1
+            except:
+                pass
+        
+        return {
+            'top_diagnoses': [{'diagnosis': d, 'count': c} for d, c in top_diagnoses],
+            'top_medications': [{'medication': m, 'count': c} for m, c in top_medications],
+            'top_allergies': [{'allergy': a, 'count': c} for a, c in top_allergies],
+            'age_distribution': age_distribution,
+            'total_conditions_tracked': len(diagnosis_counts),
+            'total_unique_medications': len(medication_counts),
+            'encounter_count': len(all_encounters.data)
+        }
+    except Exception as e:
+        logger.error(f"Error getting clinical analytics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/analytics/financial")
+async def get_financial_analytics():
+    """Get financial metrics: revenue, payment methods, outstanding"""
+    try:
+        # Get all invoices
+        invoices = supabase.table('gp_invoices').select('*').eq('workspace_id', DEMO_WORKSPACE_ID).execute()
+        
+        # Revenue over time (last 6 months)
+        six_months_ago = (datetime.now(timezone.utc) - timedelta(days=180)).isoformat()
+        recent_invoices = supabase.table('gp_invoices').select('*').gte('created_at', six_months_ago).execute()
+        
+        revenue_monthly = {}
+        for inv in recent_invoices.data:
+            month = inv['created_at'][:7]
+            revenue_monthly[month] = revenue_monthly.get(month, 0) + float(inv['total_amount'])
+        
+        # Payer type breakdown
+        payer_breakdown = {}
+        for inv in invoices.data:
+            payer = inv['payer_type']
+            payer_breakdown[payer] = payer_breakdown.get(payer, 0) + float(inv['total_amount'])
+        
+        # Invoice status
+        status_breakdown = {}
+        for inv in invoices.data:
+            status = inv['status']
+            status_breakdown[status] = status_breakdown.get(status, 0) + 1
+        
+        total_revenue = sum(float(inv['total_amount']) for inv in invoices.data)
+        pending_revenue = sum(float(inv['total_amount']) for inv in invoices.data if inv['status'] == 'pending')
+        paid_revenue = sum(float(inv['total_amount']) for inv in invoices.data if inv['status'] == 'paid')
+        
+        return {
+            'total_revenue': total_revenue,
+            'pending_revenue': pending_revenue,
+            'paid_revenue': paid_revenue,
+            'revenue_by_month': [
+                {'month': month, 'revenue': round(revenue, 2)}
+                for month, revenue in sorted(revenue_monthly.items())
+            ],
+            'revenue_by_payer': [
+                {'payer_type': payer, 'revenue': round(revenue, 2)}
+                for payer, revenue in payer_breakdown.items()
+            ],
+            'invoice_status': status_breakdown,
+            'total_invoices': len(invoices.data),
+            'avg_invoice_value': round(total_revenue / len(invoices.data), 2) if invoices.data else 0
+        }
+    except Exception as e:
+        logger.error(f"Error getting financial analytics: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Include router
