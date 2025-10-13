@@ -327,7 +327,7 @@ const GPPatientUpload = ({ onProcessingComplete }) => {
             <div>
               <h4 className="font-semibold text-teal-900 mb-2">Processing Information</h4>
               <ul className="text-sm text-teal-800 space-y-1">
-                <li>• AI processing typically takes 20-30 seconds</li>
+                <li>• AI processing typically takes 2-3 minutes</li>
                 <li>• Extracts demographics, chronic conditions, medications, and vitals</li>
                 <li>• Supports handwritten and typed medical records</li>
                 <li>• Results are presented for validation before saving</li>
