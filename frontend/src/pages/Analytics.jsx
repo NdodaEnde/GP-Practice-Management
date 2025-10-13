@@ -285,10 +285,10 @@ const Analytics = () => {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-slate-800">R{stats.total_revenue.toFixed(0)}</div>
-            <p className="text-xs text-teal-600 flex items-center gap-1 mt-1">
+            <div className="text-xs text-teal-600 flex items-center gap-1 mt-1">
               <TrendingUp className="w-3 h-3" />
               +15% from last month
-            </p>
+            </div>
           </CardContent>
         </Card>
 
