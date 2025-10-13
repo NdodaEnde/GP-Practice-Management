@@ -1,6 +1,6 @@
 import React from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Activity, Users, FileText, DollarSign, ClipboardCheck, LayoutDashboard } from 'lucide-react';
+import { Activity, Users, FileText, DollarSign, ClipboardCheck, LayoutDashboard, BarChart3 } from 'lucide-react';
 
 const Layout = () => {
   const location = useLocation();
