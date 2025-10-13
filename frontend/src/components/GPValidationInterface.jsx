@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Document, Page, pdfjs } from 'react-pdf';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -9,8 +10,18 @@ import {
   User,
   Heart,
   Activity,
-  FileCheck
+  FileCheck,
+  ChevronLeft,
+  ChevronRight,
+  ZoomIn,
+  ZoomOut
 } from 'lucide-react';
+
+// Configure PDF.js worker
+pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+
+import 'react-pdf/dist/Page/AnnotationLayer.css';
+import 'react-pdf/dist/Page/TextLayer.css';
 
 const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) => {
   const [activeTab, setActiveTab] = useState('overview');
