@@ -1,7 +1,6 @@
 import axios from 'axios';
 
 const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
-const MICROSERVICE_URL = 'http://localhost:5001';
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -29,9 +28,9 @@ export const gpAPI = {
     }
 
     try {
-      // Call the microservice directly
+      // Call through the main backend which will proxy to microservice
       const response = await axios.post(
-        `${MICROSERVICE_URL}/api/v1/gp/upload-patient-file`,
+        `${API_BASE_URL}/api/gp/upload-patient-file`,
         formData,
         {
           headers: {
@@ -65,7 +64,7 @@ export const gpAPI = {
   validateExtraction: async (patientId, validatedData, validationStatuses) => {
     try {
       const response = await axios.post(
-        `${MICROSERVICE_URL}/api/v1/gp/validate-extraction`,
+        `${API_BASE_URL}/api/gp/validate-extraction`,
         {
           patient_id: patientId,
           validated_data: validatedData,
@@ -98,7 +97,7 @@ export const gpAPI = {
    */
   getPatientsList: async () => {
     try {
-      const response = await axios.get(`${MICROSERVICE_URL}/api/v1/gp/patients`);
+      const response = await axios.get(`${API_BASE_URL}/api/gp/patients`);
       return {
         success: true,
         data: response.data
@@ -120,7 +119,7 @@ export const gpAPI = {
   getChronicSummary: async (patientId) => {
     try {
       const response = await axios.get(
-        `${MICROSERVICE_URL}/api/v1/gp/patient/${patientId}/chronic-summary`
+        `${API_BASE_URL}/api/gp/patient/${patientId}/chronic-summary`
       );
       return {
         success: true,
@@ -142,7 +141,7 @@ export const gpAPI = {
   getParsedDocument: async (documentId) => {
     try {
       const response = await axios.get(
-        `${MICROSERVICE_URL}/api/v1/gp/parsed-document/${documentId}`
+        `${API_BASE_URL}/api/gp/parsed-document/${documentId}`
       );
       return {
         success: true,
@@ -162,7 +161,7 @@ export const gpAPI = {
    */
   getStatistics: async () => {
     try {
-      const response = await axios.get(`${MICROSERVICE_URL}/api/v1/gp/statistics`);
+      const response = await axios.get(`${API_BASE_URL}/api/gp/statistics`);
       return {
         success: true,
         data: response.data
