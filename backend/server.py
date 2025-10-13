@@ -521,6 +521,237 @@ async def upload_document(
         logger.error(f"Error uploading document: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@api_router.post("/documents/match-patient")
+async def match_patient_to_document(
+    parsed_doc_id: str = Form(...),
+    id_number: Optional[str] = Form(None),
+    first_name: Optional[str] = Form(None),
+    last_name: Optional[str] = Form(None),
+    dob: Optional[str] = Form(None)
+):
+    """
+    Match parsed document to existing patient or identify as new patient.
+    Returns matched patient or indication that new patient should be created.
+    """
+    try:
+        # Build search query based on provided identifiers
+        query = supabase.table('patients').select('*').eq('workspace_id', DEMO_WORKSPACE_ID)
+        
+        # Priority 1: Match by ID number (most reliable)
+        if id_number:
+            result = query.eq('id_number', id_number).execute()
+            if result.data:
+                return {
+                    'match_found': True,
+                    'match_type': 'id_number',
+                    'patient': result.data[0],
+                    'confidence': 'high'
+                }
+        
+        # Priority 2: Match by name + DOB
+        if first_name and last_name and dob:
+            result = query.ilike('first_name', first_name).ilike('last_name', last_name).eq('dob', dob).execute()
+            if result.data:
+                return {
+                    'match_found': True,
+                    'match_type': 'name_dob',
+                    'patient': result.data[0],
+                    'confidence': 'high'
+                }
+        
+        # Priority 3: Fuzzy match by name only (return multiple possibilities)
+        if first_name and last_name:
+            result = query.ilike('first_name', f'%{first_name}%').ilike('last_name', f'%{last_name}%').execute()
+            if result.data:
+                return {
+                    'match_found': True,
+                    'match_type': 'name_fuzzy',
+                    'possible_matches': result.data,
+                    'confidence': 'medium',
+                    'action_required': 'manual_review'
+                }
+        
+        # No match found
+        return {
+            'match_found': False,
+            'action_required': 'create_new_patient',
+            'message': 'No existing patient found. Create new patient record.'
+        }
+        
+    except Exception as e:
+        logger.error(f"Error matching patient: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/documents/link-to-patient")
+async def link_document_to_patient(
+    parsed_doc_id: str = Form(...),
+    patient_id: str = Form(...),
+    create_encounter: bool = Form(True),
+    validated_data: Optional[str] = Form(None)  # JSON string of validated/edited data
+):
+    """
+    Link a parsed document to an existing or newly created patient.
+    Optionally create an encounter and save validated data.
+    """
+    try:
+        # Get parsed document from MongoDB
+        parsed_doc = await db.parsed_documents.find_one({'id': parsed_doc_id})
+        if not parsed_doc:
+            raise HTTPException(status_code=404, detail="Parsed document not found")
+        
+        # Parse validated data if provided
+        if validated_data:
+            validated_json = json.loads(validated_data)
+            parsed_doc['parsed_data'] = validated_json
+        
+        # Update parsed document with patient_id
+        await db.parsed_documents.update_one(
+            {'id': parsed_doc_id},
+            {'$set': {
+                'patient_id': patient_id,
+                'status': 'linked',
+                'linked_at': datetime.now(timezone.utc).isoformat()
+            }}
+        )
+        
+        # Update original document
+        await db.scanned_documents.update_one(
+            {'id': parsed_doc['document_id']},
+            {'$set': {
+                'patient_id': patient_id,
+                'status': 'linked'
+            }}
+        )
+        
+        encounter_id = None
+        if create_encounter:
+            # Create encounter from parsed data
+            encounter_id = str(uuid.uuid4())
+            
+            # Extract chief complaint from clinical notes if available
+            chief_complaint = None
+            if 'clinical_notes' in parsed_doc['parsed_data']:
+                chief_complaint = parsed_doc['parsed_data']['clinical_notes'][:200]  # First 200 chars
+            
+            encounter_data = {
+                'id': encounter_id,
+                'patient_id': patient_id,
+                'workspace_id': DEMO_WORKSPACE_ID,
+                'encounter_date': datetime.now(timezone.utc).isoformat(),
+                'status': 'pending_validation',
+                'chief_complaint': chief_complaint,
+                'vitals_json': None,
+                'gp_notes': parsed_doc['parsed_data'].get('clinical_notes'),
+                'created_at': datetime.now(timezone.utc).isoformat()
+            }
+            
+            supabase.table('encounters').insert(encounter_data).execute()
+            
+            # Update parsed document with encounter_id
+            await db.parsed_documents.update_one(
+                {'id': parsed_doc_id},
+                {'$set': {'encounter_id': encounter_id}}
+            )
+            
+            # Create document reference in Supabase
+            doc_ref_id = str(uuid.uuid4())
+            doc_ref = {
+                'id': doc_ref_id,
+                'patient_id': patient_id,
+                'encounter_id': encounter_id,
+                'mongo_doc_id': parsed_doc['document_id'],
+                'mongo_parsed_id': parsed_doc_id,
+                'filename': 'Historical Record',
+                'file_size': 0,
+                'status': 'linked',
+                'uploaded_at': datetime.now(timezone.utc).isoformat()
+            }
+            supabase.table('document_refs').insert(doc_ref).execute()
+        
+        # Log to audit
+        await db.audit_events.insert_one({
+            'id': str(uuid.uuid4()),
+            'tenant_id': DEMO_TENANT_ID,
+            'workspace_id': DEMO_WORKSPACE_ID,
+            'event_type': 'document_linked_to_patient',
+            'patient_id': patient_id,
+            'document_id': parsed_doc['document_id'],
+            'encounter_id': encounter_id,
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        })
+        
+        return {
+            'status': 'success',
+            'patient_id': patient_id,
+            'encounter_id': encounter_id,
+            'message': 'Document successfully linked to patient'
+        }
+        
+    except Exception as e:
+        logger.error(f"Error linking document to patient: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/documents/create-patient-from-document")
+async def create_patient_from_document(
+    parsed_doc_id: str = Form(...),
+    patient_data: str = Form(...)  # JSON string with patient details
+):
+    """
+    Create a new patient from parsed document data and link the document.
+    This handles the "new patient" workflow from document digitization.
+    """
+    try:
+        # Parse patient data
+        patient_dict = json.loads(patient_data)
+        
+        # Create patient
+        patient_id = str(uuid.uuid4())
+        patient_record = {
+            'id': patient_id,
+            'tenant_id': DEMO_TENANT_ID,
+            'workspace_id': DEMO_WORKSPACE_ID,
+            **patient_dict,
+            'created_at': datetime.now(timezone.utc).isoformat()
+        }
+        
+        supabase.table('patients').insert(patient_record).execute()
+        
+        # Link document to patient
+        link_result = await link_document_to_patient(
+            parsed_doc_id=parsed_doc_id,
+            patient_id=patient_id,
+            create_encounter=True
+        )
+        
+        return {
+            'status': 'success',
+            'patient_id': patient_id,
+            'encounter_id': link_result.get('encounter_id'),
+            'message': 'New patient created and document linked'
+        }
+        
+    except Exception as e:
+        logger.error(f"Error creating patient from document: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/documents/pending-match")
+async def get_pending_documents():
+    """Get all documents pending patient matching"""
+    try:
+        # Get from MongoDB
+        pending_docs = await db.parsed_documents.find({
+            'workspace_id': DEMO_WORKSPACE_ID,
+            'status': 'pending_patient_match'
+        }).to_list(100)
+        
+        return {
+            'count': len(pending_docs),
+            'documents': pending_docs
+        }
+    except Exception as e:
+        logger.error(f"Error getting pending documents: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @api_router.get("/documents/encounter/{encounter_id}")
 async def get_encounter_documents(encounter_id: str):
     """Get all documents for an encounter"""
