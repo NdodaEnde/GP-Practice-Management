@@ -266,50 +266,56 @@ const PatientRegistry = () => {
           ) : (
             <div className="space-y-3">
               {patients.map((patient) => (
-                <Link
+                <div
                   key={patient.id}
-                  to={`/patients/${patient.id}`}
-                  className="block"
+                  className="p-5 bg-gradient-to-r from-slate-50 to-blue-50 rounded-lg hover:shadow-md transition-all duration-200 border border-slate-200"
                   data-testid={`patient-card-${patient.id}`}
                 >
-                  <div className="p-5 bg-gradient-to-r from-slate-50 to-blue-50 rounded-lg hover:shadow-md transition-all duration-200 border border-slate-200">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="w-14 h-14 rounded-full bg-gradient-to-br from-teal-400 to-cyan-500 flex items-center justify-center text-white font-bold text-xl shadow-md">
-                          {patient.first_name[0]}{patient.last_name[0]}
-                        </div>
-                        <div>
-                          <h3 className="text-lg font-semibold text-slate-800">
-                            {patient.first_name} {patient.last_name}
-                          </h3>
-                          <div className="flex items-center gap-4 text-sm text-slate-600 mt-1">
-                            <span className="flex items-center gap-1">
-                              <User className="w-4 h-4" />
-                              {patient.id_number}
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <Calendar className="w-4 h-4" />
-                              {patient.dob}
-                            </span>
-                            {patient.contact_number && (
-                              <span className="flex items-center gap-1">
-                                <Phone className="w-4 h-4" />
-                                {patient.contact_number}
-                              </span>
-                            )}
-                          </div>
-                        </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4 flex-1">
+                      <div className="w-14 h-14 rounded-full bg-gradient-to-br from-teal-400 to-cyan-500 flex items-center justify-center text-white font-bold text-xl shadow-md">
+                        {patient.first_name[0]}{patient.last_name[0]}
                       </div>
-                      <div className="text-right">
-                        {patient.medical_aid && (
-                          <span className="inline-block px-3 py-1 bg-violet-100 text-violet-700 text-xs font-medium rounded-full">
-                            {patient.medical_aid}
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold text-slate-800">
+                          {patient.first_name} {patient.last_name}
+                        </h3>
+                        <div className="flex items-center gap-4 text-sm text-slate-600 mt-1">
+                          <span className="flex items-center gap-1">
+                            <User className="w-4 h-4" />
+                            {patient.id_number}
                           </span>
-                        )}
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-4 h-4" />
+                            {patient.dob}
+                          </span>
+                          {patient.contact_number && (
+                            <span className="flex items-center gap-1">
+                              <Phone className="w-4 h-4" />
+                              {patient.contact_number}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
+                    <div className="flex items-center gap-3">
+                      {patient.medical_aid && (
+                        <span className="inline-block px-3 py-1 bg-violet-100 text-violet-700 text-xs font-medium rounded-full">
+                          {patient.medical_aid}
+                        </span>
+                      )}
+                      <Link to={`/patients/${patient.id}`}>
+                        <Button 
+                          className="bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-600 hover:to-cyan-700 text-white shadow-md hover:shadow-lg transition-all duration-200"
+                          data-testid={`view-ehr-btn-${patient.id}`}
+                        >
+                          <FileText className="w-4 h-4 mr-2" />
+                          View EHR
+                        </Button>
+                      </Link>
+                    </div>
                   </div>
-                </Link>
+                </div>
               ))}
             </div>
           )}
