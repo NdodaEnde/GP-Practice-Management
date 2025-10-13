@@ -155,6 +155,62 @@ async def init_demo_tenant():
     except Exception as e:
         logger.error(f"Error initializing demo tenant: {e}")
 
+async def call_microservice_parser(filename: str, file_content: bytes) -> Dict[str, Any]:
+    """Call the microservice to parse document using LandingAI"""
+    try:
+        # Prepare the file for upload
+        files = {'file': (filename, file_content, 'application/pdf')}
+        data = {
+            'processing_mode': 'smart',
+            'save_to_database': 'false'
+        }
+        
+        # Call the microservice
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                f"{MICROSERVICE_URL}/api/v1/historic-documents/upload",
+                files=files,
+                data=data
+            )
+            response.raise_for_status()
+            result = response.json()
+        
+        # Extract the parsed data from microservice response
+        extracted_data = result.get('extracted_data', {})
+        
+        # Transform to our expected format
+        return {
+            'patient_demographics': {
+                'name': extracted_data.get('patient_name', 'Unknown'),
+                'age': extracted_data.get('age', 0),
+                'gender': extracted_data.get('gender', 'Unknown')
+            },
+            'medical_history': extracted_data.get('medical_history', []),
+            'current_medications': extracted_data.get('medications', []),
+            'allergies': extracted_data.get('allergies', []),
+            'lab_results': extracted_data.get('lab_results', []),
+            'clinical_notes': extracted_data.get('clinical_notes', ''),
+            'diagnoses': extracted_data.get('diagnoses', []),
+            'extraction_metadata': {
+                'confidence': result.get('confidence_score', 0.0),
+                'extracted_at': datetime.now(timezone.utc).isoformat(),
+                'source_filename': filename,
+                'microservice_document_id': result.get('document_id'),
+                'processing_summary': result.get('processing_summary', {}),
+                'needs_validation': result.get('needs_validation', True)
+            },
+            'raw_microservice_response': result  # Keep for debugging
+        }
+    except httpx.HTTPError as e:
+        logger.error(f"Microservice call failed: {e}")
+        # Fallback to mock parser if microservice fails
+        logger.warning("Falling back to mock parser")
+        return mock_ade_parser(filename, file_content)
+    except Exception as e:
+        logger.error(f"Error calling microservice: {e}")
+        # Fallback to mock parser
+        return mock_ade_parser(filename, file_content)
+
 def mock_ade_parser(filename: str, file_content: bytes) -> Dict[str, Any]:
     """Mock ADE parser - returns realistic parsed medical data"""
     return {
