@@ -119,14 +119,14 @@ const Analytics = () => {
     }]
   };
 
-  const encountersByTypeChart = {
+  const payerTypeChart = {
     title: {
-      text: 'Encounters by Type',
+      text: 'Revenue by Payer Type',
       textStyle: { fontSize: 16, fontWeight: 'bold', color: '#1e293b' }
     },
     tooltip: {
       trigger: 'item',
-      formatter: '{b}: {c} ({d}%)'
+      formatter: 'R{c} ({d}%)'
     },
     legend: {
       orient: 'vertical',
@@ -153,11 +153,11 @@ const Analytics = () => {
           fontWeight: 'bold'
         }
       },
-      data: encountersByTypeData.map((item, idx) => ({
+      data: payerTypeData.map((item, idx) => ({
         value: item.value,
         name: item.type,
         itemStyle: {
-          color: ['#0891b2', '#14b8a6', '#06b6d4', '#22d3ee', '#67e8f9'][idx]
+          color: ['#0891b2', '#14b8a6', '#06b6d4'][idx]
         }
       }))
     }]
