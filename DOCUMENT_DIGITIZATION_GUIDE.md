@@ -671,19 +671,19 @@ CREATE TABLE document_refs (
 
 ```bash
 # Upload a document
-curl -X POST https://surgiscan-health.preview.emergentagent.com/api/documents/upload-standalone \
+curl -X POST https://clinicflow-63.preview.emergentagent.com/api/documents/upload-standalone \
   -F "file=@medical_record.pdf" \
   -F "document_type=historical"
 
 # Response includes parsed_doc_id: "abc-123"
 
 # Match patient
-curl -X POST https://surgiscan-health.preview.emergentagent.com/api/documents/match-patient \
+curl -X POST https://clinicflow-63.preview.emergentagent.com/api/documents/match-patient \
   -F "parsed_doc_id=abc-123" \
   -F "id_number=8503205555088"
 
 # Link to existing patient (if match found)
-curl -X POST https://surgiscan-health.preview.emergentagent.com/api/documents/link-to-patient \
+curl -X POST https://clinicflow-63.preview.emergentagent.com/api/documents/link-to-patient \
   -F "parsed_doc_id=abc-123" \
   -F "patient_id=xyz-789" \
   -F "create_encounter=true"
