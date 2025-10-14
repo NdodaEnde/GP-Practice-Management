@@ -173,7 +173,7 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
           
           <div className="flex-1 overflow-auto p-4 bg-gray-100">
             {pdfUrl ? (
-              <div className="flex justify-center">
+              <div className="flex justify-center relative">
                 <Document
                   file={pdfUrl}
                   onLoadSuccess={onDocumentLoadSuccess}
@@ -206,12 +206,50 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
                     </div>
                   }
                 >
-                  <Page 
-                    pageNumber={pageNumber} 
-                    scale={pdfScale}
-                    renderTextLayer={false}
-                    renderAnnotationLayer={false}
-                  />
+                  <div className="relative">
+                    <Page 
+                      pageNumber={pageNumber} 
+                      scale={pdfScale}
+                      renderTextLayer={false}
+                      renderAnnotationLayer={false}
+                    />
+                    {/* Highlight overlays for current page */}
+                    {chunks
+                      .filter(chunk => chunk.grounding && (chunk.grounding.page + 1) === pageNumber)
+                      .map((chunk, idx) => {
+                        const chunkId = `chunk_${chunks.indexOf(chunk)}`;
+                        const isSelected = selectedChunkId === chunkId;
+                        const isHovered = hoveredChunkId === chunkId;
+                        
+                        if (!isSelected && !isHovered) return null;
+                        
+                        const box = chunk.grounding.box;
+                        if (!box) return null;
+                        
+                        // Calculate position based on PDF scale and bounding box
+                        // These are relative coordinates (0-1), need to convert to pixels
+                        // Assuming standard PDF dimensions (will need adjustment)
+                        const pdfWidth = 595 * pdfScale; // A4 width in points
+                        const pdfHeight = 842 * pdfScale; // A4 height in points
+                        
+                        return (
+                          <div
+                            key={chunkId}
+                            className={`absolute pointer-events-none transition-opacity duration-200 ${
+                              isSelected ? 'bg-yellow-300 opacity-40' : 'bg-blue-300 opacity-30'
+                            }`}
+                            style={{
+                              left: `${box.left * pdfWidth}px`,
+                              top: `${box.top * pdfHeight}px`,
+                              width: `${(box.right - box.left) * pdfWidth}px`,
+                              height: `${(box.bottom - box.top) * pdfHeight}px`,
+                              border: isSelected ? '2px solid #fbbf24' : '2px solid #3b82f6',
+                            }}
+                            onClick={() => handleChunkClick(chunkId, chunk.grounding)}
+                          />
+                        );
+                      })}
+                  </div>
                 </Document>
               </div>
             ) : (
