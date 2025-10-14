@@ -99,21 +99,75 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
     cMapPacked: true,
   }), []);
 
+  // PDF load success handler
+  function onDocumentLoadSuccess({ numPages }) {
+    setNumPages(numPages);
+    setPageNumber(1);
+  }
+
+  // Page load success handler
+  const onPageLoadSuccess = (page) => {
+    setPageSize({
+      width: page.width,
+      height: page.height
+    });
+  };
+
+  // Scroll chunk into center view
+  const scrollToChunk = useCallback((chunkId) => {
+    const chunkElement = chunkRefs.current[chunkId];
+    const scrollContainer = overviewScrollRef.current;
+    
+    if (chunkElement && scrollContainer) {
+      const containerRect = scrollContainer.getBoundingClientRect();
+      const elementRect = chunkElement.getBoundingClientRect();
+      
+      const containerCenter = containerRect.height / 2;
+      const elementCenter = elementRect.height / 2;
+      const scrollTop = scrollContainer.scrollTop + (elementRect.top - containerRect.top) - containerCenter + elementCenter;
+      
+      scrollContainer.scrollTo({
+        top: scrollTop,
+        behavior: 'smooth'
+      });
+    }
+  }, []);
+
+  // Scroll PDF to center the highlighted region
+  const scrollToHighlightedRegion = useCallback((chunk) => {
+    if (!chunk.grounding || !pdfContainerRef.current || !pageRef.current) return;
+    
+    const g = chunk.grounding;
+    const containerHeight = pdfContainerRef.current.clientHeight;
+    const pageHeight = pageRef.current.clientHeight;
+    
+    const regionCenterY = (g.box.top + (g.box.bottom - g.box.top) / 2) * pageHeight;
+    const scrollTop = regionCenterY - containerHeight / 2;
+    
+    pdfContainerRef.current.scrollTo({
+      top: Math.max(0, scrollTop),
+      behavior: 'smooth'
+    });
+  }, []);
+
   // Handle chunk click - scroll to corresponding section and highlight
-  const handleChunkClick = (chunkId, grounding) => {
-    setSelectedChunkId(chunkId);
-    if (grounding && grounding.page !== undefined) {
+  const handleChunkClick = (chunkId, grounding, chunkIndex) => {
+    const wasSelected = selectedChunkId === chunkId;
+    setSelectedChunkId(wasSelected ? null : chunkId);
+    
+    if (!wasSelected && grounding && grounding.page !== undefined) {
       // Navigate to the page where this chunk is located
       setPageNumber(grounding.page + 1); // PDF pages are 1-indexed
+      
+      // Scroll to the highlighted region after a delay
+      const chunk = chunks[chunkIndex];
+      setTimeout(() => scrollToHighlightedRegion(chunk), 200);
     }
     
-    // Scroll the markdown section into view
-    setTimeout(() => {
-      const element = document.getElementById(chunkId);
-      if (element) {
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-    }, 100);
+    // Scroll markdown into view
+    if (!wasSelected && activeTab === 'overview') {
+      setTimeout(() => scrollToChunk(chunkId), 100);
+    }
   };
 
   // Handle chunk hover
