@@ -2,6 +2,10 @@ import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react'
 import { Document, Page, pdfjs } from 'react-pdf';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { MedicalDocumentRenderer } from '@/components/MarkdownRenderer';
 import {
@@ -12,10 +16,12 @@ import {
   Heart,
   Activity,
   FileCheck,
-  ChevronLeft,
-  ChevronRight,
   ZoomIn,
-  ZoomOut
+  ZoomOut,
+  Edit,
+  Save,
+  X,
+  AlertTriangle
 } from 'lucide-react';
 
 // Configure PDF.js worker - use local bundled worker (no CORS issues)
