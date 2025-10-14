@@ -218,6 +218,51 @@ const AIScribe = () => {
     }
   };
 
+  const extractClinicalActions = async () => {
+    if (!soapNotes.trim()) {
+      toast({
+        title: "Error",
+        description: "Generate SOAP notes first",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      setIsExtracting(true);
+      const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
+      
+      const patientContext = patient ? {
+        name: `${patient.first_name} ${patient.last_name}`,
+        age: calculateAge(patient.dob),
+      } : null;
+
+      const response = await axios.post(
+        `${backendUrl}/api/ai-scribe/extract-clinical-actions`,
+        {
+          soap_notes: soapNotes,
+          patient_context: patientContext
+        }
+      );
+
+      setExtractedData(response.data.extracted_data);
+      
+      toast({
+        title: "Clinical Actions Extracted",
+        description: "AI has extracted prescriptions, sick notes, and referrals from SOAP notes.",
+      });
+    } catch (error) {
+      console.error('Error extracting clinical actions:', error);
+      toast({
+        title: "Error",
+        description: error.response?.data?.detail || "Failed to extract clinical actions",
+        variant: "destructive"
+      });
+    } finally {
+      setIsExtracting(false);
+    }
+  };
+
   const saveToEncounter = async () => {
     if (!soapNotes.trim()) {
       toast({
