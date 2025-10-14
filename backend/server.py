@@ -2365,6 +2365,136 @@ async def get_queue_stats():
         logger.error(f"Error getting queue stats: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# ==================== AI Scribe Endpoints ====================
+
+@api_router.post("/ai-scribe/transcribe")
+async def transcribe_audio(file: UploadFile):
+    """Transcribe audio file using OpenAI Whisper"""
+    try:
+        import openai
+        from dotenv import load_dotenv
+        load_dotenv()
+        
+        # Get Emergent LLM key
+        api_key = os.environ.get('EMERGENT_LLM_KEY')
+        if not api_key:
+            raise HTTPException(status_code=500, detail="EMERGENT_LLM_KEY not configured")
+        
+        # Initialize OpenAI client
+        client = openai.OpenAI(
+            api_key=api_key,
+            base_url="https://api.gputopia.ai/v1"
+        )
+        
+        # Read audio file
+        audio_content = await file.read()
+        
+        # Save temporarily
+        temp_path = f"/tmp/{file.filename}"
+        with open(temp_path, "wb") as f:
+            f.write(audio_content)
+        
+        # Transcribe using Whisper
+        with open(temp_path, "rb") as audio_file:
+            transcription = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file,
+                response_format="text"
+            )
+        
+        # Clean up temp file
+        os.remove(temp_path)
+        
+        logger.info(f"Audio transcription completed: {len(transcription)} characters")
+        
+        return {
+            'status': 'success',
+            'transcription': transcription
+        }
+    except Exception as e:
+        logger.error(f"Error transcribing audio: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/ai-scribe/generate-soap")
+async def generate_soap_notes(request: SOAPNoteRequest):
+    """Generate SOAP notes from transcription using GPT-5"""
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        from dotenv import load_dotenv
+        load_dotenv()
+        
+        # Get Emergent LLM key
+        api_key = os.environ.get('EMERGENT_LLM_KEY')
+        if not api_key:
+            raise HTTPException(status_code=500, detail="EMERGENT_LLM_KEY not configured")
+        
+        # Build context if patient info provided
+        context_info = ""
+        if request.patient_context:
+            context_info = f"\n\nPatient Context:\n"
+            if request.patient_context.get('name'):
+                context_info += f"Name: {request.patient_context['name']}\n"
+            if request.patient_context.get('age'):
+                context_info += f"Age: {request.patient_context['age']}\n"
+            if request.patient_context.get('chronic_conditions'):
+                context_info += f"Known Conditions: {', '.join(request.patient_context['chronic_conditions'])}\n"
+        
+        # System message for SOAP note generation
+        system_message = """You are a medical AI assistant helping doctors create structured SOAP notes.
+
+SOAP Format:
+- S (Subjective): Patient's complaints, symptoms, history in their own words
+- O (Objective): Physical examination findings, vital signs, test results
+- A (Assessment): Doctor's diagnosis or clinical impression
+- P (Plan): Treatment plan, medications, follow-up instructions
+
+Generate clear, concise, professional SOAP notes from the consultation transcription.
+Use medical terminology appropriately. Be thorough but succinct."""
+        
+        # Initialize LLM chat
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=str(uuid.uuid4()),
+            system_message=system_message
+        ).with_model("openai", "gpt-5")
+        
+        # Create user message
+        user_message = UserMessage(
+            text=f"""Please generate a structured SOAP note from this consultation transcription:
+
+{context_info}
+
+Transcription:
+{request.transcription}
+
+Format the output as:
+
+**SUBJECTIVE:**
+[Patient's symptoms and complaints]
+
+**OBJECTIVE:**
+[Physical findings and measurements]
+
+**ASSESSMENT:**
+[Clinical diagnosis/impression]
+
+**PLAN:**
+[Treatment and follow-up]"""
+        )
+        
+        # Generate SOAP notes
+        response = await chat.send_message(user_message)
+        
+        logger.info(f"SOAP notes generated: {len(response)} characters")
+        
+        return {
+            'status': 'success',
+            'soap_notes': response
+        }
+    except Exception as e:
+        logger.error(f"Error generating SOAP notes: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ==================== Application Setup ====================
 
 # Include router
