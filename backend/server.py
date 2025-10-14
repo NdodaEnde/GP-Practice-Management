@@ -371,6 +371,25 @@ async def create_encounter_from_document(patient_id: str, parsed_data: Dict[str,
         logger.error(f"Error creating encounter from document: {e}")
         raise
 
+async def get_next_queue_number() -> int:
+    """Generate next queue number for the day"""
+    try:
+        today = datetime.now(timezone.utc).date().isoformat()
+        
+        # Get the highest queue number for today
+        result = await db.queue_entries.find_one(
+            {'date': today},
+            sort=[('queue_number', -1)]
+        )
+        
+        if result and result.get('queue_number'):
+            return result['queue_number'] + 1
+        else:
+            return 1
+    except Exception as e:
+        logger.error(f"Error getting next queue number: {e}")
+        return 1
+
 async def call_microservice_parser(filename: str, file_content: bytes) -> Dict[str, Any]:
     """Call the microservice to parse document using LandingAI"""
     try:
