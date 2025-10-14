@@ -1105,6 +1105,36 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
                 </CardContent>
               </Card>
             )}
+
+            {activeTab === 'notes' && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Clinical Notes</CardTitle>
+                  <p className="text-sm text-gray-500 mt-1">Edit clinical notes and observations</p>
+                </CardHeader>
+                <CardContent>
+                  <Textarea
+                    value={typeof editedClinicalNotes === 'string' ? editedClinicalNotes : JSON.stringify(editedClinicalNotes, null, 2)}
+                    onChange={(e) => {
+                      const originalValue = typeof clinicalNotes === 'string' ? clinicalNotes : JSON.stringify(clinicalNotes);
+                      const newValue = e.target.value;
+                      if (originalValue !== newValue) {
+                        trackModification('clinical_notes', originalValue, newValue, 'clinical_notes');
+                      }
+                      setEditedClinicalNotes(newValue);
+                    }}
+                    placeholder="Enter clinical notes and observations..."
+                    className="min-h-[400px] font-mono text-sm"
+                  />
+                  {JSON.stringify(clinicalNotes) !== JSON.stringify(editedClinicalNotes) && (
+                    <div className="mt-2 flex items-center gap-2 text-sm text-amber-600">
+                      <Edit className="w-4 h-4" />
+                      Clinical notes have been modified
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
       </div>
