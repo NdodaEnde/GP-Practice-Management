@@ -179,33 +179,76 @@ class AIScribeTester:
             self.log_test("AI Scribe Transcription API", False, f"Request failed: {str(e)}")
             return False, None
     
-    def verify_validated_document_saved(self, document_id):
-        """Verify that the validated document was saved to MongoDB"""
+    def test_ai_scribe_soap_generation_endpoint(self, transcription_text):
+        """Test the AI Scribe SOAP note generation endpoint"""
         try:
-            # Check gp_validated_documents collection
-            validated_doc = self.db.gp_validated_documents.find_one({"document_id": document_id})
+            # Prepare test data
+            test_patient_context = {
+                "name": "Sarah Johnson",
+                "age": 42,
+                "chronic_conditions": ["Hypertension", "Type 2 Diabetes"]
+            }
             
-            if validated_doc:
-                required_fields = ['document_id', 'validated_data', 'modifications', 'status', 'validated_at']
-                missing_fields = [f for f in required_fields if f not in validated_doc]
+            payload = {
+                "transcription": transcription_text,
+                "patient_context": test_patient_context
+            }
+            
+            # Make API call
+            response = requests.post(
+                f"{self.backend_url}/ai-scribe/generate-soap",
+                json=payload,
+                headers={'Content-Type': 'application/json'},
+                timeout=60  # Longer timeout for LLM generation
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                expected_fields = ['status', 'soap_notes']
                 
-                if not missing_fields:
-                    mod_count = len(validated_doc.get('modifications', []))
-                    self.log_test("Validated Document Storage", True, 
-                                f"Document saved with {mod_count} modifications")
-                    return True
+                if all(field in result for field in expected_fields):
+                    if result['status'] == 'success' and result['soap_notes']:
+                        soap_length = len(result['soap_notes'])
+                        # Check if SOAP notes contain expected sections
+                        soap_text = result['soap_notes'].upper()
+                        has_subjective = 'SUBJECTIVE' in soap_text or 'S:' in soap_text
+                        has_objective = 'OBJECTIVE' in soap_text or 'O:' in soap_text
+                        has_assessment = 'ASSESSMENT' in soap_text or 'A:' in soap_text
+                        has_plan = 'PLAN' in soap_text or 'P:' in soap_text
+                        
+                        soap_sections = sum([has_subjective, has_objective, has_assessment, has_plan])
+                        
+                        if soap_sections >= 3:  # At least 3 out of 4 SOAP sections
+                            self.log_test("AI Scribe SOAP Generation API", True, 
+                                        f"Successfully generated SOAP notes ({soap_length} characters, {soap_sections}/4 sections)")
+                            return True, result
+                        else:
+                            self.log_test("AI Scribe SOAP Generation API", False, 
+                                        f"SOAP notes missing sections (only {soap_sections}/4 found)")
+                            return False, result
+                    else:
+                        self.log_test("AI Scribe SOAP Generation API", False, 
+                                    f"Invalid response: status={result.get('status')}, soap_notes_empty={not result.get('soap_notes')}")
+                        return False, result
                 else:
-                    self.log_test("Validated Document Storage", False, 
-                                f"Missing fields in saved document: {missing_fields}")
-                    return False
+                    missing_fields = [f for f in expected_fields if f not in result]
+                    self.log_test("AI Scribe SOAP Generation API", False, 
+                                f"Missing fields in response: {missing_fields}")
+                    return False, result
             else:
-                self.log_test("Validated Document Storage", False, 
-                            "Validated document not found in gp_validated_documents collection")
-                return False
+                error_msg = f"API returned status {response.status_code}"
+                try:
+                    error_detail = response.json()
+                    error_msg += f": {error_detail}"
+                except:
+                    error_msg += f": {response.text}"
+                
+                self.log_test("AI Scribe SOAP Generation API", False, error_msg)
+                return False, None
                 
         except Exception as e:
-            self.log_test("Validated Document Storage", False, f"Error checking validated document: {str(e)}")
-            return False
+            self.log_test("AI Scribe SOAP Generation API", False, f"Request failed: {str(e)}")
+            return False, None
     
     def verify_original_document_updated(self, document_id):
         """Verify that the original document status was updated"""
