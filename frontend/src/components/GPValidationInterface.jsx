@@ -65,10 +65,12 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
   console.log('6. Chunks:', chunks.length);
   console.log('7. File path:', filePath);
   console.log('8. Document ID:', documentId);
-  console.log('9. PDF URL will be:', pdfUrl);
 
-  // For PDF viewing - we'll need to fetch the document from backend
-  const pdfUrl = filePath ? `${process.env.REACT_APP_BACKEND_URL}/api/gp/document/${documentId}/view` : null;
+  // For PDF viewing - construct URL after documentId is defined
+  const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
+  const pdfUrl = documentId ? `${backendUrl}/api/gp/document/${documentId}/view` : null;
+  
+  console.log('9. PDF URL will be:', pdfUrl);
 
   function onDocumentLoadSuccess({ numPages }) {
     setNumPages(numPages);
