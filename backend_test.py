@@ -80,59 +80,50 @@ class AIScribeTester:
             self.log_test("MongoDB Connection", False, f"MongoDB connection failed: {str(e)}")
             return False, 0
     
-    def get_test_document_id(self):
-        """Get a document ID for testing, or create a mock one if none exists"""
+    def create_test_audio_file(self):
+        """Create a test audio file for transcription testing"""
         try:
-            # Try to find an existing document
-            doc = self.db.gp_scanned_documents.find_one({})
-            if doc:
-                document_id = doc.get('document_id')
-                self.log_test("Get Test Document", True, f"Found existing document: {document_id}")
-                return document_id
-            else:
-                # Create a mock document for testing
-                document_id = str(uuid.uuid4())
-                mock_doc = {
-                    "document_id": document_id,
-                    "filename": "test_gp_record.pdf",
-                    "patient_name": "John Smith",
-                    "upload_date": datetime.now(timezone.utc).isoformat(),
-                    "status": "processed",
-                    "parsed_data": {
-                        "demographics": {
-                            "patient_name": "John Smith",
-                            "age": 45,
-                            "gender": "Male",
-                            "date_of_birth": "1979-03-15",
-                            "id_number": "7903155678901",
-                            "contact_number": "0821234567",
-                            "address": "123 Main Street, Cape Town"
-                        },
-                        "chronic_summary": {
-                            "conditions": [
-                                {"condition": "Hypertension", "diagnosed_date": "2020-01-15", "status": "Active"},
-                                {"condition": "Type 2 Diabetes", "diagnosed_date": "2019-08-22", "status": "Active"}
-                            ],
-                            "medications": [
-                                {"name": "Metformin", "dosage": "500mg", "frequency": "Twice daily", "start_date": "2019-08-22"},
-                                {"name": "Lisinopril", "dosage": "10mg", "frequency": "Once daily", "start_date": "2020-01-15"}
-                            ]
-                        },
-                        "vitals": [
-                            {"date": "2024-01-15", "blood_pressure": "135/85", "heart_rate": 78, "weight": 85.5, "height": 175},
-                            {"date": "2024-01-10", "blood_pressure": "140/90", "heart_rate": 82, "weight": 85.2, "height": 175}
-                        ],
-                        "clinical_notes": "Patient presents with well-controlled diabetes and hypertension. Continue current medication regimen. Blood pressure slightly elevated, monitor closely. Patient reports good adherence to medication. No new symptoms. Follow up in 3 months."
-                    }
-                }
+            # Create a simple WAV file with a sine wave (simulating speech)
+            sample_rate = 16000  # 16kHz sample rate
+            duration = 3  # 3 seconds
+            frequency = 440  # A4 note frequency
+            
+            # Generate sine wave data
+            samples = []
+            for i in range(int(sample_rate * duration)):
+                # Create a simple sine wave that varies in frequency (simulating speech patterns)
+                t = i / sample_rate
+                # Mix multiple frequencies to simulate speech-like audio
+                sample = (
+                    0.3 * math.sin(2 * math.pi * frequency * t) +
+                    0.2 * math.sin(2 * math.pi * (frequency * 1.5) * t) +
+                    0.1 * math.sin(2 * math.pi * (frequency * 0.7) * t)
+                )
+                # Convert to 16-bit integer
+                sample_int = int(sample * 32767)
+                samples.append(sample_int)
+            
+            # Create WAV file in memory
+            audio_buffer = io.BytesIO()
+            
+            with wave.open(audio_buffer, 'wb') as wav_file:
+                wav_file.setnchannels(1)  # Mono
+                wav_file.setsampwidth(2)  # 16-bit
+                wav_file.setframerate(sample_rate)
                 
-                self.db.gp_scanned_documents.insert_one(mock_doc)
-                self.log_test("Create Test Document", True, f"Created mock document: {document_id}")
-                return document_id
-                
+                # Write samples
+                for sample in samples:
+                    wav_file.writeframes(struct.pack('<h', sample))
+            
+            audio_buffer.seek(0)
+            audio_data = audio_buffer.getvalue()
+            
+            self.log_test("Create Test Audio", True, f"Created {len(audio_data)} byte WAV file")
+            return audio_data, "test_consultation.wav"
+            
         except Exception as e:
-            self.log_test("Get Test Document", False, f"Error getting test document: {str(e)}")
-            return None
+            self.log_test("Create Test Audio", False, f"Error creating test audio: {str(e)}")
+            return None, None
     
     def test_gp_validation_save_endpoint(self, document_id):
         """Test the GP validation save endpoint"""
