@@ -185,10 +185,6 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
                       </p>
                     </div>
                   }
-                  options={{
-                    cMapUrl: 'https://unpkg.com/pdfjs-dist@3.11.174/cmaps/',
-                    cMapPacked: true,
-                  }}
                 >
                   <Page 
                     pageNumber={pageNumber} 
