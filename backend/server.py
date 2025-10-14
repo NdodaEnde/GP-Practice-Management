@@ -2680,6 +2680,127 @@ Return structured JSON with prescriptions, sick_note, and referral sections."""
         logger.error(f"Error extracting clinical actions: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@api_router.post("/ai-scribe/save-consultation")
+async def save_consultation_to_ehr(request: dict):
+    """Save AI Scribe consultation to EHR - creates encounter, extracts diagnosis, links documents"""
+    try:
+        import openai
+        import json
+        
+        patient_id = request.get('patient_id')
+        soap_notes = request.get('soap_notes', '')
+        transcription = request.get('transcription', '')
+        doctor_name = request.get('doctor_name', 'Dr. Unknown')
+        
+        if not patient_id or not soap_notes:
+            raise HTTPException(status_code=400, detail="patient_id and soap_notes required")
+        
+        # Get OpenAI API key for diagnosis extraction
+        api_key = os.environ.get('OPENAI_API_KEY')
+        if not api_key:
+            raise HTTPException(status_code=500, detail="OPENAI_API_KEY not configured")
+        
+        client = openai.OpenAI(api_key=api_key)
+        
+        # Extract diagnosis and chief complaint from SOAP notes
+        extraction_prompt = """Extract from these SOAP notes and return as JSON:
+        {
+          "chief_complaint": "Brief main complaint from Subjective section",
+          "diagnosis": "Primary diagnosis from Assessment section",
+          "icd10_code": "Suggested ICD-10 code if you know it, otherwise empty string"
+        }"""
+        
+        diagnosis_response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": extraction_prompt},
+                {"role": "user", "content": soap_notes}
+            ],
+            temperature=0.3,
+            max_tokens=500,
+            response_format={"type": "json_object"}
+        )
+        
+        extracted_info = json.loads(diagnosis_response.choices[0].message.content)
+        
+        # Create encounter in Supabase
+        encounter_id = str(uuid.uuid4())
+        encounter_data = {
+            'id': encounter_id,
+            'patient_id': patient_id,
+            'workspace_id': DEMO_WORKSPACE_ID,
+            'encounter_date': datetime.now(timezone.utc).isoformat(),
+            'status': 'completed',
+            'chief_complaint': extracted_info.get('chief_complaint', 'Consultation'),
+            'gp_notes': soap_notes,
+            'consultation_type': 'AI Scribe Consultation',
+            'created_at': datetime.now(timezone.utc).isoformat()
+        }
+        
+        supabase.table('encounters').insert(encounter_data).execute()
+        
+        # Add diagnosis to patient's conditions (if not already present)
+        diagnosis = extracted_info.get('diagnosis', '')
+        if diagnosis:
+            # Check if condition exists
+            existing = supabase.table('patient_conditions')\
+                .select('*')\
+                .eq('patient_id', patient_id)\
+                .ilike('condition_name', f'%{diagnosis}%')\
+                .execute()
+            
+            if not existing.data:
+                # Add new condition
+                condition_data = {
+                    'id': str(uuid.uuid4()),
+                    'patient_id': patient_id,
+                    'condition_name': diagnosis,
+                    'icd10_code': extracted_info.get('icd10_code', ''),
+                    'diagnosed_date': datetime.now(timezone.utc).date().isoformat(),
+                    'status': 'active',
+                    'notes': f'Diagnosed during consultation on {datetime.now(timezone.utc).date().isoformat()}',
+                    'created_at': datetime.now(timezone.utc).isoformat()
+                }
+                supabase.table('patient_conditions').insert(condition_data).execute()
+        
+        # Store transcription in MongoDB for reference
+        await db.consultation_transcripts.insert_one({
+            'id': str(uuid.uuid4()),
+            'encounter_id': encounter_id,
+            'patient_id': patient_id,
+            'transcription': transcription,
+            'soap_notes': soap_notes,
+            'doctor_name': doctor_name,
+            'created_at': datetime.now(timezone.utc).isoformat()
+        })
+        
+        # Log audit event
+        await db.audit_events.insert_one({
+            'id': str(uuid.uuid4()),
+            'tenant_id': DEMO_TENANT_ID,
+            'workspace_id': DEMO_WORKSPACE_ID,
+            'event_type': 'ai_scribe_consultation_saved',
+            'patient_id': patient_id,
+            'encounter_id': encounter_id,
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        })
+        
+        logger.info(f"AI Scribe consultation saved to EHR: encounter_id={encounter_id}")
+        
+        return {
+            'status': 'success',
+            'encounter_id': encounter_id,
+            'diagnosis': diagnosis,
+            'chief_complaint': extracted_info.get('chief_complaint'),
+            'message': 'Consultation saved to patient EHR successfully'
+        }
+    except json.JSONDecodeError as e:
+        logger.error(f"Error parsing diagnosis extraction: {e}")
+        raise HTTPException(status_code=500, detail="Failed to parse diagnosis")
+    except Exception as e:
+        logger.error(f"Error saving consultation to EHR: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ==================== Phase 4.2: Prescription Module Endpoints ====================
 
 @api_router.post("/prescriptions")
