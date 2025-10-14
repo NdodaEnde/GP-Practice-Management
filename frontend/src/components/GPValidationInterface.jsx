@@ -97,6 +97,14 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
   console.log('7. File path:', filePath);
   console.log('8. Document ID:', documentId);
 
+  // Initialize edited data with original values
+  useEffect(() => {
+    setEditedDemographics(JSON.parse(JSON.stringify(demographics)));
+    setEditedChronicCare(JSON.parse(JSON.stringify(chronicSummary)));
+    setEditedVitals(JSON.parse(JSON.stringify(vitals)));
+    setEditedClinicalNotes(JSON.parse(JSON.stringify(clinicalNotes)));
+  }, [documentId]);
+
   // For PDF viewing - construct URL after documentId is defined
   const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
   const pdfUrl = documentId ? `${backendUrl}/api/gp/document/${documentId}/view` : null;
