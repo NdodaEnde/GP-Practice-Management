@@ -90,6 +90,24 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
     cMapPacked: true,
   }), []);
 
+  // Handle chunk click - scroll to corresponding section and highlight
+  const handleChunkClick = (chunkId, grounding) => {
+    setSelectedChunkId(chunkId);
+    if (grounding && grounding.page !== undefined) {
+      // Navigate to the page where this chunk is located
+      setPageNumber(grounding.page + 1); // PDF pages are 1-indexed
+    }
+  };
+
+  // Handle chunk hover
+  const handleChunkHover = (chunkId) => {
+    setHoveredChunkId(chunkId);
+  };
+
+  const handleChunkUnhover = () => {
+    setHoveredChunkId(null);
+  };
+
   return (
     <div className="h-screen flex flex-col bg-gray-50">
       {/* Header */}
