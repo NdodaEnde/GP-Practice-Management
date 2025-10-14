@@ -152,6 +152,10 @@ class QueueUpdate(BaseModel):
     station: Optional[str] = None  # 'reception', 'vitals', 'consultation', 'dispensary'
     notes: Optional[str] = None
 
+class SOAPNoteRequest(BaseModel):
+    transcription: str
+    patient_context: Optional[Dict[str, Any]] = None
+
 class DispenseCreate(BaseModel):
     encounter_id: str
     medication: str
