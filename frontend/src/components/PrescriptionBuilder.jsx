@@ -6,7 +6,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Plus, Trash2, Search, Save } from 'lucide-react';
-import { useToast } from './ui/use-toast';
+import { useToast } from '../hooks/use-toast';
 
 const PrescriptionBuilder = ({ patientId, encounterId, doctorName, onSave }) => {
   const { toast } = useToast();
