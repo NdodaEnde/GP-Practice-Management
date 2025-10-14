@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Backend API Testing for GP Validation Save Endpoint
-Tests the complete GP validation workflow including save functionality
+Backend API Testing for AI Scribe Endpoints
+Tests the AI Scribe audio transcription and SOAP note generation endpoints
 """
 
 import requests
@@ -11,6 +11,10 @@ from datetime import datetime, timezone
 import os
 from pymongo import MongoClient
 import sys
+import io
+import wave
+import struct
+import math
 
 # Configuration
 BACKEND_URL = "https://healthcare-ehr.preview.emergentagent.com/api"
