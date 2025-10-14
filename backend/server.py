@@ -2667,7 +2667,7 @@ Return structured JSON with prescriptions, sick_note, and referral sections."""
         import json
         parsed_data = json.loads(extracted_data)
         
-        logger.info(f"Clinical actions extracted from SOAP notes")
+        logger.info(f"Clinical actions extracted from SOAP notes: {parsed_data}")
         
         return {
             'status': 'success',
