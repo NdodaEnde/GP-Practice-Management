@@ -485,6 +485,7 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
                 { id: 'demographics', label: 'Demographics', icon: User },
                 { id: 'chronic', label: 'Chronic Care', icon: Heart },
                 { id: 'vitals', label: 'Vitals', icon: Activity },
+                { id: 'notes', label: 'Clinical Notes', icon: FileCheck },
               ].map(tab => {
                 const Icon = tab.icon;
                 return (
