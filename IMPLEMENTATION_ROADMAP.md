@@ -478,7 +478,7 @@ GET    /api/queue/display            # For LED screen
 
 ---
 
-### **PHASE 3: Vitals Station Integration** (Priority 2)
+### **PHASE 3: Vitals Station Integration** (Priority 3)
 
 **Features:**
 - Vitals recording interface
