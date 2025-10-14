@@ -549,81 +549,140 @@ const AIScribe = () => {
           </Card>
         </div>
 
-        {/* Phase 4.2: Prescription Module - Show after SOAP notes are saved */}
-        {soapNotes && (
+        {/* Phase 4.2: Smart Form Generation - Show after extraction */}
+        {extractedData && (
           <div className="mt-8 space-y-6">
             <div className="border-t pt-6">
-              <h2 className="text-2xl font-bold mb-4">Consultation Documentation</h2>
+              <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+                <Zap className="w-6 h-6 text-purple-600" />
+                Smart Clinical Documentation
+              </h2>
               <p className="text-gray-600 mb-6">
-                Generate prescriptions, sick notes, or referral letters for this consultation
+                AI-extracted forms ready for your review. Click to open, review, edit, and save.
               </p>
               
-              {/* Tabs for different document types */}
+              {/* Action Cards */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {/* Will be implemented with tab component in next iteration */}
-                <div className="text-center p-8 border-2 border-dashed border-gray-300 rounded-lg">
-                  <FileText className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                  <h3 className="font-semibold mb-2">Prescriptions</h3>
-                  <p className="text-sm text-gray-500 mb-4">
-                    Create electronic prescriptions
-                  </p>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      // TODO: Show prescription builder modal
-                      toast({
-                        title: "Coming Soon",
-                        description: "Prescription builder will open here"
-                      });
-                    }}
-                  >
-                    Create Prescription
-                  </Button>
-                </div>
+                {/* Prescription Card */}
+                {extractedData.prescriptions && extractedData.prescriptions.length > 0 && (
+                  <div className="text-center p-8 border-2 border-blue-300 bg-blue-50 rounded-lg">
+                    <Pill className="w-12 h-12 text-blue-600 mx-auto mb-3" />
+                    <h3 className="font-semibold mb-2">Prescriptions</h3>
+                    <p className="text-sm text-gray-600 mb-2">
+                      {extractedData.prescriptions.length} medication(s) extracted
+                    </p>
+                    <Badge variant="default" className="mb-4">Auto-filled</Badge>
+                    <Button
+                      onClick={() => setShowPrescriptionBuilder(true)}
+                      className="w-full bg-blue-600 hover:bg-blue-700"
+                    >
+                      Review & Create
+                    </Button>
+                  </div>
+                )}
 
-                <div className="text-center p-8 border-2 border-dashed border-gray-300 rounded-lg">
-                  <FileText className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                  <h3 className="font-semibold mb-2">Sick Note</h3>
-                  <p className="text-sm text-gray-500 mb-4">
-                    Generate medical certificate
-                  </p>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      // TODO: Show sick note builder modal
-                      toast({
-                        title: "Coming Soon",
-                        description: "Sick note builder will open here"
-                      });
-                    }}
-                  >
-                    Create Sick Note
-                  </Button>
-                </div>
+                {/* Sick Note Card */}
+                {extractedData.sick_note && extractedData.sick_note.needed && (
+                  <div className="text-center p-8 border-2 border-green-300 bg-green-50 rounded-lg">
+                    <FileText className="w-12 h-12 text-green-600 mx-auto mb-3" />
+                    <h3 className="font-semibold mb-2">Sick Note</h3>
+                    <p className="text-sm text-gray-600 mb-2">
+                      {extractedData.sick_note.days_off} days off work
+                    </p>
+                    <Badge variant="default" className="mb-4 bg-green-600">Auto-filled</Badge>
+                    <Button
+                      onClick={() => setShowSickNoteBuilder(true)}
+                      className="w-full bg-green-600 hover:bg-green-700"
+                    >
+                      Review & Create
+                    </Button>
+                  </div>
+                )}
 
-                <div className="text-center p-8 border-2 border-dashed border-gray-300 rounded-lg">
-                  <FileText className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                  <h3 className="font-semibold mb-2">Referral</h3>
-                  <p className="text-sm text-gray-500 mb-4">
-                    Refer to specialist
-                  </p>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      // TODO: Show referral builder modal
-                      toast({
-                        title: "Coming Soon",
-                        description: "Referral builder will open here"
-                      });
-                    }}
-                  >
-                    Create Referral
-                  </Button>
-                </div>
+                {/* Referral Card */}
+                {extractedData.referral && extractedData.referral.needed && (
+                  <div className="text-center p-8 border-2 border-purple-300 bg-purple-50 rounded-lg">
+                    <Send className="w-12 h-12 text-purple-600 mx-auto mb-3" />
+                    <h3 className="font-semibold mb-2">Referral</h3>
+                    <p className="text-sm text-gray-600 mb-2">
+                      To: {extractedData.referral.specialist_type}
+                    </p>
+                    <Badge variant="default" className="mb-4 bg-purple-600">Auto-filled</Badge>
+                    <Button
+                      onClick={() => setShowReferralBuilder(true)}
+                      className="w-full bg-purple-600 hover:bg-purple-700"
+                    >
+                      Review & Create
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
         )}
+
+        {/* Prescription Builder Dialog */}
+        <Dialog open={showPrescriptionBuilder} onOpenChange={setShowPrescriptionBuilder}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Review Prescription (Auto-filled from SOAP)</DialogTitle>
+            </DialogHeader>
+            <PrescriptionBuilder
+              patientId={patientId}
+              doctorName="Dr. Current User"
+              initialData={extractedData?.prescriptions || []}
+              onSave={() => {
+                setShowPrescriptionBuilder(false);
+                toast({
+                  title: "Success",
+                  description: "Prescription saved successfully"
+                });
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+
+        {/* Sick Note Builder Dialog */}
+        <Dialog open={showSickNoteBuilder} onOpenChange={setShowSickNoteBuilder}>
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Review Sick Note (Auto-filled from SOAP)</DialogTitle>
+            </DialogHeader>
+            <SickNoteBuilder
+              patientId={patientId}
+              doctorName="Dr. Current User"
+              initialData={extractedData?.sick_note || null}
+              onSave={() => {
+                setShowSickNoteBuilder(false);
+                toast({
+                  title: "Success",
+                  description: "Sick note saved successfully"
+                });
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+
+        {/* Referral Builder Dialog */}
+        <Dialog open={showReferralBuilder} onOpenChange={setShowReferralBuilder}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Review Referral (Auto-filled from SOAP)</DialogTitle>
+            </DialogHeader>
+            <ReferralBuilder
+              patientId={patientId}
+              doctorName="Dr. Current User"
+              initialData={extractedData?.referral || null}
+              onSave={() => {
+                setShowReferralBuilder(false);
+                toast({
+                  title: "Success",
+                  description: "Referral saved successfully"
+                });
+              }}
+            />
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
