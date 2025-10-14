@@ -102,6 +102,13 @@ class ValidationUpdate(BaseModel):
     status: str  # 'approved' or 'rejected'
     notes: Optional[str] = None
 
+class GPValidationSaveRequest(BaseModel):
+    document_id: str
+    parsed_data: Dict[str, Any]
+    modifications: List[Dict[str, Any]]
+    status: str
+    notes: Optional[str] = None
+
 class DispenseCreate(BaseModel):
     encounter_id: str
     medication: str
