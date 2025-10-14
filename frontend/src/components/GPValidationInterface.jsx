@@ -105,6 +105,64 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
     setEditedClinicalNotes(JSON.parse(JSON.stringify(clinicalNotes)));
   }, [documentId]);
 
+  // Track field modification
+  const trackModification = (fieldPath, originalValue, newValue, section) => {
+    const modification = {
+      field_path: `${section}.${fieldPath}`,
+      original_value: originalValue,
+      new_value: newValue,
+      timestamp: new Date().toISOString(),
+      modification_type: 'edit'
+    };
+    setModifications(prev => [...prev, modification]);
+  };
+
+  // Handle save validated data
+  const handleValidate = async () => {
+    setIsSaving(true);
+    try {
+      const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
+      
+      // Prepare validated data
+      const validatedData = {
+        document_id: documentId,
+        parsed_data: {
+          demographics: editedDemographics,
+          chronic_summary: editedChronicCare,
+          vitals: editedVitals,
+          clinical_notes: editedClinicalNotes
+        },
+        modifications: modifications,
+        status: 'approved',
+        notes: `Validated at ${new Date().toISOString()}`
+      };
+
+      // Save to backend
+      const response = await axios.post(
+        `${backendUrl}/api/gp/validation/save`,
+        validatedData
+      );
+
+      toast({
+        title: "Success",
+        description: "Patient data has been validated and saved successfully",
+      });
+
+      if (onValidationComplete) {
+        onValidationComplete(validatedData);
+      }
+    } catch (error) {
+      console.error('Error saving validated data:', error);
+      toast({
+        title: "Error",
+        description: error.response?.data?.detail || "Failed to save validated data",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   // For PDF viewing - construct URL after documentId is defined
   const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
   const pdfUrl = documentId ? `${backendUrl}/api/gp/document/${documentId}/view` : null;
