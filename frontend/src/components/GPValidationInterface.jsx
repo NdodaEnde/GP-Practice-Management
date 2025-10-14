@@ -612,19 +612,40 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
               <Card>
                 <CardHeader>
                   <CardTitle>Patient Demographics</CardTitle>
+                  <p className="text-sm text-gray-500">Edit patient information as needed</p>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {Object.keys(demographics).length > 0 ? (
-                    Object.entries(demographics).map(([key, value]) => (
-                      <div key={key} className="flex flex-col">
-                        <label className="text-sm font-medium text-gray-600 capitalize mb-1">
-                          {key.replace(/_/g, ' ')}
-                        </label>
-                        <div className="p-2 bg-gray-50 rounded border">
-                          {typeof value === 'object' ? JSON.stringify(value) : value || 'Not available'}
+                  {Object.keys(editedDemographics).length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {Object.entries(editedDemographics).map(([key, value]) => (
+                        <div key={key} className="flex flex-col">
+                          <Label htmlFor={`demo-${key}`} className="text-sm font-medium text-gray-600 capitalize mb-2">
+                            {key.replace(/_/g, ' ')}
+                          </Label>
+                          <Input
+                            id={`demo-${key}`}
+                            value={typeof value === 'object' ? JSON.stringify(value) : value || ''}
+                            onChange={(e) => {
+                              const originalValue = demographics[key];
+                              const newValue = e.target.value;
+                              if (originalValue !== newValue) {
+                                trackModification(key, originalValue, newValue, 'demographics');
+                              }
+                              setEditedDemographics(prev => ({
+                                ...prev,
+                                [key]: newValue
+                              }));
+                            }}
+                            className="border-gray-300 focus:border-teal-500"
+                          />
+                          {demographics[key] !== editedDemographics[key] && (
+                            <span className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                              <Edit className="w-3 h-3" /> Modified
+                            </span>
+                          )}
                         </div>
-                      </div>
-                    ))
+                      ))}
+                    </div>
                   ) : (
                     <p className="text-gray-500">No demographic data extracted</p>
                   )}
