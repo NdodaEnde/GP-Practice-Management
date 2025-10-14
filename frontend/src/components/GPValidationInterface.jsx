@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { MedicalDocumentRenderer } from '@/components/MarkdownRenderer';
+import PatientMatchDialog from '@/components/PatientMatchDialog';
 import axios from 'axios';
 import {
   ArrowLeft,
