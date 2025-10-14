@@ -104,8 +104,8 @@
 
 user_problem_statement: |
   AI Scribe Feature: Implement real-time audio recording, transcription using OpenAI Whisper, and 
-  AI-generated SOAP notes using GPT-5 for medical consultations. Fixed authentication issue where
-  Emergent LLM Key was incorrectly used for Whisper API (which requires separate OpenAI API key).
+  AI-generated SOAP notes using OpenAI GPT-4o for medical consultations. Both endpoints now use 
+  OpenAI API directly with OPENAI_API_KEY (no Emergent LLM Key dependency).
 
 backend:
   - task: "AI Scribe audio transcription endpoint"
