@@ -1392,6 +1392,80 @@ async def get_gp_document_view(document_id: str):
         logger.error(f"Get GP document error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@api_router.post("/gp/validation/save")
+async def save_gp_validation(validation_data: GPValidationSaveRequest):
+    """Save validated GP document data with modification tracking"""
+    try:
+        # Connect to the microservice database
+        microservice_db_name = os.environ.get('DATABASE_NAME', 'surgiscan_documents')
+        microservice_client = AsyncIOMotorClient(os.environ.get('MONGODB_URL', 'mongodb://localhost:27017'))
+        microservice_db = microservice_client[microservice_db_name]
+        
+        document_id = validation_data.document_id
+        
+        # Get the original document
+        doc = await microservice_db.gp_scanned_documents.find_one({"document_id": document_id})
+        if not doc:
+            microservice_client.close()
+            raise HTTPException(status_code=404, detail=f"Document not found: {document_id}")
+        
+        # Prepare validated data with modifications tracking
+        validated_record = {
+            "document_id": document_id,
+            "original_data": doc.get("parsed_data", {}),
+            "validated_data": validation_data.parsed_data,
+            "modifications": validation_data.modifications,
+            "modification_count": len(validation_data.modifications),
+            "status": validation_data.status,
+            "validation_notes": validation_data.notes,
+            "validated_at": datetime.now(timezone.utc).isoformat(),
+            "validated_by": "user",  # Can be enhanced with auth
+            "tenant_id": DEMO_TENANT_ID,
+            "workspace_id": DEMO_WORKSPACE_ID
+        }
+        
+        # Save to validated_documents collection
+        await microservice_db.gp_validated_documents.insert_one(validated_record)
+        
+        # Update the original document status
+        await microservice_db.gp_scanned_documents.update_one(
+            {"document_id": document_id},
+            {
+                "$set": {
+                    "status": "validated",
+                    "validated_at": datetime.now(timezone.utc).isoformat(),
+                    "validated_data": validation_data.parsed_data
+                }
+            }
+        )
+        
+        # Log audit event
+        await db.audit_events.insert_one({
+            'id': str(uuid.uuid4()),
+            'tenant_id': DEMO_TENANT_ID,
+            'workspace_id': DEMO_WORKSPACE_ID,
+            'event_type': 'gp_document_validated',
+            'document_id': document_id,
+            'modifications_count': len(validation_data.modifications),
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        })
+        
+        microservice_client.close()
+        
+        logger.info(f"GP document {document_id} validated with {len(validation_data.modifications)} modifications")
+        
+        return {
+            'status': 'success',
+            'message': 'Validation saved successfully',
+            'document_id': document_id,
+            'modifications_count': len(validation_data.modifications)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error saving GP validation: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ==================== Application Setup ====================
 
 # Include router
