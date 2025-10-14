@@ -61,4 +61,4 @@ pytest-asyncio
 pytest-cov
 black
 isort
-flake8
+flake8emergentintegrations
