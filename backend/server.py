@@ -2422,16 +2422,17 @@ async def transcribe_audio(file: UploadFile):
 
 @api_router.post("/ai-scribe/generate-soap")
 async def generate_soap_notes(request: SOAPNoteRequest):
-    """Generate SOAP notes from transcription using GPT-5"""
+    """Generate SOAP notes from transcription using OpenAI GPT-4o"""
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-        from dotenv import load_dotenv
-        load_dotenv()
+        import openai
         
-        # Get Emergent LLM key
-        api_key = os.environ.get('EMERGENT_LLM_KEY')
+        # Get OpenAI API key
+        api_key = os.environ.get('OPENAI_API_KEY')
         if not api_key:
-            raise HTTPException(status_code=500, detail="EMERGENT_LLM_KEY not configured")
+            raise HTTPException(status_code=500, detail="OPENAI_API_KEY not configured")
+        
+        # Initialize OpenAI client
+        client = openai.OpenAI(api_key=api_key)
         
         # Build context if patient info provided
         context_info = ""
@@ -2456,16 +2457,8 @@ SOAP Format:
 Generate clear, concise, professional SOAP notes from the consultation transcription.
 Use medical terminology appropriately. Be thorough but succinct."""
         
-        # Initialize LLM chat
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=str(uuid.uuid4()),
-            system_message=system_message
-        ).with_model("openai", "gpt-5")
-        
         # Create user message
-        user_message = UserMessage(
-            text=f"""Please generate a structured SOAP note from this consultation transcription:
+        user_prompt = f"""Please generate a structured SOAP note from this consultation transcription:
 
 {context_info}
 
@@ -2485,16 +2478,25 @@ Format the output as:
 
 **PLAN:**
 [Treatment and follow-up]"""
+        
+        # Generate SOAP notes using OpenAI
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.7,
+            max_tokens=2000
         )
         
-        # Generate SOAP notes
-        response = await chat.send_message(user_message)
+        soap_notes = response.choices[0].message.content
         
-        logger.info(f"SOAP notes generated: {len(response)} characters")
+        logger.info(f"SOAP notes generated: {len(soap_notes)} characters")
         
         return {
             'status': 'success',
-            'soap_notes': response
+            'soap_notes': soap_notes
         }
     except Exception as e:
         logger.error(f"Error generating SOAP notes: {e}")
