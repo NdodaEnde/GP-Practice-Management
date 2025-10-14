@@ -11,6 +11,7 @@ import DocumentArchive from './pages/DocumentArchive';
 import ReceptionCheckIn from './pages/ReceptionCheckIn';
 import QueueDisplay from './pages/QueueDisplay';
 import WorkstationDashboard from './pages/WorkstationDashboard';
+import VitalsStation from './pages/VitalsStation';
 import Billing from './pages/Billing';
 import Analytics from './pages/Analytics';
 import Layout from './components/Layout';
@@ -32,6 +33,7 @@ function App() {
             <Route path="encounters/new/:patientId" element={<NewEncounter />} />
             <Route path="validation/:encounterId" element={<ValidationInterface />} />
             <Route path="reception" element={<ReceptionCheckIn />} />
+            <Route path="vitals" element={<VitalsStation />} />
             <Route path="queue/display" element={<QueueDisplay />} />
             <Route path="queue/workstation" element={<WorkstationDashboard />} />
             <Route path="billing" element={<Billing />} />
