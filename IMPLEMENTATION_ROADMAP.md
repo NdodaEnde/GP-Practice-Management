@@ -492,7 +492,7 @@ GET    /api/queue/display            # For LED screen
 
 ---
 
-### **PHASE 4: AI Scribe for Consultation** (Priority 1 - High Value!)
+### **PHASE 4: AI Scribe for Consultation** (Priority 4 - High Value!)
 
 #### 4.1 AI Scribe Integration
 **Technology Options:**
