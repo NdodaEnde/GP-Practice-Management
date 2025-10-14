@@ -168,7 +168,7 @@ const ReceptionCheckIn = () => {
                       placeholder="Search by name, ID number, or phone..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && searchPatients()}
+                      onKeyDown={(e) => e.key === 'Enter' && searchPatients()}
                       className="pl-10"
                     />
                   </div>
