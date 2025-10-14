@@ -142,6 +142,16 @@ class DocumentAccessLog(BaseModel):
     user_id: Optional[str] = 'system'
     ip_address: Optional[str] = None
 
+class QueueCheckIn(BaseModel):
+    patient_id: str
+    reason_for_visit: str
+    priority: Optional[str] = 'normal'  # 'normal', 'urgent', 'emergency'
+
+class QueueUpdate(BaseModel):
+    status: str  # 'waiting', 'in_vitals', 'in_consultation', 'completed', 'cancelled'
+    station: Optional[str] = None  # 'reception', 'vitals', 'consultation', 'dispensary'
+    notes: Optional[str] = None
+
 class DispenseCreate(BaseModel):
     encounter_id: str
     medication: str
