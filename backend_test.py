@@ -21,7 +21,7 @@ BACKEND_URL = "https://healthcare-ehr.preview.emergentagent.com/api"
 MONGO_URL = "mongodb://localhost:27017"
 DATABASE_NAME = "surgiscan_documents"
 
-class GPValidationTester:
+class AIScribeTester:
     def __init__(self):
         self.backend_url = BACKEND_URL
         self.mongo_client = MongoClient(MONGO_URL)
