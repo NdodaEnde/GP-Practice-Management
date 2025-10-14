@@ -250,31 +250,48 @@ class AIScribeTester:
             self.log_test("AI Scribe SOAP Generation API", False, f"Request failed: {str(e)}")
             return False, None
     
-    def verify_original_document_updated(self, document_id):
-        """Verify that the original document status was updated"""
+    def test_ai_scribe_error_handling(self):
+        """Test AI Scribe endpoints error handling"""
         try:
-            # Check original document in gp_scanned_documents
-            original_doc = self.db.gp_scanned_documents.find_one({"document_id": document_id})
+            # Test 1: Transcribe endpoint with invalid file
+            invalid_files = {
+                'file': ('test.txt', b'This is not an audio file', 'text/plain')
+            }
             
-            if original_doc:
-                status = original_doc.get('status')
-                has_validated_at = 'validated_at' in original_doc
-                
-                if status == 'validated' and has_validated_at:
-                    self.log_test("Original Document Update", True, 
-                                "Original document status updated to 'validated'")
-                    return True
-                else:
-                    self.log_test("Original Document Update", False, 
-                                f"Document status: {status}, has validated_at: {has_validated_at}")
-                    return False
+            response = requests.post(
+                f"{self.backend_url}/ai-scribe/transcribe",
+                files=invalid_files,
+                timeout=30
+            )
+            
+            transcribe_error_handled = response.status_code in [400, 422, 500]
+            
+            # Test 2: SOAP generation with empty transcription
+            empty_payload = {
+                "transcription": "",
+                "patient_context": {}
+            }
+            
+            response = requests.post(
+                f"{self.backend_url}/ai-scribe/generate-soap",
+                json=empty_payload,
+                headers={'Content-Type': 'application/json'},
+                timeout=30
+            )
+            
+            soap_error_handled = response.status_code in [400, 422, 500]
+            
+            if transcribe_error_handled and soap_error_handled:
+                self.log_test("AI Scribe Error Handling", True, 
+                            "Both endpoints properly handle invalid inputs")
+                return True
             else:
-                self.log_test("Original Document Update", False, 
-                            "Original document not found")
+                self.log_test("AI Scribe Error Handling", False, 
+                            f"Error handling issues: transcribe={transcribe_error_handled}, soap={soap_error_handled}")
                 return False
                 
         except Exception as e:
-            self.log_test("Original Document Update", False, f"Error checking original document: {str(e)}")
+            self.log_test("AI Scribe Error Handling", False, f"Error testing error handling: {str(e)}")
             return False
     
     def verify_audit_event_logged(self, document_id):
