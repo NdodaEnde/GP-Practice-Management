@@ -1659,6 +1659,178 @@ async def save_gp_validation(validation_data: GPValidationSaveRequest):
         logger.error(f"Error saving GP validation: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@api_router.post("/gp/validation/match-patient")
+async def match_patient_from_document(match_request: PatientMatchRequest):
+    """Find potential patient matches from document demographics"""
+    try:
+        document_id = match_request.document_id
+        demographics = match_request.demographics
+        
+        logger.info(f"Searching for patient matches for document {document_id}")
+        
+        # Find potential matches
+        matches = await find_patient_matches(demographics)
+        
+        return {
+            'status': 'success',
+            'document_id': document_id,
+            'matches': matches,
+            'match_count': len(matches)
+        }
+    except Exception as e:
+        logger.error(f"Error matching patient: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/gp/validation/confirm-match")
+async def confirm_patient_match(confirm_request: ConfirmMatchRequest):
+    """Confirm patient match and create encounter from document"""
+    try:
+        document_id = confirm_request.document_id
+        patient_id = confirm_request.patient_id
+        parsed_data = confirm_request.parsed_data
+        modifications = confirm_request.modifications
+        
+        logger.info(f"Confirming patient match: {patient_id} for document {document_id}")
+        
+        # Create encounter from document data
+        encounter_id = await create_encounter_from_document(patient_id, parsed_data, document_id)
+        
+        # Connect to microservice database
+        microservice_db_name = os.environ.get('DATABASE_NAME', 'surgiscan_documents')
+        microservice_client = AsyncIOMotorClient(os.environ.get('MONGODB_URL', 'mongodb://localhost:27017'))
+        microservice_db = microservice_client[microservice_db_name]
+        
+        # Update document status to "linked"
+        await microservice_db.gp_scanned_documents.update_one(
+            {"document_id": document_id},
+            {
+                "$set": {
+                    "status": "linked",
+                    "patient_id": patient_id,
+                    "encounter_id": encounter_id,
+                    "linked_at": datetime.now(timezone.utc).isoformat()
+                }
+            }
+        )
+        
+        # Log patient match
+        await db.patient_match_logs.insert_one({
+            'id': str(uuid.uuid4()),
+            'document_id': document_id,
+            'matched_patient_id': patient_id,
+            'encounter_id': encounter_id,
+            'match_method': 'manual_confirmation',
+            'confirmed_by': 'user',
+            'confirmed_at': datetime.now(timezone.utc).isoformat(),
+            'tenant_id': DEMO_TENANT_ID,
+            'workspace_id': DEMO_WORKSPACE_ID
+        })
+        
+        # Log audit event
+        await db.audit_events.insert_one({
+            'id': str(uuid.uuid4()),
+            'tenant_id': DEMO_TENANT_ID,
+            'workspace_id': DEMO_WORKSPACE_ID,
+            'event_type': 'gp_patient_matched',
+            'document_id': document_id,
+            'patient_id': patient_id,
+            'encounter_id': encounter_id,
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        })
+        
+        microservice_client.close()
+        
+        logger.info(f"Successfully matched document {document_id} to patient {patient_id}, created encounter {encounter_id}")
+        
+        return {
+            'status': 'success',
+            'message': 'Patient matched and encounter created',
+            'patient_id': patient_id,
+            'encounter_id': encounter_id,
+            'document_id': document_id
+        }
+    except Exception as e:
+        logger.error(f"Error confirming patient match: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/gp/validation/create-new-patient")
+async def create_new_patient_from_document(create_request: CreateNewPatientRequest):
+    """Create new patient and encounter from document"""
+    try:
+        document_id = create_request.document_id
+        demographics = create_request.demographics
+        parsed_data = create_request.parsed_data
+        
+        logger.info(f"Creating new patient from document {document_id}")
+        
+        # Create new patient in Supabase
+        patient_id = str(uuid.uuid4())
+        
+        patient_data = {
+            'id': patient_id,
+            'tenant_id': DEMO_TENANT_ID,
+            'workspace_id': DEMO_WORKSPACE_ID,
+            'first_name': demographics.get('first_name') or demographics.get('patient_name', 'Unknown').split()[0],
+            'last_name': demographics.get('last_name') or ' '.join(demographics.get('patient_name', 'Unknown').split()[1:]) or 'Unknown',
+            'dob': demographics.get('dob') or demographics.get('date_of_birth') or '1900-01-01',
+            'id_number': demographics.get('id_number') or demographics.get('patient_id') or demographics.get('sa_id_number') or 'Unknown',
+            'contact_number': demographics.get('contact_number') or demographics.get('phone'),
+            'email': demographics.get('email'),
+            'address': demographics.get('address'),
+            'medical_aid': demographics.get('medical_aid'),
+            'created_at': datetime.now(timezone.utc).isoformat()
+        }
+        
+        supabase.table('patients').insert(patient_data).execute()
+        
+        # Create encounter from document
+        encounter_id = await create_encounter_from_document(patient_id, parsed_data, document_id)
+        
+        # Connect to microservice database
+        microservice_db_name = os.environ.get('DATABASE_NAME', 'surgiscan_documents')
+        microservice_client = AsyncIOMotorClient(os.environ.get('MONGODB_URL', 'mongodb://localhost:27017'))
+        microservice_db = microservice_client[microservice_db_name]
+        
+        # Update document status
+        await microservice_db.gp_scanned_documents.update_one(
+            {"document_id": document_id},
+            {
+                "$set": {
+                    "status": "linked",
+                    "patient_id": patient_id,
+                    "encounter_id": encounter_id,
+                    "linked_at": datetime.now(timezone.utc).isoformat()
+                }
+            }
+        )
+        
+        # Log audit event
+        await db.audit_events.insert_one({
+            'id': str(uuid.uuid4()),
+            'tenant_id': DEMO_TENANT_ID,
+            'workspace_id': DEMO_WORKSPACE_ID,
+            'event_type': 'gp_new_patient_created',
+            'document_id': document_id,
+            'patient_id': patient_id,
+            'encounter_id': encounter_id,
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        })
+        
+        microservice_client.close()
+        
+        logger.info(f"Created new patient {patient_id} and encounter {encounter_id} from document {document_id}")
+        
+        return {
+            'status': 'success',
+            'message': 'New patient created and encounter added',
+            'patient_id': patient_id,
+            'encounter_id': encounter_id,
+            'document_id': document_id
+        }
+    except Exception as e:
+        logger.error(f"Error creating new patient: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ==================== Application Setup ====================
 
 # Include router
