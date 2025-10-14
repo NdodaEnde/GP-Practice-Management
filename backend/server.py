@@ -2380,10 +2380,11 @@ async def transcribe_audio(file: UploadFile):
         if not api_key:
             raise HTTPException(status_code=500, detail="EMERGENT_LLM_KEY not configured")
         
-        # Initialize OpenAI client
+        # Initialize OpenAI client with standard OpenAI base URL for Whisper
+        # Note: Whisper API uses the standard OpenAI endpoint, not gputopia
         client = openai.OpenAI(
             api_key=api_key,
-            base_url="https://api.gputopia.ai/v1"
+            base_url="https://api.openai.com/v1"
         )
         
         # Read audio file
