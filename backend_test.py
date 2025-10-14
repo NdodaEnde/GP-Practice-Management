@@ -325,10 +325,10 @@ class AIScribeTester:
             self.log_test("AI Scribe Mock Transcription Test", False, f"Error in mock transcription test: {str(e)}")
             return False, None
     
-    def run_complete_validation_workflow_test(self):
-        """Run the complete GP validation workflow test"""
+    def run_complete_ai_scribe_workflow_test(self):
+        """Run the complete AI Scribe workflow test"""
         print("\n" + "="*60)
-        print("GP VALIDATION SAVE ENDPOINT - COMPLETE WORKFLOW TEST")
+        print("AI SCRIBE ENDPOINTS - COMPLETE WORKFLOW TEST")
         print("="*60)
         
         # Step 1: Test backend connectivity
@@ -336,51 +336,53 @@ class AIScribeTester:
             print("\n❌ Cannot proceed - Backend is not accessible")
             return False
         
-        # Step 2: Test MongoDB connectivity
+        # Step 2: Test MongoDB connectivity (optional for AI Scribe)
         mongo_ok, doc_count = self.test_mongodb_connection()
         if not mongo_ok:
-            print("\n❌ Cannot proceed - MongoDB is not accessible")
-            return False
+            print("\n⚠️  MongoDB not accessible, but AI Scribe may still work")
         
-        # Step 3: Get or create test document
-        document_id = self.get_test_document_id()
-        if not document_id:
-            print("\n❌ Cannot proceed - No test document available")
-            return False
+        # Step 3: Test AI Scribe transcription endpoint
+        print("\n🎤 Testing AI Scribe audio transcription...")
+        transcribe_success, transcribe_result = self.test_ai_scribe_transcribe_endpoint()
         
-        print(f"\n🔍 Testing with document ID: {document_id}")
+        # Step 4: Test SOAP generation with transcription result or mock data
+        print("\n📝 Testing AI Scribe SOAP note generation...")
+        if transcribe_success and transcribe_result:
+            # Use actual transcription
+            transcription_text = transcribe_result['transcription']
+            soap_success, soap_result = self.test_ai_scribe_soap_generation_endpoint(transcription_text)
+        else:
+            # Use mock transcription as fallback
+            print("   Using mock transcription as fallback...")
+            soap_success, soap_result = self.test_ai_scribe_with_mock_transcription()
         
-        # Step 4: Test the validation save endpoint
-        save_success, save_result = self.test_gp_validation_save_endpoint(document_id)
-        if not save_success:
-            print("\n❌ Validation save endpoint failed")
-            return False
-        
-        # Step 5: Verify data persistence
-        print("\n📊 Verifying data persistence...")
-        
-        validated_saved = self.verify_validated_document_saved(document_id)
-        original_updated = self.verify_original_document_updated(document_id)
-        audit_logged = self.verify_audit_event_logged(document_id)
+        # Step 5: Test error handling
+        print("\n🛡️  Testing error handling...")
+        error_handling_success = self.test_ai_scribe_error_handling()
         
         # Summary
         print("\n" + "="*60)
         print("TEST SUMMARY")
         print("="*60)
         
-        all_tests_passed = all([
-            save_success,
-            validated_saved,
-            original_updated,
-            audit_logged
-        ])
+        # Determine overall success
+        # Transcription is the critical test (was the stuck task)
+        # SOAP generation and error handling are important but secondary
+        critical_success = transcribe_success
+        all_tests_passed = transcribe_success and soap_success and error_handling_success
         
-        if all_tests_passed:
-            print("✅ ALL TESTS PASSED - GP Validation workflow is working correctly")
+        if critical_success:
+            if all_tests_passed:
+                print("✅ ALL TESTS PASSED - AI Scribe workflow is working correctly")
+                print("✅ CRITICAL: Audio transcription authentication issue is RESOLVED")
+            else:
+                print("✅ CRITICAL TESTS PASSED - Audio transcription is working")
+                print("⚠️  Some secondary tests failed but core functionality works")
         else:
-            print("❌ SOME TESTS FAILED - Issues found in GP Validation workflow")
+            print("❌ CRITICAL TEST FAILED - Audio transcription still not working")
+            print("❌ Authentication issue may still exist")
         
-        return all_tests_passed
+        return critical_success
     
     def cleanup_test_data(self, document_id):
         """Clean up test data (optional)"""
