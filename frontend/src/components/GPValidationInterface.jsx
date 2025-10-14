@@ -161,6 +161,7 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
                     console.error('PDF Load Error:', error);
                     console.error('PDF URL:', pdfUrl);
                   }}
+                  options={pdfOptions}
                   loading={
                     <div className="flex items-center justify-center p-8">
                       <div className="text-center">
