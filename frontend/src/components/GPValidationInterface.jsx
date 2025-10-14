@@ -31,7 +31,15 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
   const [pdfScale, setPdfScale] = useState(1.0);
   const [selectedChunkId, setSelectedChunkId] = useState(null);
   const [hoveredChunkId, setHoveredChunkId] = useState(null);
+  const [pageSize, setPageSize] = useState({ width: 0, height: 0 });
+  
   const { toast } = useToast();
+  
+  // Refs
+  const pageRef = useRef(null);
+  const pdfContainerRef = useRef(null);
+  const overviewScrollRef = useRef(null);
+  const chunkRefs = useRef({});
 
   const handleValidate = () => {
     toast({
