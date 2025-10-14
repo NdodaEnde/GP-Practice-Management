@@ -108,7 +108,22 @@ user_problem_statement: |
   Emergent LLM Key was incorrectly used for Whisper API (which requires separate OpenAI API key).
 
 backend:
-  - task: "GP validation save endpoint"
+  - task: "AI Scribe audio transcription endpoint"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/server.py"
+    stuck_count: 1
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: false
+        agent: "user"
+        comment: "User reported 401 authentication error when trying to transcribe audio. Error: Incorrect API key provided."
+      - working: "NA"
+        agent: "main"
+        comment: "Root cause identified: Was using EMERGENT_LLM_KEY for Whisper API, but Emergent key only works for text LLM models (GPT, Claude, Gemini). Whisper requires separate OPENAI_API_KEY. Fixed by: 1) Added OPENAI_API_KEY to .env file with user-provided key, 2) Updated /api/ai-scribe/transcribe endpoint to use OPENAI_API_KEY instead of EMERGENT_LLM_KEY, 3) Restarted backend. Awaiting test."
+  
+  - task: "AI Scribe SOAP note generation endpoint"
     implemented: true
     working: true
     file: "/app/backend/server.py"
@@ -118,10 +133,7 @@ backend:
     status_history:
       - working: true
         agent: "main"
-        comment: "Created /api/gp/validation/save endpoint to save validated data with modification tracking. Stores data in gp_validated_documents collection in MongoDB."
-      - working: true
-        agent: "testing"
-        comment: "COMPREHENSIVE TESTING COMPLETED: ✅ All core functionality working perfectly. Tested complete validation workflow including: 1) API endpoint accepts valid requests and returns correct response format, 2) Data persistence verified - validated documents saved to gp_validated_documents collection with all required fields, 3) Original document status correctly updated to 'validated' with timestamp, 4) Audit events properly logged in audit_events collection, 5) Edge cases tested: invalid document IDs (404 error), missing required fields (422 error), empty modifications arrays, large modification arrays (50 items), malformed JSON payloads, different status values (approved/rejected). All 13 test scenarios passed. MongoDB data integrity confirmed with 4 validated documents and 3 audit events. Backend endpoint is production-ready."
+        comment: "Created /api/ai-scribe/generate-soap endpoint using GPT-5 via emergentintegrations.llm.chat with EMERGENT_LLM_KEY. This endpoint was working correctly, only Whisper had the key issue."
 
 frontend:
   - task: "Editable Demographics tab"
