@@ -15,14 +15,27 @@ import {
 import { FileText, Save } from 'lucide-react';
 import { useToast } from '../hooks/use-toast';
 
-const SickNoteBuilder = ({ patientId, encounterId, doctorName, onSave }) => {
+const SickNoteBuilder = ({ patientId, encounterId, doctorName, initialData, onSave }) => {
   const { toast } = useToast();
   const [issueDate, setIssueDate] = useState(new Date().toISOString().split('T')[0]);
+  
+  // Calculate dates from initialData if provided
+  const calculateEndDate = (startDate, daysOff) => {
+    const start = new Date(startDate);
+    start.setDate(start.getDate() + (daysOff - 1));
+    return start.toISOString().split('T')[0];
+  };
+  
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState('');
-  const [diagnosis, setDiagnosis] = useState('');
-  const [fitnessStatus, setFitnessStatus] = useState('unfit');
-  const [restrictions, setRestrictions] = useState('');
+  const [endDate, setEndDate] = useState(() => {
+    if (initialData && initialData.days_off) {
+      return calculateEndDate(new Date().toISOString().split('T')[0], initialData.days_off);
+    }
+    return '';
+  });
+  const [diagnosis, setDiagnosis] = useState(initialData?.diagnosis || '');
+  const [fitnessStatus, setFitnessStatus] = useState(initialData?.fitness_status || 'unfit');
+  const [restrictions, setRestrictions] = useState(initialData?.restrictions || '');
   const [additionalNotes, setAdditionalNotes] = useState('');
   const [saving, setSaving] = useState(false);
 
