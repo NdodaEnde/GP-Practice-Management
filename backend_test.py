@@ -401,11 +401,11 @@ class AIScribeTester:
 
 def main():
     """Main test execution"""
-    tester = GPValidationTester()
+    tester = AIScribeTester()
     
     try:
         # Run the complete workflow test
-        success = tester.run_complete_validation_workflow_test()
+        success = tester.run_complete_ai_scribe_workflow_test()
         
         # Print detailed results
         print("\n" + "="*60)
@@ -415,6 +415,9 @@ def main():
         for result in tester.test_results:
             status = "✅" if result['success'] else "❌"
             print(f"{status} {result['test']}: {result['message']}")
+        
+        # Cleanup
+        tester.cleanup_test_data()
         
         return 0 if success else 1
         
