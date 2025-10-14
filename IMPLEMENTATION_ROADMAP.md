@@ -158,7 +158,243 @@ Transform SurgiScan into a complete GP practice management system with queue man
 
 ## Implementation Phases
 
-### **PHASE 2: Reception & Queue Management** (Priority 1)
+### **PHASE 1.6: Document-to-EHR Integration** ⭐ (Priority 1 - CURRENT)
+
+**Goal:** Complete the digitization loop by automatically populating EHR with validated document data and providing compliance-ready document archive.
+
+#### 1.6.1 Smart Patient Matching
+**Approach:** Semi-automatic with human confirmation
+
+**Features:**
+- Automatic patient search by SA ID number (primary)
+- Fallback search by Name + DOB
+- Fuzzy matching for name variations
+- Confidence scoring (High/Medium/Low)
+- User confirmation interface with side-by-side comparison
+- "Create New Patient" option for no matches
+- Duplicate prevention logic
+
+**Matching Algorithm:**
+```python
+def match_patient(extracted_data):
+    # Step 1: Search by ID number (95% reliable)
+    if id_number_match:
+        return HighConfidenceMatch(patient)
+    
+    # Step 2: Fuzzy name + DOB match
+    if similar_name and dob_match:
+        return MediumConfidenceMatch(patient)
+    
+    # Step 3: No clear match
+    return SuggestNewPatient()
+```
+
+**UI Flow:**
+- Show match results with confidence indicator
+- Display extracted data vs existing patient data side-by-side
+- One-click confirm or create new
+- Handles edge cases (multiple matches, no match)
+
+**Database Changes:**
+```sql
+-- Track patient matching decisions
+CREATE TABLE patient_match_logs (
+    id TEXT PRIMARY KEY,
+    document_id TEXT,
+    matched_patient_id TEXT,
+    confidence_score FLOAT,
+    match_method TEXT, -- 'id_number', 'name_dob', 'manual'
+    confirmed_by TEXT,
+    created_at TIMESTAMP
+);
+```
+
+**Estimated Time:** 1 day
+
+---
+
+#### 1.6.2 Automatic EHR Population
+
+**Features:**
+- Create new patient record if no match
+- Create new encounter from validated data
+- Populate encounter with:
+  - Vitals from scanned document
+  - Chronic conditions
+  - Medications
+  - Clinical notes
+  - Document date as encounter date
+- Smart merging of chronic conditions (avoid duplicates)
+- Medication reconciliation
+- Update patient demographics if changed
+
+**Workflow After "Confirm Match":**
+```
+1. Create/Update Patient
+   ↓
+2. Create New Encounter
+   - encounter_date = document_date
+   - vitals = validated_vitals
+   - status = 'completed' (historical record)
+   ↓
+3. Merge Medical History
+   - Add new chronic conditions (check for duplicates)
+   - Add medications to patient's medication list
+   - Append clinical notes to history
+   ↓
+4. Link Document to Encounter
+   - Store document_id in encounter
+   - Update document status to 'linked'
+   ↓
+5. Audit Log
+   - Record EHR population event
+   - Track data transformations
+```
+
+**API Endpoints:**
+```
+POST   /api/gp/validation/match-patient     # Search for patient matches
+POST   /api/gp/validation/confirm-match     # Confirm match and populate EHR
+POST   /api/gp/validation/create-new-patient # Create new patient from document
+```
+
+**Estimated Time:** 1.5 days
+
+---
+
+#### 1.6.3 Document Archive Viewer (Compliance)
+
+**Critical for Legal Cases - 40 Year Retention (South Africa)**
+
+**Features:**
+
+**A. Patient Document History Page:**
+- Timeline view of all scanned documents for a patient
+- Filter by:
+  - Date range
+  - Document type (consultation, lab, prescription, discharge summary)
+  - Status (validated, pending, linked)
+- Search across document content
+- Quick preview thumbnails
+- Bulk operations (export, print)
+
+**B. Document Viewer Interface:**
+- View original PDF (immutable, as scanned)
+- View extracted/validated data side-by-side
+- Show validation audit trail:
+  - Who validated
+  - When validated
+  - What was modified
+  - Original vs edited values
+- Access control (logged in user only)
+- Print/download for legal purposes
+- Watermark with access timestamp
+
+**C. Archive Management:**
+- Document metadata:
+  - Upload date
+  - Document type
+  - Patient link
+  - Encounter link (if created)
+  - File size
+  - Pages count
+- Document lifecycle tracking
+- Retention policy enforcement (40 years)
+- Secure deletion after retention period
+
+**D. Legal Export Feature:**
+- Package document + audit trail for court
+- Generate PDF report with:
+  - Original scanned document
+  - Validation history
+  - Access logs
+  - Cryptographic hash (proof of integrity)
+  - Chain of custody
+
+**UI Pages:**
+```
+1. Patient Record → "Documents" Tab
+   - List all scanned documents
+   - Timeline view
+   
+2. Document Viewer (Modal or Full Page)
+   - Left: Original PDF
+   - Right: Extracted/Validated Data
+   - Bottom: Audit Trail
+   
+3. Archive Search (Admin)
+   - Search across all documents
+   - Advanced filters
+```
+
+**Database Schema:**
+```sql
+-- Document access audit
+CREATE TABLE document_access_logs (
+    id TEXT PRIMARY KEY,
+    document_id TEXT,
+    user_id TEXT,
+    access_type TEXT, -- 'view', 'download', 'print', 'export'
+    ip_address TEXT,
+    user_agent TEXT,
+    accessed_at TIMESTAMP
+);
+
+-- Document retention tracking
+CREATE TABLE document_retention (
+    id TEXT PRIMARY KEY,
+    document_id TEXT,
+    uploaded_at TIMESTAMP,
+    retention_until TIMESTAMP, -- 40 years from upload
+    status TEXT, -- 'active', 'archived', 'scheduled_deletion'
+);
+```
+
+**API Endpoints:**
+```
+GET    /api/documents/patient/{patient_id}        # Get all documents for patient
+GET    /api/documents/{document_id}/view          # View document (already exists)
+GET    /api/documents/{document_id}/audit-trail   # Get validation & access history
+POST   /api/documents/{document_id}/access-log    # Log document access
+GET    /api/documents/{document_id}/legal-export  # Export for legal case
+GET    /api/documents/search                      # Search across all documents
+```
+
+**Estimated Time:** 2 days
+
+---
+
+#### 1.6.4 Access Audit Trail
+
+**Features:**
+- Log every document access (view, download, print)
+- Track user, timestamp, IP address
+- Searchable audit logs
+- Export audit trail for compliance
+- Alert on suspicious access patterns
+- Integration with document viewer
+
+**Compliance Requirements (South Africa Medical):**
+- Track who accessed what and when
+- Immutable audit logs
+- Export for HPCSA audits
+- POPIA (Protection of Personal Information Act) compliance
+
+**Estimated Time:** 0.5 days
+
+---
+
+**Total Estimated Time for Phase 1.6:** 5 days
+
+**Priority Order:**
+1. Smart Patient Matching (1 day)
+2. EHR Population (1.5 days)
+3. Document Archive Viewer (2 days)
+4. Access Audit Trail (0.5 days)
+
+---
+
+### **PHASE 2: Reception & Queue Management** (Priority 2 - AFTER Phase 1.6)
 
 #### 2.1 Patient Check-in Interface
 **New Components:**
