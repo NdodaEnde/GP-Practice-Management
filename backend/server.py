@@ -1366,13 +1366,17 @@ async def get_gp_document_view(document_id: str):
         if not doc:
             raise HTTPException(status_code=404, detail=f"Document not found: {document_id}")
         
-        # Return the file data
+        # Return the file data with CORS headers
         from fastapi.responses import Response
         return Response(
             content=doc["file_data"],
             media_type="application/pdf",
             headers={
-                "Content-Disposition": f'inline; filename="{doc["filename"]}"'
+                "Content-Disposition": f'inline; filename="{doc["filename"]}"',
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, OPTIONS",
+                "Access-Control-Allow-Headers": "*",
+                "Cache-Control": "public, max-age=3600"
             }
         )
     except HTTPException:
