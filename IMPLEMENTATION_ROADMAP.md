@@ -739,25 +739,27 @@ Response:
 4. **Prepare for LandingAI Integration** (when will microservice be ready?)
 
 **Recommended Implementation Order:**
-1. **Phase 2.1:** Reception check-in + Queue management (Foundation)
-2. **Phase 4.1:** AI Scribe (High value, immediate doctor productivity boost!)
-3. **Phase 3:** Vitals station integration
-4. **Phase 6:** LandingAI real integration
+1. **Phase 1.6:** Document-to-EHR Integration (Complete digitization loop - CURRENT)
+2. **Phase 2:** Reception check-in + Queue management (Foundation for workflow)
+3. **Phase 4:** AI Scribe (High value, immediate doctor productivity boost!)
+4. **Phase 3:** Vitals station integration
 5. **Phase 4.2:** Enhanced prescription module
 6. **Phase 5:** Dispensary workflow (if applicable to many GPs)
 7. **Phase 7:** Analytics fine-tuning
-8. **Phase 2.2:** Self-service kiosks (enhancement)
+8. **Phase 8:** Intelligent Document Search with Visual Grounding
+9. **Phase 2.2:** Self-service kiosks (enhancement)
 
 ---
 
 ## Estimated Complexity
 
+**Phase 1.6 (Document-to-EHR):** Medium - 5 days ⭐ CURRENT
 **Phase 2 (Queue Management):** Medium - 2-3 days
 **Phase 3 (Vitals):** Low - 1 day
 **Phase 4.1 (AI Scribe):** High - 3-4 days (core feature!)
 **Phase 4.2 (Prescriptions):** Medium - 2 days
 **Phase 5 (Dispensary):** Medium - 2 days
-**Phase 6 (LandingAI):** Low - 1 day (just integration)
+**Phase 6 (LandingAI):** Complete - Integration done (pending API balance)
 **Phase 7 (Analytics):** Medium - 2 days
 **Phase 8 (Intelligent Search):** Medium-High - 1-2 weeks
   - Phase 8.1 (Basic Search): 1-2 days
@@ -765,7 +767,7 @@ Response:
   - Phase 8.3 (Advanced Features): 3-4 days
   - Phase 8.4 (Case Analytics): 3-4 days
 
-**Total (All Phases):** ~3-4 weeks for complete system
+**Total (All Phases):** ~4-5 weeks for complete system
 
 ---
 
