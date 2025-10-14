@@ -61,8 +61,7 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
   const chunkRefs = useRef({});
   const containerRef = useRef(null);
 
-  // Track field modification
-  const trackModification = (fieldPath, originalValue, newValue, section) => {
+  console.log('=== GPValidationInterface Debug ===');
   console.log('1. patientData:', patientData);
   console.log('2. patientData.data:', patientData?.data);
   console.log('3. patientData.data.data:', patientData?.data?.data);
