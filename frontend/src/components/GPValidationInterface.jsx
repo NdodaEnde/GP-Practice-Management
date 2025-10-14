@@ -182,6 +182,42 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
     setHoveredChunkId(null);
   };
 
+  // Mouse handling for resizable divider
+  const handleMouseDown = (e) => {
+    setIsDragging(true);
+    e.preventDefault();
+  };
+
+  const handleMouseMove = useCallback((e) => {
+    if (!isDragging || !containerRef.current) return;
+    
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const container = containerRef.current;
+    const containerRect = container.getBoundingClientRect();
+    const newLeftWidth = ((e.clientX - containerRect.left) / containerRect.width) * 100;
+    
+    const clampedWidth = Math.max(30, Math.min(70, newLeftWidth));
+    setLeftWidth(clampedWidth);
+  }, [isDragging]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  useEffect(() => {
+    if (isDragging) {
+      const doc = window.document;
+      doc.addEventListener('mousemove', handleMouseMove);
+      doc.addEventListener('mouseup', handleMouseUp);
+      return () => {
+        doc.removeEventListener('mousemove', handleMouseMove);
+        doc.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [isDragging, handleMouseMove, handleMouseUp]);
+
   return (
     <div className="h-screen flex flex-col bg-gray-50">
       {/* Header */}
