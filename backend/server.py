@@ -109,6 +109,33 @@ class GPValidationSaveRequest(BaseModel):
     status: str
     notes: Optional[str] = None
 
+class PatientMatchRequest(BaseModel):
+    document_id: str
+    demographics: Dict[str, Any]
+
+class PatientMatchResult(BaseModel):
+    patient_id: str
+    first_name: str
+    last_name: str
+    dob: str
+    id_number: str
+    contact_number: Optional[str] = None
+    last_visit: Optional[str] = None
+    confidence_score: float
+    match_method: str  # 'id_number', 'name_dob', 'fuzzy'
+
+class ConfirmMatchRequest(BaseModel):
+    document_id: str
+    patient_id: str
+    parsed_data: Dict[str, Any]
+    modifications: List[Dict[str, Any]]
+    
+class CreateNewPatientRequest(BaseModel):
+    document_id: str
+    demographics: Dict[str, Any]
+    parsed_data: Dict[str, Any]
+    modifications: List[Dict[str, Any]]
+
 class DispenseCreate(BaseModel):
     encounter_id: str
     medication: str
