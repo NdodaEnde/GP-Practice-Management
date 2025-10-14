@@ -125,96 +125,43 @@ class AIScribeTester:
             self.log_test("Create Test Audio", False, f"Error creating test audio: {str(e)}")
             return None, None
     
-    def test_gp_validation_save_endpoint(self, document_id):
-        """Test the GP validation save endpoint"""
+    def test_ai_scribe_transcribe_endpoint(self):
+        """Test the AI Scribe audio transcription endpoint"""
         try:
-            # Prepare test data with modifications
-            test_modifications = [
-                {
-                    "field_path": "demographics.patient_name",
-                    "original_value": "John Smith",
-                    "new_value": "John David Smith",
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "modification_type": "edit"
-                },
-                {
-                    "field_path": "demographics.contact_number",
-                    "original_value": "0821234567",
-                    "new_value": "0827654321",
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "modification_type": "edit"
-                },
-                {
-                    "field_path": "chronic_summary.medications",
-                    "original_value": None,
-                    "new_value": {"name": "Aspirin", "dosage": "75mg", "frequency": "Once daily", "start_date": "2024-01-15"},
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "modification_type": "add"
-                }
-            ]
+            # Create test audio file
+            audio_data, filename = self.create_test_audio_file()
+            if not audio_data:
+                return False, None
             
-            # Updated parsed data with modifications applied
-            validated_data = {
-                "demographics": {
-                    "patient_name": "John David Smith",  # Modified
-                    "age": 45,
-                    "gender": "Male",
-                    "date_of_birth": "1979-03-15",
-                    "id_number": "7903155678901",
-                    "contact_number": "0827654321",  # Modified
-                    "address": "123 Main Street, Cape Town"
-                },
-                "chronic_summary": {
-                    "conditions": [
-                        {"condition": "Hypertension", "diagnosed_date": "2020-01-15", "status": "Active"},
-                        {"condition": "Type 2 Diabetes", "diagnosed_date": "2019-08-22", "status": "Active"}
-                    ],
-                    "medications": [
-                        {"name": "Metformin", "dosage": "500mg", "frequency": "Twice daily", "start_date": "2019-08-22"},
-                        {"name": "Lisinopril", "dosage": "10mg", "frequency": "Once daily", "start_date": "2020-01-15"},
-                        {"name": "Aspirin", "dosage": "75mg", "frequency": "Once daily", "start_date": "2024-01-15"}  # Added
-                    ]
-                },
-                "vitals": [
-                    {"date": "2024-01-15", "blood_pressure": "135/85", "heart_rate": 78, "weight": 85.5, "height": 175},
-                    {"date": "2024-01-10", "blood_pressure": "140/90", "heart_rate": 82, "weight": 85.2, "height": 175}
-                ],
-                "clinical_notes": "Patient presents with well-controlled diabetes and hypertension. Continue current medication regimen. Blood pressure slightly elevated, monitor closely. Patient reports good adherence to medication. No new symptoms. Added aspirin for cardiovascular protection. Follow up in 3 months."
-            }
-            
-            # Prepare request payload
-            payload = {
-                "document_id": document_id,
-                "parsed_data": validated_data,
-                "modifications": test_modifications,
-                "status": "approved",
-                "notes": f"Validated at {datetime.now(timezone.utc).isoformat()}"
+            # Prepare multipart form data
+            files = {
+                'file': (filename, audio_data, 'audio/wav')
             }
             
             # Make API call
             response = requests.post(
-                f"{self.backend_url}/gp/validation/save",
-                json=payload,
-                headers={'Content-Type': 'application/json'},
-                timeout=30
+                f"{self.backend_url}/ai-scribe/transcribe",
+                files=files,
+                timeout=60  # Longer timeout for transcription
             )
             
             if response.status_code == 200:
                 result = response.json()
-                expected_fields = ['status', 'message', 'document_id', 'modifications_count']
+                expected_fields = ['status', 'transcription']
                 
                 if all(field in result for field in expected_fields):
-                    if result['modifications_count'] == len(test_modifications):
-                        self.log_test("GP Validation Save API", True, 
-                                    f"Successfully saved validation with {result['modifications_count']} modifications")
+                    if result['status'] == 'success' and result['transcription']:
+                        transcription_length = len(result['transcription'])
+                        self.log_test("AI Scribe Transcription API", True, 
+                                    f"Successfully transcribed audio ({transcription_length} characters)")
                         return True, result
                     else:
-                        self.log_test("GP Validation Save API", False, 
-                                    f"Modification count mismatch: expected {len(test_modifications)}, got {result['modifications_count']}")
+                        self.log_test("AI Scribe Transcription API", False, 
+                                    f"Invalid response: status={result.get('status')}, transcription_empty={not result.get('transcription')}")
                         return False, result
                 else:
                     missing_fields = [f for f in expected_fields if f not in result]
-                    self.log_test("GP Validation Save API", False, 
+                    self.log_test("AI Scribe Transcription API", False, 
                                 f"Missing fields in response: {missing_fields}")
                     return False, result
             else:
@@ -225,11 +172,11 @@ class AIScribeTester:
                 except:
                     error_msg += f": {response.text}"
                 
-                self.log_test("GP Validation Save API", False, error_msg)
+                self.log_test("AI Scribe Transcription API", False, error_msg)
                 return False, None
                 
         except Exception as e:
-            self.log_test("GP Validation Save API", False, f"Request failed: {str(e)}")
+            self.log_test("AI Scribe Transcription API", False, f"Request failed: {str(e)}")
             return False, None
     
     def verify_validated_document_saved(self, document_id):
