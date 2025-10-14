@@ -97,6 +97,14 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
       // Navigate to the page where this chunk is located
       setPageNumber(grounding.page + 1); // PDF pages are 1-indexed
     }
+    
+    // Scroll the markdown section into view
+    setTimeout(() => {
+      const element = document.getElementById(chunkId);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 100);
   };
 
   // Handle chunk hover
