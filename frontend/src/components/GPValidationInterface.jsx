@@ -46,6 +46,11 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
   const [isDragging, setIsDragging] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   
+  // Patient matching state
+  const [showMatchDialog, setShowMatchDialog] = useState(false);
+  const [patientMatches, setPatientMatches] = useState([]);
+  const [isMatchingPatient, setIsMatchingPatient] = useState(false);
+  
   // Editable data state
   const [editedDemographics, setEditedDemographics] = useState({});
   const [editedChronicCare, setEditedChronicCare] = useState({});
