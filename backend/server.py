@@ -1353,10 +1353,18 @@ async def proxy_gp_statistics():
 async def get_gp_document_view(document_id: str):
     """Get GP document for viewing"""
     try:
+        # Connect to the microservice database where GP documents are stored
+        microservice_db_name = os.environ.get('DATABASE_NAME', 'surgiscan_documents')
+        microservice_client = AsyncIOMotorClient(os.environ.get('MONGODB_URL', 'mongodb://localhost:27017'))
+        microservice_db = microservice_client[microservice_db_name]
+        
         # Get document from MongoDB
-        doc = await db.gp_scanned_documents.find_one({"document_id": document_id})
+        doc = await microservice_db.gp_scanned_documents.find_one({"document_id": document_id})
+        
+        microservice_client.close()
+        
         if not doc:
-            raise HTTPException(status_code=404, detail="Document not found")
+            raise HTTPException(status_code=404, detail=f"Document not found: {document_id}")
         
         # Return the file data
         from fastapi.responses import Response
