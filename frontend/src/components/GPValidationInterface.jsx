@@ -82,6 +82,12 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
   const zoomIn = () => setPdfScale(prev => Math.min(prev + 0.2, 2.0));
   const zoomOut = () => setPdfScale(prev => Math.max(prev - 0.2, 0.5));
 
+  // Memoize options to prevent unnecessary reloads
+  const pdfOptions = useMemo(() => ({
+    cMapUrl: 'https://unpkg.com/pdfjs-dist@3.11.174/cmaps/',
+    cMapPacked: true,
+  }), []);
+
   return (
     <div className="h-screen flex flex-col bg-gray-50">
       {/* Header */}
