@@ -213,6 +213,12 @@ const PatientEHR = () => {
             </div>
           </div>
           <div className="flex gap-3">
+            <Link to={`/patients/${patientId}/ai-scribe`}>
+              <Button variant="outline" className="shadow-md gap-2 bg-purple-50 border-purple-300 hover:bg-purple-100">
+                <Sparkles className="w-4 h-4 text-purple-600" />
+                <span className="text-purple-700">AI Scribe</span>
+              </Button>
+            </Link>
             <Link to={`/patients/${patientId}/documents`}>
               <Button variant="outline" className="shadow-md gap-2">
                 <FolderOpen className="w-4 h-4" />
