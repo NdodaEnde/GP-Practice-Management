@@ -10,6 +10,7 @@ import GPPatientDigitization from './pages/GPPatientDigitization';
 import DocumentArchive from './pages/DocumentArchive';
 import ReceptionCheckIn from './pages/ReceptionCheckIn';
 import QueueDisplay from './pages/QueueDisplay';
+import WorkstationDashboard from './pages/WorkstationDashboard';
 import Billing from './pages/Billing';
 import Analytics from './pages/Analytics';
 import Layout from './components/Layout';
@@ -32,6 +33,7 @@ function App() {
             <Route path="validation/:encounterId" element={<ValidationInterface />} />
             <Route path="reception" element={<ReceptionCheckIn />} />
             <Route path="queue/display" element={<QueueDisplay />} />
+            <Route path="queue/workstation" element={<WorkstationDashboard />} />
             <Route path="billing" element={<Billing />} />
             <Route path="analytics" element={<Analytics />} />
           </Route>
