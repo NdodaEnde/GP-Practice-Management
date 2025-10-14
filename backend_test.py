@@ -13,7 +13,7 @@ from pymongo import MongoClient
 import sys
 
 # Configuration
-BACKEND_URL = "https://surgiscan-gp.preview.emergentagent.com/api"
+BACKEND_URL = "https://healthcare-ehr.preview.emergentagent.com/api"
 MONGO_URL = "mongodb://localhost:27017"
 DATABASE_NAME = "surgiscan_documents"
 
