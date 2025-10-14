@@ -31,6 +31,11 @@ const AIScribe = () => {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [extractedData, setExtractedData] = useState(null);
+  const [showPrescriptionBuilder, setShowPrescriptionBuilder] = useState(false);
+  const [showSickNoteBuilder, setShowSickNoteBuilder] = useState(false);
+  const [showReferralBuilder, setShowReferralBuilder] = useState(false);
   
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
