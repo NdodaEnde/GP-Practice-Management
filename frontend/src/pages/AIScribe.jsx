@@ -285,28 +285,30 @@ const AIScribe = () => {
       setIsSaving(true);
       const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
       
-      const encounterData = {
+      const consultationData = {
         patient_id: patientId,
-        encounter_date: new Date().toISOString(),
-        status: 'completed',
-        chief_complaint: 'AI Scribe Consultation',
-        gp_notes: soapNotes,
+        soap_notes: soapNotes,
+        transcription: transcription,
+        doctor_name: "Dr. Current User"
       };
 
-      await axios.post(`${backendUrl}/api/encounters`, encounterData);
+      const response = await axios.post(
+        `${backendUrl}/api/ai-scribe/save-consultation`,
+        consultationData
+      );
 
       toast({
         title: "Success",
-        description: "SOAP notes saved to patient encounter",
+        description: `Consultation saved to EHR. Diagnosis: ${response.data.diagnosis || 'N/A'}`,
       });
 
-      // Navigate back to patient
+      // Navigate back to patient EHR
       navigate(`/patients/${patientId}`);
     } catch (error) {
-      console.error('Error saving encounter:', error);
+      console.error('Error saving consultation:', error);
       toast({
         title: "Error",
-        description: error.response?.data?.detail || "Failed to save encounter",
+        description: error.response?.data?.detail || "Failed to save consultation",
         variant: "destructive"
       });
     } finally {
