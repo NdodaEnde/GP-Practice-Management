@@ -2594,6 +2594,264 @@ Format the output as:
         logger.error(f"Error generating SOAP notes: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# ==================== Phase 4.2: Prescription Module Endpoints ====================
+
+@api_router.post("/prescriptions")
+async def create_prescription(prescription: PrescriptionCreate):
+    """Create a new prescription"""
+    try:
+        prescription_id = str(uuid.uuid4())
+        
+        # Create prescription record in Supabase
+        prescription_data = {
+            'id': prescription_id,
+            'tenant_id': DEMO_TENANT_ID,
+            'workspace_id': DEMO_WORKSPACE_ID,
+            'patient_id': prescription.patient_id,
+            'encounter_id': prescription.encounter_id,
+            'doctor_name': prescription.doctor_name,
+            'prescription_date': prescription.prescription_date,
+            'status': 'active',
+            'notes': prescription.notes,
+            'created_at': datetime.now(timezone.utc).isoformat(),
+            'updated_at': datetime.now(timezone.utc).isoformat()
+        }
+        
+        supabase.table('prescriptions').insert(prescription_data).execute()
+        
+        # Create prescription items
+        items_data = []
+        for item in prescription.items:
+            item_id = str(uuid.uuid4())
+            items_data.append({
+                'id': item_id,
+                'prescription_id': prescription_id,
+                'medication_name': item.medication_name,
+                'dosage': item.dosage,
+                'frequency': item.frequency,
+                'duration': item.duration,
+                'quantity': item.quantity,
+                'instructions': item.instructions,
+                'created_at': datetime.now(timezone.utc).isoformat()
+            })
+        
+        if items_data:
+            supabase.table('prescription_items').insert(items_data).execute()
+        
+        logger.info(f"Prescription created: {prescription_id}")
+        
+        return {
+            'status': 'success',
+            'prescription_id': prescription_id,
+            'message': 'Prescription created successfully'
+        }
+    except Exception as e:
+        logger.error(f"Error creating prescription: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/prescriptions/patient/{patient_id}")
+async def get_patient_prescriptions(patient_id: str):
+    """Get all prescriptions for a patient"""
+    try:
+        # Get prescriptions
+        prescriptions = supabase.table('prescriptions')\
+            .select('*')\
+            .eq('patient_id', patient_id)\
+            .order('prescription_date', desc=True)\
+            .execute()
+        
+        # Get items for each prescription
+        result = []
+        for prescription in prescriptions.data:
+            items = supabase.table('prescription_items')\
+                .select('*')\
+                .eq('prescription_id', prescription['id'])\
+                .execute()
+            
+            prescription['items'] = items.data
+            result.append(prescription)
+        
+        return {
+            'status': 'success',
+            'prescriptions': result
+        }
+    except Exception as e:
+        logger.error(f"Error fetching prescriptions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/prescriptions/{prescription_id}")
+async def get_prescription(prescription_id: str):
+    """Get a specific prescription with items"""
+    try:
+        prescription = supabase.table('prescriptions')\
+            .select('*')\
+            .eq('id', prescription_id)\
+            .single()\
+            .execute()
+        
+        items = supabase.table('prescription_items')\
+            .select('*')\
+            .eq('prescription_id', prescription_id)\
+            .execute()
+        
+        prescription.data['items'] = items.data
+        
+        return {
+            'status': 'success',
+            'prescription': prescription.data
+        }
+    except Exception as e:
+        logger.error(f"Error fetching prescription: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/sick-notes")
+async def create_sick_note(sick_note: SickNoteCreate):
+    """Create a new sick note/medical certificate"""
+    try:
+        sick_note_id = str(uuid.uuid4())
+        
+        sick_note_data = {
+            'id': sick_note_id,
+            'tenant_id': DEMO_TENANT_ID,
+            'workspace_id': DEMO_WORKSPACE_ID,
+            'patient_id': sick_note.patient_id,
+            'encounter_id': sick_note.encounter_id,
+            'doctor_name': sick_note.doctor_name,
+            'issue_date': sick_note.issue_date,
+            'start_date': sick_note.start_date,
+            'end_date': sick_note.end_date,
+            'diagnosis': sick_note.diagnosis,
+            'fitness_status': sick_note.fitness_status,
+            'restrictions': sick_note.restrictions,
+            'additional_notes': sick_note.additional_notes,
+            'created_at': datetime.now(timezone.utc).isoformat()
+        }
+        
+        supabase.table('sick_notes').insert(sick_note_data).execute()
+        
+        logger.info(f"Sick note created: {sick_note_id}")
+        
+        return {
+            'status': 'success',
+            'sick_note_id': sick_note_id,
+            'message': 'Sick note created successfully'
+        }
+    except Exception as e:
+        logger.error(f"Error creating sick note: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/sick-notes/patient/{patient_id}")
+async def get_patient_sick_notes(patient_id: str):
+    """Get all sick notes for a patient"""
+    try:
+        sick_notes = supabase.table('sick_notes')\
+            .select('*')\
+            .eq('patient_id', patient_id)\
+            .order('issue_date', desc=True)\
+            .execute()
+        
+        return {
+            'status': 'success',
+            'sick_notes': sick_notes.data
+        }
+    except Exception as e:
+        logger.error(f"Error fetching sick notes: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/referrals")
+async def create_referral(referral: ReferralCreate):
+    """Create a new referral letter"""
+    try:
+        referral_id = str(uuid.uuid4())
+        
+        referral_data = {
+            'id': referral_id,
+            'tenant_id': DEMO_TENANT_ID,
+            'workspace_id': DEMO_WORKSPACE_ID,
+            'patient_id': referral.patient_id,
+            'encounter_id': referral.encounter_id,
+            'referring_doctor_name': referral.referring_doctor_name,
+            'referral_date': referral.referral_date,
+            'specialist_type': referral.specialist_type,
+            'specialist_name': referral.specialist_name,
+            'specialist_practice': referral.specialist_practice,
+            'reason_for_referral': referral.reason_for_referral,
+            'clinical_findings': referral.clinical_findings,
+            'investigations_done': referral.investigations_done,
+            'current_medications': referral.current_medications,
+            'urgency': referral.urgency,
+            'status': 'pending',
+            'created_at': datetime.now(timezone.utc).isoformat()
+        }
+        
+        supabase.table('referrals').insert(referral_data).execute()
+        
+        logger.info(f"Referral created: {referral_id}")
+        
+        return {
+            'status': 'success',
+            'referral_id': referral_id,
+            'message': 'Referral created successfully'
+        }
+    except Exception as e:
+        logger.error(f"Error creating referral: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/referrals/patient/{patient_id}")
+async def get_patient_referrals(patient_id: str):
+    """Get all referrals for a patient"""
+    try:
+        referrals = supabase.table('referrals')\
+            .select('*')\
+            .eq('patient_id', patient_id)\
+            .order('referral_date', desc=True)\
+            .execute()
+        
+        return {
+            'status': 'success',
+            'referrals': referrals.data
+        }
+    except Exception as e:
+        logger.error(f"Error fetching referrals: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/medications/search")
+async def search_medications(query: str = Query(..., min_length=2)):
+    """Search medications by name"""
+    try:
+        # Search in Supabase medications table
+        medications = supabase.table('medications')\
+            .select('id, name, generic_name, brand_names, category, common_dosages, common_frequencies, route')\
+            .ilike('name', f'%{query}%')\
+            .limit(20)\
+            .execute()
+        
+        return {
+            'status': 'success',
+            'medications': medications.data
+        }
+    except Exception as e:
+        logger.error(f"Error searching medications: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/medications/{medication_id}")
+async def get_medication_details(medication_id: str):
+    """Get detailed information about a medication"""
+    try:
+        medication = supabase.table('medications')\
+            .select('*')\
+            .eq('id', medication_id)\
+            .single()\
+            .execute()
+        
+        return {
+            'status': 'success',
+            'medication': medication.data
+        }
+    except Exception as e:
+        logger.error(f"Error fetching medication: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ==================== Application Setup ====================
 
 # Include router
