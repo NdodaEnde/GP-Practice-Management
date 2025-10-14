@@ -162,13 +162,10 @@ metadata:
 
 test_plan:
   current_focus:
-    - "AI Scribe audio transcription endpoint"
-    - "AI Scribe SOAP note generation endpoint"
     - "AI Scribe recording interface"
-  stuck_tasks:
-    - "AI Scribe audio transcription endpoint"
+  stuck_tasks: []
   test_all: false
-  test_priority: "stuck_first"
+  test_priority: "high_first"
 
 agent_communication:
   - agent: "main"
