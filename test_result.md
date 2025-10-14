@@ -110,11 +110,11 @@ user_problem_statement: |
 backend:
   - task: "AI Scribe audio transcription endpoint"
     implemented: true
-    working: "NA"
+    working: true
     file: "/app/backend/server.py"
     stuck_count: 1
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: false
         agent: "user"
@@ -122,6 +122,9 @@ backend:
       - working: "NA"
         agent: "main"
         comment: "Root cause identified: Was using EMERGENT_LLM_KEY for Whisper API, but Emergent key only works for text LLM models (GPT, Claude, Gemini). Whisper requires separate OPENAI_API_KEY. Fixed by: 1) Added OPENAI_API_KEY to .env file with user-provided key, 2) Updated /api/ai-scribe/transcribe endpoint to use OPENAI_API_KEY instead of EMERGENT_LLM_KEY, 3) Restarted backend. Awaiting test."
+      - working: true
+        agent: "testing"
+        comment: "AUTHENTICATION ISSUE RESOLVED: Tested /api/ai-scribe/transcribe endpoint with test audio file. Successfully returns 200 OK with transcription text. OpenAI API key authentication now working correctly. Tested with 64KB WAV file, received valid transcription response. No 401 errors observed in backend logs."
   
   - task: "AI Scribe SOAP note generation endpoint"
     implemented: true
@@ -134,6 +137,9 @@ backend:
       - working: true
         agent: "main"
         comment: "Created /api/ai-scribe/generate-soap endpoint using GPT-5 via emergentintegrations.llm.chat with EMERGENT_LLM_KEY. This endpoint was working correctly, only Whisper had the key issue."
+      - working: true
+        agent: "testing"
+        comment: "CONFIRMED WORKING: Tested /api/ai-scribe/generate-soap endpoint with realistic medical transcription. Successfully generates structured SOAP notes with all 4 sections (Subjective, Objective, Assessment, Plan). GPT-5 integration via EMERGENT_LLM_KEY functioning correctly. Generated 800-character professional SOAP note from test consultation."
 
 frontend:
   - task: "AI Scribe recording interface"
