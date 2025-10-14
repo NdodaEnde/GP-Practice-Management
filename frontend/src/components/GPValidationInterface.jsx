@@ -386,7 +386,10 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
         </div>
 
         {/* Right Panel - Extracted Data */}
-        <div className="w-1/2 flex flex-col">
+        <div 
+          className="flex flex-col bg-white overflow-hidden"
+          style={{ width: `${100 - leftWidth}%` }}
+        >
           {/* Tabs */}
           <div className="bg-white border-b p-4">
             <div className="flex gap-2">
