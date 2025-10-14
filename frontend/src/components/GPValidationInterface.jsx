@@ -64,6 +64,8 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
   console.log('5. Demographics:', demographics);
   console.log('6. Chunks:', chunks.length);
   console.log('7. File path:', filePath);
+  console.log('8. Document ID:', documentId);
+  console.log('9. PDF URL will be:', pdfUrl);
 
   // For PDF viewing - we'll need to fetch the document from backend
   const pdfUrl = filePath ? `${process.env.REACT_APP_BACKEND_URL}/api/gp/document/${documentId}/view` : null;
