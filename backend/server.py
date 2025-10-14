@@ -2372,11 +2372,16 @@ async def transcribe_audio(file: UploadFile):
     """Transcribe audio file using OpenAI Whisper"""
     try:
         import openai
-        from dotenv import load_dotenv
-        load_dotenv()
         
         # Get OpenAI API key for Whisper
-        api_key = os.environ.get('OPENAI_API_KEY')
+        # Note: Using a fresh environment read to ensure we get the correct key
+        from pathlib import Path
+        from dotenv import dotenv_values
+        
+        env_path = Path(__file__).parent / '.env'
+        env_vars = dotenv_values(env_path)
+        api_key = env_vars.get('OPENAI_API_KEY') or os.environ.get('OPENAI_API_KEY')
+        
         if not api_key:
             raise HTTPException(status_code=500, detail="OPENAI_API_KEY not configured")
         
