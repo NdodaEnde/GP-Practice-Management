@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { MedicalDocumentRenderer } from '@/components/MarkdownRenderer';
+import axios from 'axios';
 import {
   ArrowLeft,
   CheckCircle,
@@ -21,7 +22,9 @@ import {
   Edit,
   Save,
   X,
-  AlertTriangle
+  AlertTriangle,
+  Plus,
+  Trash2
 } from 'lucide-react';
 
 // Configure PDF.js worker - use local bundled worker (no CORS issues)
