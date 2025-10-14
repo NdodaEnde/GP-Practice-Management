@@ -128,11 +128,11 @@ backend:
   
   - task: "AI Scribe SOAP note generation endpoint"
     implemented: true
-    working: "NA"
+    working: true
     file: "/app/backend/server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: true
         agent: "main"
@@ -143,6 +143,9 @@ backend:
       - working: "NA"
         agent: "main"
         comment: "Per user request, switched from Emergent LLM Key to OpenAI direct API. Now uses OPENAI_API_KEY with GPT-4o model. Endpoint successfully tested: generates proper SOAP notes with all 4 sections. Logs confirm calling https://api.openai.com/v1/chat/completions directly."
+      - working: true
+        agent: "testing"
+        comment: "OPENAI DIRECT API CONFIRMED WORKING: Tested /api/ai-scribe/generate-soap endpoint with GPT-4o model. Successfully generates structured SOAP notes with all 4 sections (S.O.A.P). Backend logs confirm direct calls to https://api.openai.com/v1/chat/completions. Generated 675-character professional SOAP note from realistic medical transcription (STEMI case). No dependency on Emergent LLM Key - uses OPENAI_API_KEY exclusively."
 
 frontend:
   - task: "AI Scribe recording interface"
