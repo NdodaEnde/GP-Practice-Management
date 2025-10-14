@@ -189,6 +189,172 @@ async def init_demo_tenant():
     except Exception as e:
         logger.error(f"Error initializing demo tenant: {e}")
 
+def calculate_name_similarity(name1: str, name2: str) -> float:
+    """Calculate similarity between two names using simple matching"""
+    from difflib import SequenceMatcher
+    
+    # Normalize names
+    n1 = name1.lower().strip()
+    n2 = name2.lower().strip()
+    
+    # Exact match
+    if n1 == n2:
+        return 1.0
+    
+    # Use SequenceMatcher for fuzzy matching
+    return SequenceMatcher(None, n1, n2).ratio()
+
+async def find_patient_matches(demographics: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Find potential patient matches using multiple strategies
+    Returns list of matches with confidence scores
+    """
+    matches = []
+    
+    # Extract search criteria from demographics
+    id_number = demographics.get('id_number') or demographics.get('patient_id') or demographics.get('sa_id_number')
+    first_name = demographics.get('first_name') or demographics.get('patient_name', '').split()[0] if demographics.get('patient_name') else None
+    last_name = demographics.get('last_name') or ' '.join(demographics.get('patient_name', '').split()[1:]) if demographics.get('patient_name') else None
+    dob = demographics.get('dob') or demographics.get('date_of_birth')
+    
+    # Strategy 1: Exact ID number match (95%+ confidence)
+    if id_number:
+        try:
+            result = supabase.table('patients').select('*').eq('id_number', id_number).eq('workspace_id', DEMO_WORKSPACE_ID).execute()
+            if result.data:
+                for patient in result.data:
+                    # Get last encounter for this patient
+                    encounter_result = supabase.table('encounters').select('encounter_date').eq('patient_id', patient['id']).order('encounter_date', desc=True).limit(1).execute()
+                    last_visit = encounter_result.data[0]['encounter_date'] if encounter_result.data else None
+                    
+                    matches.append({
+                        'patient_id': patient['id'],
+                        'first_name': patient['first_name'],
+                        'last_name': patient['last_name'],
+                        'dob': patient['dob'],
+                        'id_number': patient['id_number'],
+                        'contact_number': patient.get('contact_number'),
+                        'last_visit': last_visit,
+                        'confidence_score': 0.98,
+                        'match_method': 'id_number'
+                    })
+        except Exception as e:
+            logger.error(f"Error searching by ID number: {e}")
+    
+    # Strategy 2: Name + DOB match (70-90% confidence)
+    if (first_name or last_name) and dob and not matches:
+        try:
+            # Get all patients for fuzzy matching
+            result = supabase.table('patients').select('*').eq('workspace_id', DEMO_WORKSPACE_ID).execute()
+            
+            if result.data:
+                for patient in result.data:
+                    # Calculate name similarity
+                    first_name_similarity = calculate_name_similarity(first_name or '', patient.get('first_name', ''))
+                    last_name_similarity = calculate_name_similarity(last_name or '', patient.get('last_name', ''))
+                    
+                    # Check DOB match
+                    dob_match = patient.get('dob') == dob
+                    
+                    # Calculate overall confidence
+                    if dob_match and (first_name_similarity > 0.7 or last_name_similarity > 0.7):
+                        avg_name_similarity = (first_name_similarity + last_name_similarity) / 2
+                        confidence = 0.7 + (avg_name_similarity * 0.2)  # 0.7 to 0.9
+                        
+                        # Get last encounter
+                        encounter_result = supabase.table('encounters').select('encounter_date').eq('patient_id', patient['id']).order('encounter_date', desc=True).limit(1).execute()
+                        last_visit = encounter_result.data[0]['encounter_date'] if encounter_result.data else None
+                        
+                        matches.append({
+                            'patient_id': patient['id'],
+                            'first_name': patient['first_name'],
+                            'last_name': patient['last_name'],
+                            'dob': patient['dob'],
+                            'id_number': patient['id_number'],
+                            'contact_number': patient.get('contact_number'),
+                            'last_visit': last_visit,
+                            'confidence_score': round(confidence, 2),
+                            'match_method': 'name_dob'
+                        })
+        except Exception as e:
+            logger.error(f"Error searching by name and DOB: {e}")
+    
+    # Sort by confidence score
+    matches.sort(key=lambda x: x['confidence_score'], reverse=True)
+    
+    return matches[:5]  # Return top 5 matches
+
+async def create_encounter_from_document(patient_id: str, parsed_data: Dict[str, Any], document_id: str) -> str:
+    """Create an encounter from validated document data"""
+    try:
+        encounter_id = str(uuid.uuid4())
+        
+        # Extract data from parsed_data
+        demographics = parsed_data.get('demographics', {})
+        chronic_summary = parsed_data.get('chronic_summary', {})
+        vitals_data = parsed_data.get('vitals', {})
+        clinical_notes = parsed_data.get('clinical_notes', {})
+        
+        # Prepare vitals
+        vitals_json = None
+        if vitals_data and vitals_data.get('vital_signs_records'):
+            # Use the first vital signs record
+            first_record = vitals_data['vital_signs_records'][0] if vitals_data['vital_signs_records'] else {}
+            vitals_json = {
+                'blood_pressure': first_record.get('blood_pressure'),
+                'heart_rate': first_record.get('heart_rate'),
+                'temperature': first_record.get('temperature'),
+                'weight': first_record.get('weight'),
+                'height': first_record.get('height'),
+                'oxygen_saturation': first_record.get('oxygen_saturation')
+            }
+        
+        # Prepare GP notes from clinical notes and chronic summary
+        gp_notes_parts = []
+        if clinical_notes:
+            gp_notes_parts.append(f"Clinical Notes: {json.dumps(clinical_notes)}")
+        if chronic_summary.get('chronic_conditions'):
+            gp_notes_parts.append(f"Chronic Conditions: {json.dumps(chronic_summary['chronic_conditions'])}")
+        if chronic_summary.get('current_medications'):
+            gp_notes_parts.append(f"Current Medications: {json.dumps(chronic_summary['current_medications'])}")
+        
+        gp_notes = '\n\n'.join(gp_notes_parts) if gp_notes_parts else 'Imported from scanned document'
+        
+        # Get document date or use current date
+        encounter_date = demographics.get('document_date') or datetime.now(timezone.utc).isoformat()
+        
+        # Create encounter in Supabase
+        encounter_data = {
+            'id': encounter_id,
+            'patient_id': patient_id,
+            'workspace_id': DEMO_WORKSPACE_ID,
+            'encounter_date': encounter_date,
+            'status': 'completed',
+            'chief_complaint': 'Imported from historical record',
+            'vitals_json': vitals_json,
+            'gp_notes': gp_notes,
+            'created_at': datetime.now(timezone.utc).isoformat()
+        }
+        
+        supabase.table('encounters').insert(encounter_data).execute()
+        
+        # Store reference to original document in MongoDB
+        await db.document_refs.insert_one({
+            'id': str(uuid.uuid4()),
+            'encounter_id': encounter_id,
+            'patient_id': patient_id,
+            'document_id': document_id,
+            'workspace_id': DEMO_WORKSPACE_ID,
+            'created_at': datetime.now(timezone.utc).isoformat()
+        })
+        
+        logger.info(f"Created encounter {encounter_id} from document {document_id}")
+        return encounter_id
+        
+    except Exception as e:
+        logger.error(f"Error creating encounter from document: {e}")
+        raise
+
 async def call_microservice_parser(filename: str, file_content: bytes) -> Dict[str, Any]:
     """Call the microservice to parse document using LandingAI"""
     try:
