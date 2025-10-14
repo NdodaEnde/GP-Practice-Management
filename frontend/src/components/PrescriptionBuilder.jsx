@@ -8,17 +8,31 @@ import { Textarea } from './ui/textarea';
 import { Plus, Trash2, Search, Save } from 'lucide-react';
 import { useToast } from '../hooks/use-toast';
 
-const PrescriptionBuilder = ({ patientId, encounterId, doctorName, onSave }) => {
+const PrescriptionBuilder = ({ patientId, encounterId, doctorName, initialData, onSave }) => {
   const { toast } = useToast();
   const [prescriptionDate, setPrescriptionDate] = useState(new Date().toISOString().split('T')[0]);
-  const [items, setItems] = useState([{
-    medication_name: '',
-    dosage: '',
-    frequency: '',
-    duration: '',
-    quantity: '',
-    instructions: ''
-  }]);
+  
+  // Initialize items from initialData if provided
+  const [items, setItems] = useState(() => {
+    if (initialData && initialData.length > 0) {
+      return initialData.map(item => ({
+        medication_name: item.medication_name || '',
+        dosage: item.dosage || '',
+        frequency: item.frequency || '',
+        duration: item.duration || '',
+        quantity: item.quantity || '',
+        instructions: item.instructions || ''
+      }));
+    }
+    return [{
+      medication_name: '',
+      dosage: '',
+      frequency: '',
+      duration: '',
+      quantity: '',
+      instructions: ''
+    }];
+  });
   const [notes, setNotes] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
