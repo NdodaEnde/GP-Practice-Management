@@ -103,9 +103,9 @@
 #====================================================================================================
 
 user_problem_statement: |
-  Implement editable fields for the "Demographics", "Chronic Care", "Vitals", and "Clinical Notes" tabs 
-  within GPValidationInterface.jsx for human validation. The edited data should be saved to the backend
-  with modification tracking for ML retraining analysis.
+  AI Scribe Feature: Implement real-time audio recording, transcription using OpenAI Whisper, and 
+  AI-generated SOAP notes using GPT-5 for medical consultations. Fixed authentication issue where
+  Emergent LLM Key was incorrectly used for Whisper API (which requires separate OpenAI API key).
 
 backend:
   - task: "GP validation save endpoint"
