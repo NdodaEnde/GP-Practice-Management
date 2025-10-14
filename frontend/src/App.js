@@ -8,6 +8,8 @@ import ValidationInterface from './pages/ValidationInterface';
 import DocumentDigitization from './pages/DocumentDigitization';
 import GPPatientDigitization from './pages/GPPatientDigitization';
 import DocumentArchive from './pages/DocumentArchive';
+import ReceptionCheckIn from './pages/ReceptionCheckIn';
+import QueueDisplay from './pages/QueueDisplay';
 import Billing from './pages/Billing';
 import Analytics from './pages/Analytics';
 import Layout from './components/Layout';
@@ -28,6 +30,8 @@ function App() {
             <Route path="patients/:patientId/documents" element={<DocumentArchive />} />
             <Route path="encounters/new/:patientId" element={<NewEncounter />} />
             <Route path="validation/:encounterId" element={<ValidationInterface />} />
+            <Route path="reception" element={<ReceptionCheckIn />} />
+            <Route path="queue/display" element={<QueueDisplay />} />
             <Route path="billing" element={<Billing />} />
             <Route path="analytics" element={<Analytics />} />
           </Route>
