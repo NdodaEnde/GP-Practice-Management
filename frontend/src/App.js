@@ -7,6 +7,7 @@ import NewEncounter from './pages/NewEncounter';
 import ValidationInterface from './pages/ValidationInterface';
 import DocumentDigitization from './pages/DocumentDigitization';
 import GPPatientDigitization from './pages/GPPatientDigitization';
+import DocumentArchive from './pages/DocumentArchive';
 import Billing from './pages/Billing';
 import Analytics from './pages/Analytics';
 import Layout from './components/Layout';
@@ -24,6 +25,7 @@ function App() {
             <Route path="gp-digitize" element={<GPPatientDigitization />} />
             <Route path="patients" element={<PatientRegistry />} />
             <Route path="patients/:patientId" element={<PatientEHR />} />
+            <Route path="patients/:patientId/documents" element={<DocumentArchive />} />
             <Route path="encounters/new/:patientId" element={<NewEncounter />} />
             <Route path="validation/:encounterId" element={<ValidationInterface />} />
             <Route path="billing" element={<Billing />} />
