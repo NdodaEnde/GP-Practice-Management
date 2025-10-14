@@ -136,6 +136,12 @@ class CreateNewPatientRequest(BaseModel):
     parsed_data: Dict[str, Any]
     modifications: List[Dict[str, Any]]
 
+class DocumentAccessLog(BaseModel):
+    document_id: str
+    access_type: str  # 'view', 'download', 'print', 'export'
+    user_id: Optional[str] = 'system'
+    ip_address: Optional[str] = None
+
 class DispenseCreate(BaseModel):
     encounter_id: str
     medication: str
