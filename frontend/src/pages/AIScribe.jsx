@@ -245,7 +245,15 @@ const AIScribe = () => {
         }
       );
 
-      setExtractedData(response.data.extracted_data);
+      // Normalize keys to lowercase (GPT returns uppercase)
+      const rawData = response.data.extracted_data;
+      const normalized = {
+        prescriptions: rawData.PRESCRIPTIONS || rawData.prescriptions || [],
+        sick_note: rawData.SICK_NOTE || rawData.sick_note || null,
+        referral: rawData.REFERRAL || rawData.referral || null
+      };
+
+      setExtractedData(normalized);
       
       toast({
         title: "Clinical Actions Extracted",
