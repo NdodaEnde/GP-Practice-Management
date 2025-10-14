@@ -212,12 +212,20 @@ const PatientEHR = () => {
               <p className="text-slate-600">ID: {patient.id_number} • DOB: {patient.dob}</p>
             </div>
           </div>
-          <Link to={`/encounters/new/${patientId}`}>
-            <Button className="bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-600 hover:to-cyan-700 text-white shadow-md">
-              <Plus className="w-4 h-4 mr-2" />
-              New Encounter
-            </Button>
-          </Link>
+          <div className="flex gap-3">
+            <Link to={`/patients/${patientId}/documents`}>
+              <Button variant="outline" className="shadow-md gap-2">
+                <FolderOpen className="w-4 h-4" />
+                View Documents
+              </Button>
+            </Link>
+            <Link to={`/encounters/new/${patientId}`}>
+              <Button className="bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-600 hover:to-cyan-700 text-white shadow-md">
+                <Plus className="w-4 h-4 mr-2" />
+                New Encounter
+              </Button>
+            </Link>
+          </div>
         </div>
       </div>
 
