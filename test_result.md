@@ -167,49 +167,26 @@ test_plan:
 agent_communication:
   - agent: "main"
     message: |
-      Implementation complete. All tabs in GPValidationInterface are now editable:
-      - Demographics: Input fields for all demographic data
-      - Chronic Care: Editable tables for conditions and medications with add/delete
-      - Vitals: Editable vital signs records
-      - Clinical Notes: Large textarea for notes
+      AI Scribe Authentication Issue Fixed:
       
-      All modifications are tracked with timestamps and field paths.
-      Backend endpoint /api/gp/validation/save created to save validated data.
+      Problem: User reported 401 error when transcribing audio. Whisper API was rejecting EMERGENT_LLM_KEY.
       
-      Ready for testing. Please test the complete validation workflow:
-      1. Navigate to GP Patient Digitization
-      2. Upload a document
-      3. Wait for processing
-      4. Edit data in all tabs
-      5. Click "Save Validated Data"
-      6. Verify data is saved to MongoDB
-  - agent: "testing"
-    message: |
-      BACKEND TESTING COMPLETED SUCCESSFULLY ✅
+      Root Cause: EMERGENT_LLM_KEY only works for text LLM models (GPT, Claude, Gemini) via emergentintegrations library,
+      NOT for OpenAI Whisper audio transcription API.
       
-      GP Validation Save Endpoint - COMPREHENSIVE TEST RESULTS:
+      Solution Implemented:
+      1. Added OPENAI_API_KEY to /app/backend/.env with user-provided key
+      2. Updated /api/ai-scribe/transcribe endpoint in server.py (lines 2378-2383) to use OPENAI_API_KEY
+      3. SOAP generation endpoint continues using EMERGENT_LLM_KEY correctly (GPT-5 text model)
+      4. Backend restarted successfully
       
-      🔍 CORE FUNCTIONALITY TESTS (7/7 PASSED):
-      ✅ Backend Health Check - API accessible and healthy
-      ✅ MongoDB Connection - Connected with 16 existing GP documents
-      ✅ GP Validation Save API - Successfully processes validation requests
-      ✅ Validated Document Storage - Data correctly saved to gp_validated_documents collection
-      ✅ Original Document Update - Document status updated to 'validated' with timestamp
-      ✅ Audit Event Logging - Proper audit trail maintained in audit_events collection
-      ✅ Complete Workflow - End-to-end validation workflow functioning perfectly
+      Ready for testing. Please test the AI Scribe workflow:
+      1. Navigate to a patient's EHR
+      2. Click "AI Scribe" button
+      3. Record audio consultation
+      4. Stop recording
+      5. Verify transcription appears
+      6. Click "Generate SOAP Notes"
+      7. Verify SOAP notes are generated correctly
       
-      🧪 EDGE CASE & ERROR HANDLING TESTS (6/6 PASSED):
-      ✅ Invalid Document ID - Returns 404 for non-existent documents
-      ✅ Missing Required Fields - Returns 422 for validation errors
-      ✅ Empty Modifications Array - Handles zero modifications correctly
-      ✅ Large Modifications Array - Successfully processes 50+ modifications
-      ✅ Invalid JSON Payload - Properly rejects malformed requests
-      ✅ Different Status Values - Supports both 'approved' and 'rejected' statuses
-      
-      📊 DATA INTEGRITY VERIFIED:
-      - 4 validated documents in gp_validated_documents collection
-      - 3 audit events logged with correct metadata
-      - Original documents properly updated with validation status
-      - All required fields present in saved records
-      
-      🎯 RECOMMENDATION: Backend is production-ready. Main agent can proceed with frontend integration testing or summarize completion.
+      Test Focus: Verify audio transcription now works with OpenAI API key authentication.
