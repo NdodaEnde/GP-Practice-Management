@@ -263,55 +263,96 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
           <div className="flex-1 overflow-auto p-6 space-y-6">
             {activeTab === 'overview' && (
               <div className="space-y-4">
+                {/* Parsed Document Content */}
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-lg">Processing Summary</CardTitle>
+                    <CardTitle className="text-lg">Parsed Document Content</CardTitle>
+                    <p className="text-sm text-gray-600">
+                      Click on any section to highlight and navigate to the corresponding area in the original document
+                    </p>
                   </CardHeader>
-                  <CardContent className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Status:</span>
-                      <span className="font-medium text-green-600 flex items-center gap-1">
-                        <CheckCircle className="w-4 h-4" />
-                        Processing Complete
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Processing Time:</span>
-                      <span className="font-medium">
-                        {processingTime ? `${processingTime.toFixed(1)}s` : 'N/A'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Pages Processed:</span>
-                      <span className="font-medium">{pagesProcessed || 'N/A'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Model Used:</span>
-                      <span className="font-medium">{modelUsed}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Chunks Extracted:</span>
-                      <span className="font-medium">{chunks.length}</span>
-                    </div>
+                  <CardContent className="space-y-3 max-h-[600px] overflow-y-auto">
+                    {chunks.length > 0 ? (
+                      chunks.map((chunk, idx) => {
+                        const chunkId = `chunk_${idx}`;
+                        const isSelected = selectedChunkId === chunkId;
+                        const isHovered = hoveredChunkId === chunkId;
+                        
+                        return (
+                          <div
+                            key={idx}
+                            id={chunkId}
+                            className={`
+                              p-3 rounded-lg border-2 transition-all duration-200 cursor-pointer
+                              ${isSelected ? 'border-yellow-400 bg-yellow-50 shadow-lg' : 'border-gray-200'}
+                              ${isHovered && !isSelected ? 'border-blue-300 bg-blue-50' : ''}
+                              ${!isSelected && !isHovered ? 'hover:border-gray-300 hover:shadow-sm' : ''}
+                            `}
+                            onClick={() => handleChunkClick(chunkId, chunk.grounding)}
+                            onMouseEnter={() => handleChunkHover(chunkId)}
+                            onMouseLeave={handleChunkUnhover}
+                          >
+                            <div className="flex items-start gap-2">
+                              <span className="text-xs font-semibold text-gray-500 mt-1">
+                                {chunk.grounding?.page !== undefined ? `P${chunk.grounding.page + 1}` : 'N/A'}
+                              </span>
+                              <div className="flex-1">
+                                <div className="text-sm text-gray-800 whitespace-pre-wrap font-mono">
+                                  {chunk.markdown || chunk.text || 'No content'}
+                                </div>
+                              </div>
+                            </div>
+                            {(isSelected || isHovered) && (
+                              <div className="mt-2 text-xs text-gray-500">
+                                📍 Page {(chunk.grounding?.page || 0) + 1} 
+                                {chunk.grounding?.box && ` • Box: (${Math.round(chunk.grounding.box.top * 100)}%, ${Math.round(chunk.grounding.box.left * 100)}%)`}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <p className="text-gray-500 text-center py-8">No parsed content available</p>
+                    )}
                   </CardContent>
                 </Card>
 
-                <Card>
+                {/* Processing Stats - Collapsed */}
+                <Card className="bg-gray-50">
                   <CardHeader>
-                    <CardTitle className="text-lg">Extracted Sections</CardTitle>
+                    <CardTitle className="text-sm">Processing Statistics</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-2">
-                      {Object.keys(extractedData).length > 0 ? (
-                        Object.keys(extractedData).map(section => (
-                          <div key={section} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                            <span className="capitalize">{section.replace('_', ' ')}</span>
-                            <CheckCircle className="w-4 h-4 text-green-500" />
-                          </div>
-                        ))
-                      ) : (
-                        <p className="text-gray-500 text-sm">No data extracted yet</p>
-                      )}
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Status:</span>
+                        <span className="font-medium text-green-600 flex items-center gap-1">
+                          <CheckCircle className="w-4 h-4" />
+                          Complete
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Processing Time:</span>
+                        <span className="font-medium">
+                          {processingTime ? `${processingTime.toFixed(1)}s` : 'N/A'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Pages:</span>
+                        <span className="font-medium">{pagesProcessed || 'N/A'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Chunks:</span>
+                        <span className="font-medium">{chunks.length}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Model:</span>
+                        <span className="font-medium">{modelUsed}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Sections:</span>
+                        <span className="font-medium">{Object.keys(extractedData).length}</span>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
