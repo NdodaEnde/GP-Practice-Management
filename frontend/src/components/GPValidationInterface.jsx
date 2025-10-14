@@ -654,92 +654,338 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
             )}
 
             {activeTab === 'chronic' && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Chronic Care Summary</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {Object.keys(chronicSummary).length > 0 ? (
-                    <div className="space-y-4">
-                      {chronicSummary.chronic_conditions && (
-                        <div>
-                          <h3 className="font-medium text-gray-700 mb-2">Chronic Conditions</h3>
-                          <div className="space-y-2">
-                            {Array.isArray(chronicSummary.chronic_conditions) ? (
-                              chronicSummary.chronic_conditions.map((condition, idx) => (
-                                <div key={idx} className="p-2 bg-gray-50 rounded border">
-                                  {typeof condition === 'object' ? (
-                                    <div className="space-y-1">
-                                      {Object.entries(condition).map(([key, val]) => (
-                                        <div key={key} className="flex justify-between text-sm">
-                                          <span className="text-gray-600 capitalize">{key.replace(/_/g, ' ')}:</span>
-                                          <span className="font-medium">{val || 'N/A'}</span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  ) : (
-                                    condition
-                                  )}
-                                </div>
-                              ))
-                            ) : (
-                              <div className="p-2 bg-gray-50 rounded border">
-                                {JSON.stringify(chronicSummary.chronic_conditions)}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                      
-                      {chronicSummary.current_medications && (
-                        <div>
-                          <h3 className="font-medium text-gray-700 mb-2">Current Medications</h3>
-                          <div className="space-y-2">
-                            {Array.isArray(chronicSummary.current_medications) ? (
-                              chronicSummary.current_medications.map((med, idx) => (
-                                <div key={idx} className="p-2 bg-gray-50 rounded border">
-                                  {typeof med === 'object' ? (
-                                    <div className="space-y-1">
-                                      {Object.entries(med).map(([key, val]) => (
-                                        <div key={key} className="flex justify-between text-sm">
-                                          <span className="text-gray-600 capitalize">{key.replace(/_/g, ' ')}:</span>
-                                          <span className="font-medium">{val || 'N/A'}</span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  ) : (
-                                    med
-                                  )}
-                                </div>
-                              ))
-                            ) : (
-                              <div className="p-2 bg-gray-50 rounded border">
-                                {JSON.stringify(chronicSummary.current_medications)}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                      
-                      {/* Show other fields */}
-                      {Object.entries(chronicSummary)
-                        .filter(([key]) => key !== 'chronic_conditions' && key !== 'current_medications')
-                        .map(([key, value]) => (
-                          <div key={key}>
-                            <h3 className="font-medium text-gray-700 mb-2 capitalize">
-                              {key.replace(/_/g, ' ')}
-                            </h3>
-                            <div className="p-2 bg-gray-50 rounded border">
-                              {typeof value === 'object' ? JSON.stringify(value, null, 2) : value || 'N/A'}
-                            </div>
-                          </div>
-                        ))}
+              <div className="space-y-4">
+                {/* Chronic Conditions Table */}
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle>Chronic Conditions</CardTitle>
+                        <p className="text-sm text-gray-500 mt-1">Click on rows to edit, add or remove conditions</p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const newCondition = {
+                            condition_name: '',
+                            mentioned_date: '',
+                            context: '',
+                            is_chronic: null
+                          };
+                          setEditedChronicCare(prev => ({
+                            ...prev,
+                            chronic_conditions: [...(prev.chronic_conditions || []), newCondition]
+                          }));
+                        }}
+                        className="gap-2"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Add Condition
+                      </Button>
                     </div>
-                  ) : (
-                    <p className="text-gray-500">No chronic care data extracted</p>
-                  )}
-                </CardContent>
-              </Card>
+                  </CardHeader>
+                  <CardContent>
+                    {editedChronicCare.chronic_conditions && editedChronicCare.chronic_conditions.length > 0 ? (
+                      <div className="overflow-x-auto">
+                        <table className="w-full border-collapse">
+                          <thead>
+                            <tr className="bg-gray-50 border-b">
+                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Condition</th>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Date</th>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Chronic?</th>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Context</th>
+                              <th className="px-3 py-2 text-center text-xs font-medium text-gray-600">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {editedChronicCare.chronic_conditions.map((condition, idx) => (
+                              <tr key={idx} className="border-b hover:bg-gray-50">
+                                <td className="px-3 py-2">
+                                  <Input
+                                    value={condition.condition_name || ''}
+                                    onChange={(e) => {
+                                      const newConditions = [...editedChronicCare.chronic_conditions];
+                                      newConditions[idx].condition_name = e.target.value;
+                                      setEditedChronicCare(prev => ({
+                                        ...prev,
+                                        chronic_conditions: newConditions
+                                      }));
+                                      trackModification(
+                                        `chronic_conditions[${idx}].condition_name`,
+                                        chronicSummary.chronic_conditions?.[idx]?.condition_name,
+                                        e.target.value,
+                                        'chronic_summary'
+                                      );
+                                    }}
+                                    className="text-sm"
+                                  />
+                                </td>
+                                <td className="px-3 py-2">
+                                  <Input
+                                    type="date"
+                                    value={condition.mentioned_date || ''}
+                                    onChange={(e) => {
+                                      const newConditions = [...editedChronicCare.chronic_conditions];
+                                      newConditions[idx].mentioned_date = e.target.value;
+                                      setEditedChronicCare(prev => ({
+                                        ...prev,
+                                        chronic_conditions: newConditions
+                                      }));
+                                      trackModification(
+                                        `chronic_conditions[${idx}].mentioned_date`,
+                                        chronicSummary.chronic_conditions?.[idx]?.mentioned_date,
+                                        e.target.value,
+                                        'chronic_summary'
+                                      );
+                                    }}
+                                    className="text-sm"
+                                  />
+                                </td>
+                                <td className="px-3 py-2">
+                                  <select
+                                    value={condition.is_chronic === null ? 'null' : condition.is_chronic.toString()}
+                                    onChange={(e) => {
+                                      const newConditions = [...editedChronicCare.chronic_conditions];
+                                      const value = e.target.value === 'null' ? null : e.target.value === 'true';
+                                      newConditions[idx].is_chronic = value;
+                                      setEditedChronicCare(prev => ({
+                                        ...prev,
+                                        chronic_conditions: newConditions
+                                      }));
+                                      trackModification(
+                                        `chronic_conditions[${idx}].is_chronic`,
+                                        chronicSummary.chronic_conditions?.[idx]?.is_chronic,
+                                        value,
+                                        'chronic_summary'
+                                      );
+                                    }}
+                                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:border-teal-500"
+                                  >
+                                    <option value="null">Unknown</option>
+                                    <option value="true">Yes</option>
+                                    <option value="false">No</option>
+                                  </select>
+                                </td>
+                                <td className="px-3 py-2">
+                                  <Textarea
+                                    value={condition.context || ''}
+                                    onChange={(e) => {
+                                      const newConditions = [...editedChronicCare.chronic_conditions];
+                                      newConditions[idx].context = e.target.value;
+                                      setEditedChronicCare(prev => ({
+                                        ...prev,
+                                        chronic_conditions: newConditions
+                                      }));
+                                      trackModification(
+                                        `chronic_conditions[${idx}].context`,
+                                        chronicSummary.chronic_conditions?.[idx]?.context,
+                                        e.target.value,
+                                        'chronic_summary'
+                                      );
+                                    }}
+                                    className="text-sm min-h-[60px]"
+                                    rows={2}
+                                  />
+                                </td>
+                                <td className="px-3 py-2 text-center">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => {
+                                      const newConditions = editedChronicCare.chronic_conditions.filter((_, i) => i !== idx);
+                                      setEditedChronicCare(prev => ({
+                                        ...prev,
+                                        chronic_conditions: newConditions
+                                      }));
+                                      trackModification(
+                                        `chronic_conditions[${idx}]`,
+                                        chronicSummary.chronic_conditions?.[idx],
+                                        null,
+                                        'chronic_summary'
+                                      );
+                                    }}
+                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className="text-gray-500 text-center py-4">No chronic conditions recorded</p>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Medications Table */}
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle>Medications</CardTitle>
+                        <p className="text-sm text-gray-500 mt-1">Manage current medications</p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const newMedication = {
+                            medication_name: '',
+                            dosage_info: '',
+                            mentioned_date: '',
+                            context: '',
+                            legibility: 'Clear'
+                          };
+                          setEditedChronicCare(prev => ({
+                            ...prev,
+                            current_medications: [...(prev.current_medications || []), newMedication]
+                          }));
+                        }}
+                        className="gap-2"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Add Medication
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {editedChronicCare.current_medications && editedChronicCare.current_medications.length > 0 ? (
+                      <div className="overflow-x-auto">
+                        <table className="w-full border-collapse">
+                          <thead>
+                            <tr className="bg-gray-50 border-b">
+                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Medication</th>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Dosage</th>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Date</th>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">Legibility</th>
+                              <th className="px-3 py-2 text-center text-xs font-medium text-gray-600">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {editedChronicCare.current_medications.map((med, idx) => (
+                              <tr key={idx} className="border-b hover:bg-gray-50">
+                                <td className="px-3 py-2">
+                                  <Input
+                                    value={med.medication_name || ''}
+                                    onChange={(e) => {
+                                      const newMeds = [...editedChronicCare.current_medications];
+                                      newMeds[idx].medication_name = e.target.value;
+                                      setEditedChronicCare(prev => ({
+                                        ...prev,
+                                        current_medications: newMeds
+                                      }));
+                                      trackModification(
+                                        `current_medications[${idx}].medication_name`,
+                                        chronicSummary.current_medications?.[idx]?.medication_name,
+                                        e.target.value,
+                                        'chronic_summary'
+                                      );
+                                    }}
+                                    className="text-sm"
+                                  />
+                                </td>
+                                <td className="px-3 py-2">
+                                  <Input
+                                    value={med.dosage_info || ''}
+                                    onChange={(e) => {
+                                      const newMeds = [...editedChronicCare.current_medications];
+                                      newMeds[idx].dosage_info = e.target.value;
+                                      setEditedChronicCare(prev => ({
+                                        ...prev,
+                                        current_medications: newMeds
+                                      }));
+                                      trackModification(
+                                        `current_medications[${idx}].dosage_info`,
+                                        chronicSummary.current_medications?.[idx]?.dosage_info,
+                                        e.target.value,
+                                        'chronic_summary'
+                                      );
+                                    }}
+                                    className="text-sm"
+                                  />
+                                </td>
+                                <td className="px-3 py-2">
+                                  <Input
+                                    type="date"
+                                    value={med.mentioned_date || ''}
+                                    onChange={(e) => {
+                                      const newMeds = [...editedChronicCare.current_medications];
+                                      newMeds[idx].mentioned_date = e.target.value;
+                                      setEditedChronicCare(prev => ({
+                                        ...prev,
+                                        current_medications: newMeds
+                                      }));
+                                      trackModification(
+                                        `current_medications[${idx}].mentioned_date`,
+                                        chronicSummary.current_medications?.[idx]?.mentioned_date,
+                                        e.target.value,
+                                        'chronic_summary'
+                                      );
+                                    }}
+                                    className="text-sm"
+                                  />
+                                </td>
+                                <td className="px-3 py-2">
+                                  <select
+                                    value={med.legibility || 'Clear'}
+                                    onChange={(e) => {
+                                      const newMeds = [...editedChronicCare.current_medications];
+                                      newMeds[idx].legibility = e.target.value;
+                                      setEditedChronicCare(prev => ({
+                                        ...prev,
+                                        current_medications: newMeds
+                                      }));
+                                      trackModification(
+                                        `current_medications[${idx}].legibility`,
+                                        chronicSummary.current_medications?.[idx]?.legibility,
+                                        e.target.value,
+                                        'chronic_summary'
+                                      );
+                                    }}
+                                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:border-teal-500"
+                                  >
+                                    <option value="Clear">Clear</option>
+                                    <option value="Partial">Partial</option>
+                                    <option value="Poor">Poor</option>
+                                  </select>
+                                </td>
+                                <td className="px-3 py-2 text-center">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => {
+                                      const newMeds = editedChronicCare.current_medications.filter((_, i) => i !== idx);
+                                      setEditedChronicCare(prev => ({
+                                        ...prev,
+                                        current_medications: newMeds
+                                      }));
+                                      trackModification(
+                                        `current_medications[${idx}]`,
+                                        chronicSummary.current_medications?.[idx],
+                                        null,
+                                        'chronic_summary'
+                                      );
+                                    }}
+                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className="text-gray-500 text-center py-4">No medications recorded</p>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
             )}
 
             {activeTab === 'vitals' && (
