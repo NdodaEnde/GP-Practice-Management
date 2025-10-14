@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from './ui/select';
 import { FileText, Save } from 'lucide-react';
-import { useToast } from './ui/use-toast';
+import { useToast } from '../hooks/use-toast';
 
 const SickNoteBuilder = ({ patientId, encounterId, doctorName, onSave }) => {
   const { toast } = useToast();
