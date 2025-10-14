@@ -5,6 +5,7 @@ import PatientRegistry from './pages/PatientRegistry';
 import PatientEHR from './pages/PatientEHR';
 import NewEncounter from './pages/NewEncounter';
 import AIScribe from './pages/AIScribe';
+import PatientPrescriptions from './pages/PatientPrescriptions';
 import ValidationInterface from './pages/ValidationInterface';
 import DocumentDigitization from './pages/DocumentDigitization';
 import GPPatientDigitization from './pages/GPPatientDigitization';
