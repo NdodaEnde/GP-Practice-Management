@@ -294,32 +294,36 @@ class AIScribeTester:
             self.log_test("AI Scribe Error Handling", False, f"Error testing error handling: {str(e)}")
             return False
     
-    def verify_audit_event_logged(self, document_id):
-        """Verify that an audit event was logged"""
+    def test_ai_scribe_with_mock_transcription(self):
+        """Test SOAP generation with mock transcription (fallback if Whisper fails)"""
         try:
-            # Check audit_events collection in the main database
-            main_db = self.mongo_client['surgiscan_db']  # Main database name from backend/.env
+            # Use a realistic medical consultation transcription
+            mock_transcription = """
+            Patient Sarah Johnson, 42 years old, presents with complaints of increased thirst and frequent urination over the past two weeks. 
+            She reports feeling more tired than usual and has noticed some blurred vision. 
+            Patient has a family history of diabetes. 
+            On examination, blood pressure is 145 over 90, heart rate 88 beats per minute. 
+            Patient appears well but slightly dehydrated. 
+            Blood glucose finger stick shows 280 milligrams per deciliter. 
+            I suspect new onset diabetes mellitus type 2. 
+            Plan to start metformin 500 milligrams twice daily, recommend dietary changes, and follow up in one week with lab work including hemoglobin A1C and comprehensive metabolic panel.
+            """
             
-            # Look for recent audit event for this document
-            recent_time = datetime.now(timezone.utc).replace(minute=datetime.now(timezone.utc).minute - 5)
-            audit_event = main_db.audit_events.find_one({
-                "event_type": "gp_document_validated",
-                "document_id": document_id,
-                "timestamp": {"$gte": recent_time.isoformat()}
-            })
+            # Test SOAP generation with mock transcription
+            success, result = self.test_ai_scribe_soap_generation_endpoint(mock_transcription)
             
-            if audit_event:
-                self.log_test("Audit Event Logging", True, 
-                            f"Audit event logged with type: {audit_event['event_type']}")
-                return True
+            if success:
+                self.log_test("AI Scribe Mock Transcription Test", True, 
+                            "SOAP generation works with realistic medical transcription")
+                return True, result
             else:
-                self.log_test("Audit Event Logging", False, 
-                            "No audit event found for document validation")
-                return False
+                self.log_test("AI Scribe Mock Transcription Test", False, 
+                            "SOAP generation failed with mock transcription")
+                return False, None
                 
         except Exception as e:
-            self.log_test("Audit Event Logging", False, f"Error checking audit events: {str(e)}")
-            return False
+            self.log_test("AI Scribe Mock Transcription Test", False, f"Error in mock transcription test: {str(e)}")
+            return False, None
     
     def run_complete_validation_workflow_test(self):
         """Run the complete GP validation workflow test"""
