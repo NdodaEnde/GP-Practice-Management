@@ -2380,6 +2380,9 @@ async def transcribe_audio(file: UploadFile):
         if not api_key:
             raise HTTPException(status_code=500, detail="OPENAI_API_KEY not configured")
         
+        # Debug log to verify key being used
+        logger.info(f"Using API key for Whisper: {api_key[:15]}...")
+        
         # Initialize OpenAI client for Whisper
         client = openai.OpenAI(api_key=api_key)
         
