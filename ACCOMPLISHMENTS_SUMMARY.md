@@ -263,122 +263,132 @@ Error code: 402 - {'error': 'Payment Required. User balance is insufficient.'}
 
 ---
 
-## 🎯 NEXT STEPS - AVAILABLE OPTIONS
+## 🎯 NEXT STEPS - CURRENT PRIORITY
 
-Since LandingAI is blocked, here are other features we can work on:
+### Phase 1.6: Document-to-EHR Integration (5 days) ⭐
 
-### Option 1: AI Scribe for Consultation 🎙️
-**High Value Feature!**
-- Speech-to-text during consultation
-- Automatic SOAP note generation
-- ICD-10 code suggestions
-- Medication suggestions
-- Doctor doesn't need to type notes
+Since LandingAI document processing is currently blocked, we're focusing on completing the digitization workflow loop.
 
-**Tech Stack:**
-- OpenAI Whisper (speech-to-text)
-- OpenAI GPT-4 (structuring notes)
-- Real-time transcription
-- Voice commands
+#### 1. Smart Patient Matching (1 day)
+**Approach:** Semi-automatic with human confirmation
+- Automatic search by SA ID number (primary method)
+- Fallback: Name + DOB fuzzy matching
+- Confidence scoring: High (95%+), Medium (70-94%), Low (<70%)
+- User confirmation interface with side-by-side comparison
+- Duplicate prevention
+- "Create New Patient" option
 
-**Estimated Time**: 3-4 days
+**Why This Approach:**
+- Prevents duplicate patient records
+- Catches name variations (maiden names, spelling differences)
+- Human oversight for edge cases
+- Fast for obvious matches (one click)
+- Safe for uncertain cases
 
 ---
 
-### Option 2: Queue Management System 📊
-**Foundation for Practice Workflow**
+#### 2. Automatic EHR Population (1.5 days)
+**After user confirms patient match:**
+- Create new patient if no match
+- Create encounter from validated document data
+- Populate vitals, chronic conditions, medications, clinical notes
+- Smart merging (avoid duplicate conditions/medications)
+- Link original document to encounter
+- Update document status to "linked"
+- Audit logging
+
+**Benefits:**
+- Validated data automatically flows into EHR
+- Historical records properly captured
+- Complete patient timeline maintained
+
+---
+
+#### 3. Document Archive Viewer (2 days) - **CRITICAL FOR COMPLIANCE**
+**South Africa Requirement: 40-year retention for medical records**
+
+**Features:**
+- Patient document history timeline
+- View original PDF (immutable)
+- View extracted/validated data side-by-side
+- Validation audit trail (who, when, what changed)
+- Access control (all staff for now, role-based later)
+- Print/download for legal cases
+- Legal export package (document + audit trail)
+
+**Document Types Supported:**
+- Consultation notes
+- Lab results
+- Prescription history
+- Hospital discharge summaries
+- All scanned medical documents
+
+**Legal/Compliance:**
+- Access audit logs (who viewed what and when)
+- Document integrity verification (cryptographic hash)
+- Chain of custody tracking
+- Export for HPCSA audits and legal proceedings
+- POPIA compliance (Protection of Personal Information Act)
+
+---
+
+#### 4. Access Audit Trail (0.5 days)
+- Log every document access (view, download, print, export)
+- Track user, timestamp, IP address, action
+- Searchable audit logs
+- Alert on suspicious patterns
+- Immutable logs for compliance
+
+---
+
+### Implementation Order:
+1. ✅ Day 1: Smart patient matching
+2. ✅ Day 2-3: EHR population workflow
+3. ✅ Day 4-5: Document archive viewer
+4. ✅ Day 5: Access audit trail
+
+**After Phase 1.6 Complete:**
+- Digitization workflow will be fully functional end-to-end
+- Historical patient records properly archived
+- Legal compliance requirements met
+- Ready to move to Queue Management (Phase 2)
+
+---
+
+## 🔄 After Current Phase
+
+### Future Options (In Priority Order):
+
+#### Option 1: Queue Management System 📊
+**Foundation for Complete Practice Workflow**
 - Patient check-in interface
-- Queue number assignment
-- Real-time queue display
+- Real-time queue display (LED screen ready)
 - Station-to-station tracking
-- LED screen support
 - Audio announcements
+- Wait time analytics
 
-**Components:**
-- Reception check-in page
-- Queue display page
-- Workstation dashboard
-- Queue management API
-
-**Estimated Time**: 2-3 days
+**Estimated time**: 2-3 days
 
 ---
 
-### Option 3: Enhanced Prescription Module 💊
-**Complement to Encounters**
-- Electronic prescription generation
-- Drug interaction checker
-- Dosage calculator
-- Prescription templates
-- Referral letter generation
-- Sick note generation
+#### Option 2: AI Scribe 🎙️
+**High Value - Transform Doctor Workflow**
+- Real-time voice transcription
+- Auto-generate SOAP notes
+- ICD-10 code suggestions
+- Reduce manual note-taking
 
-**Estimated Time**: 2 days
+**Estimated time**: 3-4 days
 
 ---
 
-### Option 4: Vitals Station Integration 🩺
-**Quick Win**
-- Dedicated vitals entry page
-- Optimized for quick input
-- Nurse/Doctor workflow
-- Auto-timestamp tracking
-- Integration with EHR
+#### Option 3: Vitals Station 🩺
+**Quick Win - Nurse Workflow**
+- Dedicated vitals entry interface
+- Fast BP, HR, Temp, Weight input
+- Auto-timestamp and save
 
-**Estimated Time**: 1 day
-
----
-
-### Option 5: Dispensary Workflow 💊
-**If GPs have dispensing licenses**
-- Electronic prescription inbox
-- Medication preparation tracking
-- Stock management
-- Dispensing recording
-- Patient counseling checklist
-
-**Estimated Time**: 2 days
-
----
-
-### Option 6: Self-Service Patient Check-in 📱
-**Modern Patient Experience**
-- Tablet-based check-in
-- Existing patient: "I'm here" button
-- New patient: Quick registration
-- Reason for visit capture
-- QR code check-in (optional)
-
-**Estimated Time**: 2 days
-
----
-
-### Option 7: Intelligent Document Search (Phase 8) 🔍
-**Note**: This requires processed documents with grounding data, so partially blocked
-
-**What we CAN build:**
-- Basic search infrastructure
-- Search UI/UX
-- MongoDB text indexes
-- Search API endpoints
-
-**What we CANNOT test**:
-- Visual grounding with highlights (needs real documents)
-
-**Estimated Time**: 1-2 days (partial implementation)
-
----
-
-## 💡 RECOMMENDATION
-
-Based on immediate value and no blocking dependencies, I recommend:
-
-**Top Priority Options:**
-1. **AI Scribe** (Highest value, no dependencies, transforms doctor workflow)
-2. **Queue Management** (Foundation for complete practice workflow)
-3. **Vitals Station** (Quick win, complements existing encounters)
-
-**Which would you like to proceed with?**
+**Estimated time**: 1 day
 
 ---
 
