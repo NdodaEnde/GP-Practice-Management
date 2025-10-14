@@ -216,3 +216,21 @@ agent_communication:
       
       BACKEND TESTING STATUS: Both AI Scribe endpoints are fully functional
       NEXT: Frontend testing needed for complete end-to-end workflow validation
+  - agent: "main"
+    message: |
+      AI SCRIBE UPDATED: Switched to OpenAI Direct API for Both Endpoints
+      
+      Per user request, both AI Scribe endpoints now use OpenAI API directly with OPENAI_API_KEY:
+      
+      1. /api/ai-scribe/transcribe:
+         - Uses: OpenAI Whisper API (whisper-1 model)
+         - Endpoint: https://api.openai.com/v1/audio/transcriptions
+         
+      2. /api/ai-scribe/generate-soap:
+         - UPDATED: Now uses OpenAI GPT-4o (was GPT-5 via Emergent)
+         - Endpoint: https://api.openai.com/v1/chat/completions
+         - Successfully tested with sample transcription
+         - Generates proper SOAP notes with all 4 sections
+      
+      No dependency on Emergent LLM Key anymore. All AI features use single OPENAI_API_KEY.
+      Ready for comprehensive backend testing.
