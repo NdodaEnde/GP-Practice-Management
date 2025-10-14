@@ -513,6 +513,249 @@ Response:
 
 ---
 
+## Phase 8: Intelligent Document Search with Visual Grounding 🔍 (NEW)
+
+**Vision:** Enable doctors to search across 20+ years of digitized patient records with visual highlighting of relevant sections.
+
+### Use Case
+*"Doctor needs to reference a rare disease case from 8 years ago. Search for disease name, system shows matching cases with the original document displayed and relevant sections visually highlighted."*
+
+### What Makes This Powerful
+- **Semantic Search:** Find documents by medical terms, conditions, medications, symptoms
+- **Visual Grounding:** LandingAI's bounding boxes highlight exact sections containing search terms
+- **Historical Context:** Access decades of medical records instantly
+- **Case-Based Learning:** Compare similar cases across time
+
+---
+
+### Architecture Already in Place ✅
+
+**Current Foundation (Already Built):**
+1. ✅ **Document parsing with chunks** - Each document broken into semantic chunks
+2. ✅ **Grounding coordinates** - Every chunk has `{page, box: {top, left, bottom, right}}`
+3. ✅ **MongoDB storage** - All chunks stored with metadata in `gp_parsed_documents` collection
+4. ✅ **Text extraction** - Markdown content available for each chunk
+5. ✅ **PDF viewer** - Already displaying documents with react-pdf
+6. ✅ **Patient linking** - Documents associated with patients/encounters
+
+**What This Means:**
+The heavy lifting is done! Each chunk already has:
+```javascript
+{
+  id: "chunk_123",
+  markdown: "Patient diagnosed with Addison's disease...",
+  grounding: {
+    page: 2,
+    box: { top: 0.15, left: 0.10, bottom: 0.25, right: 0.90 }
+  }
+}
+```
+
+---
+
+### Implementation Phases
+
+#### Phase 8.1: Basic Text Search (Week 1) 🎯
+**Scope:** Full-text search across all document chunks
+
+**Backend:**
+- Create MongoDB text index on `parsed_data.chunks.markdown`
+- Build search API endpoint: `GET /api/gp/search?query={term}&patient_id={id}`
+- Return matching chunks with document metadata and grounding coordinates
+
+**Frontend:**
+- New "Search Records" page with search bar
+- Results list showing:
+  - Document name & date
+  - Patient name
+  - Snippet of matching text
+  - Number of matches
+
+**Estimated Time:** 1-2 days
+
+---
+
+#### Phase 8.2: Visual Grounding & Highlighting (Week 1-2) ⭐
+**Scope:** Display documents with highlighted search results
+
+**Frontend Enhancements:**
+- Split view: Search results (left) + PDF viewer (right)
+- Click result → Load PDF at correct page
+- Draw highlight boxes on PDF using grounding coordinates
+- Canvas overlay technique or PDF.js annotations
+
+**Implementation:**
+```javascript
+// Pseudo-code for highlighting
+searchResults.forEach(result => {
+  const { page, box } = result.grounding;
+  drawHighlightBox(page, box, 'yellow');
+});
+```
+
+**Estimated Time:** 2-3 days
+
+---
+
+#### Phase 8.3: Advanced Search Features (Week 2-3) 🚀
+
+**Smart Search Capabilities:**
+1. **Multi-term search:** "diabetes AND hypertension"
+2. **Field-specific:** Search in demographics, chronic conditions, medications separately
+3. **Date range filters:** "Cases between 2015-2020"
+4. **Patient filtering:** Search within specific patient's history
+5. **Fuzzy matching:** Handle typos and variations
+
+**AI-Enhanced Search (Optional):**
+- Semantic search using embeddings
+- "Find similar cases to this patient"
+- Auto-suggest related medical terms
+- Summary of matching documents
+
+**Estimated Time:** 3-4 days
+
+---
+
+#### Phase 8.4: Case Comparison & Analytics (Week 3-4) 📊
+
+**Clinical Intelligence:**
+- "Show all patients with [condition] and their outcomes"
+- Treatment patterns across similar cases
+- Medication efficacy tracking
+- Rare disease case library
+- Export results for research
+
+**Estimated Time:** 3-4 days
+
+---
+
+### Technical Implementation Details
+
+#### Backend Search API
+```python
+@api_router.get("/gp/search")
+async def search_documents(
+    query: str,
+    patient_id: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    limit: int = 50
+):
+    """
+    Search across parsed document chunks with grounding
+    Returns: {
+      results: [{
+        document_id,
+        patient_id,
+        chunk_id,
+        matched_text,
+        context,
+        grounding: {page, box},
+        score
+      }]
+    }
+    """
+```
+
+#### MongoDB Query
+```javascript
+db.gp_parsed_documents.aggregate([
+  // Text search
+  { $match: { $text: { $search: "addison disease" } } },
+  // Unwind chunks
+  { $unwind: "$parsed_data.chunks" },
+  // Filter matching chunks
+  { $match: { "parsed_data.chunks.markdown": { $regex: "addison", $options: "i" } } },
+  // Add score
+  { $addFields: { score: { $meta: "textScore" } } },
+  // Sort by relevance
+  { $sort: { score: -1 } },
+  { $limit: 50 }
+])
+```
+
+#### Frontend Highlighting Component
+```jsx
+<PDFHighlightViewer
+  documentId={selectedResult.document_id}
+  highlights={searchMatches.map(m => ({
+    page: m.grounding.page,
+    box: m.grounding.box,
+    color: 'yellow'
+  }))}
+/>
+```
+
+---
+
+### Success Metrics
+
+**Phase 8.1:**
+- ✅ Search returns results in < 1 second
+- ✅ Finds relevant documents with 90%+ accuracy
+- ✅ Handles 10,000+ documents efficiently
+
+**Phase 8.2:**
+- ✅ Visual highlights render correctly on PDF
+- ✅ Clicking result jumps to correct page
+- ✅ Supports multi-page documents with multiple matches
+
+**Phase 8.3:**
+- ✅ Advanced filters work correctly
+- ✅ Fuzzy search handles misspellings
+- ✅ Search suggestions improve user experience
+
+---
+
+### Dependencies
+
+**Required:**
+- ✅ MongoDB text indexes
+- ✅ PDF.js for document rendering (already integrated)
+- ✅ Canvas API for drawing highlights
+
+**Optional (for Phase 8.3+):**
+- OpenAI embeddings for semantic search
+- ElasticSearch for advanced full-text capabilities
+- Redis for search result caching
+
+---
+
+### Risk Assessment
+
+**Low Risk:**
+- Text search - MongoDB handles this natively ✅
+- PDF display - Already working ✅
+- Grounding data - Already captured ✅
+
+**Medium Risk:**
+- Visual highlighting accuracy - Need to test box coordinate precision
+- Performance with large document sets - May need indexing optimization
+
+**Mitigation:**
+- Start with basic search, validate accuracy
+- Test with real 20-year dataset
+- Optimize indexes before launch
+
+---
+
+### Next Steps for Phase 8
+
+**Before Starting:**
+1. ✅ Complete and stabilize current digitization workflow
+2. Test with real patient documents
+3. Gather feedback on existing features
+
+**When Ready to Build:**
+1. **Week 1:** Phase 8.1 - Basic search functionality
+2. **Week 2:** Phase 8.2 - Visual highlighting
+3. **Week 3-4:** Phase 8.3 - Advanced features (if needed)
+
+**Recommendation:**
+Build Phase 8.1 and 8.2 first as MVP, then gather user feedback before investing in advanced features. The core value is finding and visually highlighting historical cases - everything else is enhancement.
+
+---
+
 ## Questions for You
 
 1. **Self-service check-in:** Yes or No? If yes, what should existing patients enter?
