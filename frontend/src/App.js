@@ -32,6 +32,7 @@ function App() {
             <Route path="patients" element={<PatientRegistry />} />
             <Route path="patients/:patientId" element={<PatientEHR />} />
             <Route path="patients/:patientId/documents" element={<DocumentArchive />} />
+            <Route path="patients/:patientId/prescriptions" element={<PatientPrescriptions />} />
             <Route path="patients/:patientId/ai-scribe" element={<AIScribe />} />
             <Route path="encounters/new/:patientId" element={<NewEncounter />} />
             <Route path="validation/:encounterId" element={<ValidationInterface />} />
