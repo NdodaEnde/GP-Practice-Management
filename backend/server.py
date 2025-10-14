@@ -2084,6 +2084,271 @@ async def search_documents(
         logger.error(f"Error searching documents: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# ==================== Queue Management Endpoints ====================
+
+@api_router.post("/queue/check-in")
+async def queue_check_in(check_in: QueueCheckIn):
+    """Check in a patient and add them to the queue"""
+    try:
+        patient_id = check_in.patient_id
+        
+        # Get patient details
+        patient_result = supabase.table('patients').select('*').eq('id', patient_id).execute()
+        if not patient_result.data:
+            raise HTTPException(status_code=404, detail="Patient not found")
+        
+        patient = patient_result.data[0]
+        
+        # Get next queue number
+        queue_number = await get_next_queue_number()
+        
+        # Create queue entry
+        queue_id = str(uuid.uuid4())
+        today = datetime.now(timezone.utc).date().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
+        
+        queue_entry = {
+            'id': queue_id,
+            'queue_number': queue_number,
+            'patient_id': patient_id,
+            'patient_name': f"{patient['first_name']} {patient['last_name']}",
+            'reason_for_visit': check_in.reason_for_visit,
+            'priority': check_in.priority,
+            'status': 'waiting',  # waiting, in_vitals, in_consultation, completed, cancelled
+            'station': 'reception',  # reception, vitals, consultation, dispensary
+            'check_in_time': now,
+            'date': today,
+            'workspace_id': DEMO_WORKSPACE_ID,
+            'tenant_id': DEMO_TENANT_ID,
+            'wait_time_minutes': 0,
+            'created_at': now
+        }
+        
+        await db.queue_entries.insert_one(queue_entry)
+        
+        # Log audit event
+        await db.audit_events.insert_one({
+            'id': str(uuid.uuid4()),
+            'tenant_id': DEMO_TENANT_ID,
+            'workspace_id': DEMO_WORKSPACE_ID,
+            'event_type': 'patient_checked_in',
+            'patient_id': patient_id,
+            'queue_id': queue_id,
+            'queue_number': queue_number,
+            'timestamp': now
+        })
+        
+        logger.info(f"Patient {patient_id} checked in with queue number {queue_number}")
+        
+        return {
+            'status': 'success',
+            'message': 'Patient checked in successfully',
+            'queue_id': queue_id,
+            'queue_number': queue_number,
+            'patient_name': queue_entry['patient_name']
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error checking in patient: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/queue/current")
+async def get_current_queue(station: Optional[str] = None):
+    """Get current queue for today"""
+    try:
+        today = datetime.now(timezone.utc).date().isoformat()
+        
+        # Build filter
+        queue_filter = {
+            'date': today,
+            'status': {'$in': ['waiting', 'in_vitals', 'in_consultation']}
+        }
+        
+        if station:
+            queue_filter['station'] = station
+        
+        # Get queue entries
+        cursor = db.queue_entries.find(queue_filter).sort('queue_number', 1)
+        queue = await cursor.to_list(length=None)
+        
+        # Convert ObjectId to string
+        for entry in queue:
+            if entry.get('_id'):
+                entry['_id'] = str(entry['_id'])
+            
+            # Calculate wait time
+            check_in_time = datetime.fromisoformat(entry['check_in_time'])
+            wait_time = (datetime.now(timezone.utc) - check_in_time).total_seconds() / 60
+            entry['wait_time_minutes'] = int(wait_time)
+        
+        return {
+            'status': 'success',
+            'date': today,
+            'queue': queue,
+            'count': len(queue)
+        }
+    except Exception as e:
+        logger.error(f"Error getting current queue: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/queue/{queue_id}/call-next")
+async def call_next_patient(queue_id: str, station: str):
+    """Call the next patient to a station"""
+    try:
+        # Get queue entry
+        queue_entry = await db.queue_entries.find_one({'id': queue_id})
+        
+        if not queue_entry:
+            raise HTTPException(status_code=404, detail="Queue entry not found")
+        
+        # Update status based on station
+        status_map = {
+            'vitals': 'in_vitals',
+            'consultation': 'in_consultation',
+            'dispensary': 'in_dispensary'
+        }
+        
+        new_status = status_map.get(station, 'in_consultation')
+        
+        # Update queue entry
+        now = datetime.now(timezone.utc).isoformat()
+        await db.queue_entries.update_one(
+            {'id': queue_id},
+            {
+                '$set': {
+                    'status': new_status,
+                    'station': station,
+                    'called_at': now,
+                    'updated_at': now
+                }
+            }
+        )
+        
+        # Log audit event
+        await db.audit_events.insert_one({
+            'id': str(uuid.uuid4()),
+            'tenant_id': DEMO_TENANT_ID,
+            'workspace_id': DEMO_WORKSPACE_ID,
+            'event_type': 'patient_called',
+            'patient_id': queue_entry['patient_id'],
+            'queue_id': queue_id,
+            'station': station,
+            'timestamp': now
+        })
+        
+        logger.info(f"Patient {queue_entry['patient_id']} called to {station}")
+        
+        return {
+            'status': 'success',
+            'message': f"Patient called to {station}",
+            'queue_number': queue_entry['queue_number'],
+            'patient_name': queue_entry['patient_name']
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error calling next patient: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.put("/queue/{queue_id}/update-status")
+async def update_queue_status(queue_id: str, update: QueueUpdate):
+    """Update queue entry status"""
+    try:
+        queue_entry = await db.queue_entries.find_one({'id': queue_id})
+        
+        if not queue_entry:
+            raise HTTPException(status_code=404, detail="Queue entry not found")
+        
+        # Update fields
+        update_fields = {
+            'status': update.status,
+            'updated_at': datetime.now(timezone.utc).isoformat()
+        }
+        
+        if update.station:
+            update_fields['station'] = update.station
+        
+        if update.notes:
+            update_fields['notes'] = update.notes
+        
+        if update.status == 'completed':
+            update_fields['completed_at'] = datetime.now(timezone.utc).isoformat()
+        
+        await db.queue_entries.update_one(
+            {'id': queue_id},
+            {'$set': update_fields}
+        )
+        
+        # Log audit event
+        await db.audit_events.insert_one({
+            'id': str(uuid.uuid4()),
+            'tenant_id': DEMO_TENANT_ID,
+            'workspace_id': DEMO_WORKSPACE_ID,
+            'event_type': 'queue_status_updated',
+            'patient_id': queue_entry['patient_id'],
+            'queue_id': queue_id,
+            'old_status': queue_entry['status'],
+            'new_status': update.status,
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        })
+        
+        logger.info(f"Queue {queue_id} status updated to {update.status}")
+        
+        return {
+            'status': 'success',
+            'message': 'Queue status updated',
+            'queue_id': queue_id
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating queue status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/queue/stats")
+async def get_queue_stats():
+    """Get queue statistics for today"""
+    try:
+        today = datetime.now(timezone.utc).date().isoformat()
+        
+        # Get all queue entries for today
+        cursor = db.queue_entries.find({'date': today})
+        all_entries = await cursor.to_list(length=None)
+        
+        # Calculate statistics
+        total_checked_in = len(all_entries)
+        waiting = len([e for e in all_entries if e['status'] == 'waiting'])
+        in_progress = len([e for e in all_entries if e['status'] in ['in_vitals', 'in_consultation', 'in_dispensary']])
+        completed = len([e for e in all_entries if e['status'] == 'completed'])
+        cancelled = len([e for e in all_entries if e['status'] == 'cancelled'])
+        
+        # Calculate average wait time for completed patients
+        completed_entries = [e for e in all_entries if e.get('completed_at')]
+        avg_wait_time = 0
+        if completed_entries:
+            total_wait = sum([
+                (datetime.fromisoformat(e['completed_at']) - datetime.fromisoformat(e['check_in_time'])).total_seconds() / 60
+                for e in completed_entries
+            ])
+            avg_wait_time = int(total_wait / len(completed_entries))
+        
+        return {
+            'status': 'success',
+            'date': today,
+            'stats': {
+                'total_checked_in': total_checked_in,
+                'waiting': waiting,
+                'in_progress': in_progress,
+                'completed': completed,
+                'cancelled': cancelled,
+                'average_wait_time_minutes': avg_wait_time
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error getting queue stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ==================== Application Setup ====================
 
 # Include router
