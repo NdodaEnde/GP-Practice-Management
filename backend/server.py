@@ -1688,7 +1688,6 @@ async def confirm_patient_match(confirm_request: ConfirmMatchRequest):
         document_id = confirm_request.document_id
         patient_id = confirm_request.patient_id
         parsed_data = confirm_request.parsed_data
-        modifications = confirm_request.modifications
         
         logger.info(f"Confirming patient match: {patient_id} for document {document_id}")
         
