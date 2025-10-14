@@ -61,17 +61,8 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
   const chunkRefs = useRef({});
   const containerRef = useRef(null);
 
-  const handleValidate = () => {
-    toast({
-      title: "Data Validated",
-      description: "Patient data has been validated and saved successfully",
-    });
-    if (onValidationComplete) {
-      onValidationComplete();
-    }
-  };
-
-  console.log('=== GPValidationInterface Debug ===');
+  // Track field modification
+  const trackModification = (fieldPath, originalValue, newValue, section) => {
   console.log('1. patientData:', patientData);
   console.log('2. patientData.data:', patientData?.data);
   console.log('3. patientData.data.data:', patientData?.data?.data);
