@@ -151,22 +151,37 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
                 <Document
                   file={pdfUrl}
                   onLoadSuccess={onDocumentLoadSuccess}
+                  onLoadError={(error) => {
+                    console.error('PDF Load Error:', error);
+                    console.error('PDF URL:', pdfUrl);
+                  }}
                   loading={
                     <div className="flex items-center justify-center p-8">
                       <div className="text-center">
                         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mx-auto mb-4"></div>
                         <p className="text-gray-600">Loading PDF...</p>
+                        <p className="text-xs text-gray-400 mt-2">Document ID: {documentId}</p>
                       </div>
                     </div>
                   }
                   error={
                     <div className="text-center text-red-600 p-8">
-                      <p>Failed to load PDF</p>
+                      <p className="font-semibold">Failed to load PDF</p>
                       <p className="text-sm text-gray-600 mt-2">
                         Document ID: {documentId}
                       </p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        URL: {pdfUrl}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-2">
+                        Check browser console for details
+                      </p>
                     </div>
                   }
+                  options={{
+                    cMapUrl: 'https://unpkg.com/pdfjs-dist@3.11.174/cmaps/',
+                    cMapPacked: true,
+                  }}
                 >
                   <Page 
                     pageNumber={pageNumber} 
@@ -182,6 +197,7 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
                   <FileText className="w-16 h-16 mx-auto mb-4" />
                   <p>Document not available</p>
                   <p className="text-sm mt-2">PDF path: {filePath || 'Not provided'}</p>
+                  <p className="text-sm">Document ID: {documentId || 'Not provided'}</p>
                 </div>
               </div>
             )}
