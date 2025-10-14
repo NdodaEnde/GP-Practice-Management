@@ -43,6 +43,14 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
   const [pageSize, setPageSize] = useState({ width: 0, height: 0 });
   const [leftWidth, setLeftWidth] = useState(50); // For resizable panels
   const [isDragging, setIsDragging] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  
+  // Editable data state
+  const [editedDemographics, setEditedDemographics] = useState({});
+  const [editedChronicCare, setEditedChronicCare] = useState({});
+  const [editedVitals, setEditedVitals] = useState({});
+  const [editedClinicalNotes, setEditedClinicalNotes] = useState({});
+  const [modifications, setModifications] = useState([]);
   
   const { toast } = useToast();
   
