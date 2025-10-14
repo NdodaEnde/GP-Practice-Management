@@ -562,7 +562,7 @@ CREATE TABLE consultation_transcripts (
 
 ---
 
-### **PHASE 5: Dispensary Workflow** (Priority 2)
+### **PHASE 5: Dispensary Workflow** (Priority 5)
 
 **Features:**
 - Electronic prescription inbox
