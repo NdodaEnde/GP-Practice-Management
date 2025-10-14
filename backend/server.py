@@ -532,14 +532,26 @@ async def create_patient(patient: PatientCreate):
 async def list_patients(search: Optional[str] = None):
     """List all patients with optional search"""
     try:
-        query = supabase.table('patients').select('*').eq('workspace_id', DEMO_WORKSPACE_ID)
-        
         if search:
-            # Simple search implementation - in production, use full-text search
-            query = query.or_(f"first_name.ilike.%{search}%,last_name.ilike.%{search}%,id_number.ilike.%{search}%")
-        
-        result = query.order('created_at', desc=True).limit(100).execute()
-        return [PatientResponse(**p) for p in result.data]
+            # Search across multiple fields
+            search_pattern = f"%{search}%"
+            
+            # Get all patients and filter in Python (more reliable than complex Supabase queries)
+            result = supabase.table('patients').select('*').eq('workspace_id', DEMO_WORKSPACE_ID).execute()
+            
+            # Filter results
+            filtered_patients = []
+            for patient in result.data:
+                if (search.lower() in (patient.get('first_name') or '').lower() or
+                    search.lower() in (patient.get('last_name') or '').lower() or
+                    search.lower() in (patient.get('id_number') or '').lower() or
+                    search.lower() in (patient.get('contact_number') or '').lower()):
+                    filtered_patients.append(patient)
+            
+            return [PatientResponse(**p) for p in filtered_patients[:100]]
+        else:
+            result = supabase.table('patients').select('*').eq('workspace_id', DEMO_WORKSPACE_ID).order('created_at', desc=True).limit(100).execute()
+            return [PatientResponse(**p) for p in result.data]
     except Exception as e:
         logger.error(f"Error listing patients: {e}")
         raise HTTPException(status_code=500, detail=str(e))
