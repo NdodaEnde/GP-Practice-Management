@@ -4,6 +4,7 @@ import Dashboard from './pages/Dashboard';
 import PatientRegistry from './pages/PatientRegistry';
 import PatientEHR from './pages/PatientEHR';
 import NewEncounter from './pages/NewEncounter';
+import AIScribe from './pages/AIScribe';
 import ValidationInterface from './pages/ValidationInterface';
 import DocumentDigitization from './pages/DocumentDigitization';
 import GPPatientDigitization from './pages/GPPatientDigitization';
@@ -30,6 +31,7 @@ function App() {
             <Route path="patients" element={<PatientRegistry />} />
             <Route path="patients/:patientId" element={<PatientEHR />} />
             <Route path="patients/:patientId/documents" element={<DocumentArchive />} />
+            <Route path="patients/:patientId/ai-scribe" element={<AIScribe />} />
             <Route path="encounters/new/:patientId" element={<NewEncounter />} />
             <Route path="validation/:encounterId" element={<ValidationInterface />} />
             <Route path="reception" element={<ReceptionCheckIn />} />
