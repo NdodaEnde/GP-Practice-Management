@@ -481,6 +481,24 @@ const AIScribe = () => {
                   
                   <div className="flex gap-3">
                     <Button
+                      onClick={extractClinicalActions}
+                      disabled={isExtracting}
+                      className="flex-1 bg-purple-600 hover:bg-purple-700"
+                    >
+                      {isExtracting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Extracting...
+                        </>
+                      ) : (
+                        <>
+                          <Zap className="w-4 h-4 mr-2" />
+                          Auto-Extract Forms
+                        </>
+                      )}
+                    </Button>
+                    
+                    <Button
                       onClick={saveToEncounter}
                       disabled={isSaving}
                       className="flex-1 bg-green-600 hover:bg-green-700"
@@ -498,6 +516,25 @@ const AIScribe = () => {
                       )}
                     </Button>
                   </div>
+                  
+                  {/* Extracted Clinical Actions Summary */}
+                  {extractedData && (
+                    <div className="mt-4 p-4 bg-purple-50 border border-purple-200 rounded-lg">
+                      <h4 className="font-semibold text-purple-900 mb-2">✨ Extracted Clinical Actions:</h4>
+                      <div className="space-y-1 text-sm text-purple-800">
+                        {extractedData.prescriptions && extractedData.prescriptions.length > 0 && (
+                          <div>• {extractedData.prescriptions.length} medication(s) found</div>
+                        )}
+                        {extractedData.sick_note && extractedData.sick_note.needed && (
+                          <div>• Sick note needed ({extractedData.sick_note.days_off} days)</div>
+                        )}
+                        {extractedData.referral && extractedData.referral.needed && (
+                          <div>• Referral to {extractedData.referral.specialist_type}</div>
+                        )}
+                      </div>
+                      <p className="text-xs text-purple-600 mt-2">Click buttons below to review and create documents</p>
+                    </div>
+                  )}
                 </>
               ) : (
                 <div className="text-center py-20">
