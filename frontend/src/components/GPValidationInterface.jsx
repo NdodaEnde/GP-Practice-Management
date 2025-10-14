@@ -306,9 +306,22 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
             <p className="text-sm text-gray-600">Review and validate extracted data</p>
           </div>
         </div>
-        <Button onClick={handleValidate} className="gap-2 bg-teal-600 hover:bg-teal-700">
-          <FileCheck className="w-4 h-4" />
-          Save Validated Data
+        <Button 
+          onClick={handleValidate} 
+          disabled={isSaving}
+          className="gap-2 bg-teal-600 hover:bg-teal-700"
+        >
+          {isSaving ? (
+            <>
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+              Saving...
+            </>
+          ) : (
+            <>
+              <FileCheck className="w-4 h-4" />
+              Save Validated Data
+            </>
+          )}
         </Button>
       </div>
 
