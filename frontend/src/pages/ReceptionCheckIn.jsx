@@ -53,10 +53,14 @@ const ReceptionCheckIn = () => {
       setIsSearching(true);
       const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
       
+      console.log('Searching for:', searchQuery);
+      console.log('API URL:', `${backendUrl}/api/patients?search=${encodeURIComponent(searchQuery)}`);
+      
       const response = await axios.get(
         `${backendUrl}/api/patients?search=${encodeURIComponent(searchQuery)}`
       );
 
+      console.log('Search response:', response.data);
       setSearchResults(response.data || []);
     } catch (error) {
       console.error('Error searching patients:', error);
