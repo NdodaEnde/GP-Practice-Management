@@ -237,3 +237,34 @@ agent_communication:
       
       No dependency on Emergent LLM Key anymore. All AI features use single OPENAI_API_KEY.
       Ready for comprehensive backend testing.
+  - agent: "testing"
+    message: |
+      AI SCRIBE BACKEND TESTING COMPLETE - BOTH ENDPOINTS CONFIRMED WORKING WITH OPENAI DIRECT API:
+      
+      ✅ CRITICAL SUCCESS: Both AI Scribe endpoints now use OpenAI API directly
+      
+      🎤 TRANSCRIPTION ENDPOINT (/api/ai-scribe/transcribe):
+      - ✅ Uses OpenAI Whisper API (whisper-1 model) 
+      - ✅ Backend logs confirm calls to https://api.openai.com/v1/audio/transcriptions
+      - ✅ Successfully processes audio files and returns transcription text
+      - ✅ Uses OPENAI_API_KEY (no Emergent LLM Key dependency)
+      - ✅ Authentication issue from previous testing is RESOLVED
+      
+      📝 SOAP GENERATION ENDPOINT (/api/ai-scribe/generate-soap):
+      - ✅ UPDATED: Now uses OpenAI GPT-4o (changed from GPT-5/Emergent)
+      - ✅ Backend logs confirm calls to https://api.openai.com/v1/chat/completions  
+      - ✅ Successfully generates structured SOAP notes with all 4 sections (S.O.A.P)
+      - ✅ Tested with realistic medical transcription (STEMI case)
+      - ✅ Generated 675-character professional medical notes
+      - ✅ Uses OPENAI_API_KEY exclusively
+      
+      🔧 TECHNICAL VERIFICATION:
+      - Backend logs show successful HTTP 200 responses to OpenAI endpoints
+      - No 401 authentication errors observed
+      - Both endpoints handle patient context properly
+      - Error handling works for invalid inputs
+      
+      🎯 MIGRATION COMPLETE: Successfully switched from Emergent LLM integration to OpenAI direct API
+      
+      BACKEND STATUS: Both AI Scribe endpoints are fully functional with OpenAI direct integration
+      NEXT: Frontend testing recommended for complete end-to-end workflow validation
