@@ -388,7 +388,7 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
                       Click on any section to highlight and navigate to the corresponding area in the original document
                     </p>
                   </CardHeader>
-                  <CardContent className="space-y-3 max-h-[600px] overflow-y-auto">
+                  <CardContent className="space-y-3 max-h-[600px] overflow-y-auto" ref={overviewScrollRef}>
                     {chunks.length > 0 ? (
                       chunks.map((chunk, idx) => {
                         const chunkId = `chunk_${idx}`;
@@ -399,13 +399,14 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
                           <div
                             key={idx}
                             id={chunkId}
+                            ref={el => chunkRefs.current[chunkId] = el}
                             className={`
                               p-3 rounded-lg border-2 transition-all duration-200 cursor-pointer
                               ${isSelected ? 'border-yellow-400 bg-yellow-50 shadow-lg' : 'border-gray-200'}
                               ${isHovered && !isSelected ? 'border-blue-300 bg-blue-50' : ''}
                               ${!isSelected && !isHovered ? 'hover:border-gray-300 hover:shadow-sm' : ''}
                             `}
-                            onClick={() => handleChunkClick(chunkId, chunk.grounding)}
+                            onClick={() => handleChunkClick(chunkId, chunk.grounding, idx)}
                             onMouseEnter={() => handleChunkHover(chunkId)}
                             onMouseLeave={handleChunkUnhover}
                           >
@@ -414,8 +415,8 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
                                 {chunk.grounding?.page !== undefined ? `P${chunk.grounding.page + 1}` : 'N/A'}
                               </span>
                               <div className="flex-1">
-                                <div className="text-sm text-gray-800 whitespace-pre-wrap font-mono">
-                                  {chunk.markdown || chunk.text || 'No content'}
+                                <div className="text-sm text-gray-800">
+                                  <MedicalDocumentRenderer content={chunk.markdown || chunk.text || 'No content'} />
                                 </div>
                               </div>
                             </div>
