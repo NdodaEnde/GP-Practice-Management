@@ -1225,6 +1225,17 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
           </div>
         </div>
       </div>
+
+      {/* Patient Match Dialog */}
+      <PatientMatchDialog
+        isOpen={showMatchDialog}
+        onClose={() => setShowMatchDialog(false)}
+        matches={patientMatches}
+        extractedData={editedDemographics}
+        onConfirmMatch={handleConfirmMatch}
+        onCreateNew={handleCreateNewPatient}
+        isLoading={isSaving}
+      />
     </div>
   );
 };
