@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from './ui/select';
 import { Send, Save } from 'lucide-react';
-import { useToast } from './ui/use-toast';
+import { useToast } from '../hooks/use-toast';
 
 const ReferralBuilder = ({ patientId, encounterId, doctorName, onSave }) => {
   const { toast } = useToast();
