@@ -1836,6 +1836,225 @@ async def create_new_patient_from_document(create_request: CreateNewPatientReque
         logger.error(f"Error creating new patient: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@api_router.get("/documents/patient/{patient_id}")
+async def get_patient_documents(patient_id: str):
+    """Get all documents for a specific patient"""
+    try:
+        logger.info(f"Fetching documents for patient {patient_id}")
+        
+        # Connect to microservice database
+        microservice_db_name = os.environ.get('DATABASE_NAME', 'surgiscan_documents')
+        microservice_client = AsyncIOMotorClient(os.environ.get('MONGODB_URL', 'mongodb://localhost:27017'))
+        microservice_db = microservice_client[microservice_db_name]
+        
+        # Get all documents for this patient
+        cursor = microservice_db.gp_scanned_documents.find(
+            {"patient_id": patient_id},
+            {
+                "document_id": 1,
+                "filename": 1,
+                "upload_date": 1,
+                "status": 1,
+                "patient_id": 1,
+                "encounter_id": 1,
+                "validated_at": 1,
+                "linked_at": 1,
+                "file_size": 1,
+                "_id": 0
+            }
+        ).sort("upload_date", -1)
+        
+        documents = await cursor.to_list(length=None)
+        
+        microservice_client.close()
+        
+        return {
+            'status': 'success',
+            'patient_id': patient_id,
+            'documents': documents,
+            'count': len(documents)
+        }
+    except Exception as e:
+        logger.error(f"Error fetching patient documents: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/documents/{document_id}/details")
+async def get_document_details(document_id: str):
+    """Get full document details including extracted data and validation history"""
+    try:
+        logger.info(f"Fetching details for document {document_id}")
+        
+        # Connect to microservice database
+        microservice_db_name = os.environ.get('DATABASE_NAME', 'surgiscan_documents')
+        microservice_client = AsyncIOMotorClient(os.environ.get('MONGODB_URL', 'mongodb://localhost:27017'))
+        microservice_db = microservice_client[microservice_db_name]
+        
+        # Get document
+        doc = await microservice_db.gp_scanned_documents.find_one(
+            {"document_id": document_id},
+            {"file_data": 0}  # Exclude binary data
+        )
+        
+        if not doc:
+            microservice_client.close()
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        # Get validation record if exists
+        validation = await microservice_db.gp_validated_documents.find_one(
+            {"document_id": document_id}
+        )
+        
+        # Convert ObjectId to string if present
+        if doc.get('_id'):
+            doc['_id'] = str(doc['_id'])
+        if validation and validation.get('_id'):
+            validation['_id'] = str(validation['_id'])
+        
+        microservice_client.close()
+        
+        return {
+            'status': 'success',
+            'document': doc,
+            'validation': validation
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching document details: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/documents/{document_id}/audit-trail")
+async def get_document_audit_trail(document_id: str):
+    """Get audit trail for a document (validation, access logs, modifications)"""
+    try:
+        logger.info(f"Fetching audit trail for document {document_id}")
+        
+        # Get audit events from MongoDB
+        cursor = db.audit_events.find(
+            {"document_id": document_id}
+        ).sort("timestamp", -1)
+        
+        audit_events = await cursor.to_list(length=None)
+        
+        # Convert ObjectId to string
+        for event in audit_events:
+            if event.get('_id'):
+                event['_id'] = str(event['_id'])
+        
+        # Get access logs
+        access_cursor = db.document_access_logs.find(
+            {"document_id": document_id}
+        ).sort("accessed_at", -1)
+        
+        access_logs = await access_cursor.to_list(length=None)
+        
+        for log in access_logs:
+            if log.get('_id'):
+                log['_id'] = str(log['_id'])
+        
+        return {
+            'status': 'success',
+            'document_id': document_id,
+            'audit_events': audit_events,
+            'access_logs': access_logs,
+            'total_events': len(audit_events),
+            'total_accesses': len(access_logs)
+        }
+    except Exception as e:
+        logger.error(f"Error fetching audit trail: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/documents/{document_id}/log-access")
+async def log_document_access(document_id: str, access_log: DocumentAccessLog):
+    """Log document access for compliance"""
+    try:
+        # Create access log entry
+        log_entry = {
+            'id': str(uuid.uuid4()),
+            'document_id': document_id,
+            'access_type': access_log.access_type,
+            'user_id': access_log.user_id,
+            'ip_address': access_log.ip_address,
+            'accessed_at': datetime.now(timezone.utc).isoformat(),
+            'tenant_id': DEMO_TENANT_ID,
+            'workspace_id': DEMO_WORKSPACE_ID
+        }
+        
+        await db.document_access_logs.insert_one(log_entry)
+        
+        logger.info(f"Logged {access_log.access_type} access for document {document_id}")
+        
+        return {
+            'status': 'success',
+            'message': 'Access logged',
+            'log_id': log_entry['id']
+        }
+    except Exception as e:
+        logger.error(f"Error logging document access: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/documents/search")
+async def search_documents(
+    query: Optional[str] = None,
+    patient_id: Optional[str] = None,
+    status: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    limit: int = 50
+):
+    """Search across all documents"""
+    try:
+        logger.info(f"Searching documents with query: {query}")
+        
+        # Connect to microservice database
+        microservice_db_name = os.environ.get('DATABASE_NAME', 'surgiscan_documents')
+        microservice_client = AsyncIOMotorClient(os.environ.get('MONGODB_URL', 'mongodb://localhost:27017'))
+        microservice_db = microservice_client[microservice_db_name]
+        
+        # Build query
+        search_filter = {}
+        
+        if patient_id:
+            search_filter['patient_id'] = patient_id
+        
+        if status:
+            search_filter['status'] = status
+        
+        if date_from or date_to:
+            search_filter['upload_date'] = {}
+            if date_from:
+                search_filter['upload_date']['$gte'] = date_from
+            if date_to:
+                search_filter['upload_date']['$lte'] = date_to
+        
+        # Execute search
+        cursor = microservice_db.gp_scanned_documents.find(
+            search_filter,
+            {
+                "document_id": 1,
+                "filename": 1,
+                "upload_date": 1,
+                "status": 1,
+                "patient_id": 1,
+                "encounter_id": 1,
+                "_id": 0
+            }
+        ).sort("upload_date", -1).limit(limit)
+        
+        documents = await cursor.to_list(length=None)
+        
+        microservice_client.close()
+        
+        return {
+            'status': 'success',
+            'documents': documents,
+            'count': len(documents),
+            'query': query
+        }
+    except Exception as e:
+        logger.error(f"Error searching documents: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ==================== Application Setup ====================
 
 # Include router
