@@ -9,13 +9,28 @@ Transform SurgiScan into a complete GP practice management system with queue man
 
 **Phase 1: Foundation (COMPLETED)**
 - ✅ Patient registration and management
-- ✅ Document digitization with smart patient matching
 - ✅ 6-tab EHR/EMR interface
 - ✅ Encounter management with vitals
 - ✅ Billing and invoicing
-- ✅ Basic analytics dashboard
+- ✅ Analytics dashboard with real-time data
 - ✅ Multi-tenancy architecture
 - ✅ Supabase + MongoDB hybrid database
+
+**Phase 1.5: GP Document Digitization - Core (COMPLETED)**
+- ✅ Document upload with drag-and-drop interface
+- ✅ LandingAI microservice integration (separate FastAPI service on port 5001)
+- ✅ Visual grounding validation interface (bi-directional PDF ↔ data highlighting)
+- ✅ Editable validation tabs (Demographics, Chronic Care, Vitals, Clinical Notes)
+- ✅ Modification tracking for ML retraining
+- ✅ Backend validation save endpoint with audit logging
+- ⚠️ **BLOCKED**: LandingAI API balance insufficient - cannot process new documents
+
+**Phase 1.6: Document-to-EHR Integration (IN PROGRESS - PRIORITY 1)**
+- 🔄 Smart patient matching with confirmation workflow
+- 🔄 Automatic EHR population from validated documents
+- 🔄 Encounter creation from scanned records
+- 🔄 Document archive viewer for compliance (40-year retention)
+- 🔄 Access audit trail for legal cases
 
 ---
 
