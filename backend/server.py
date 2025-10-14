@@ -2375,17 +2375,13 @@ async def transcribe_audio(file: UploadFile):
         from dotenv import load_dotenv
         load_dotenv()
         
-        # Get Emergent LLM key
-        api_key = os.environ.get('EMERGENT_LLM_KEY')
+        # Get OpenAI API key for Whisper
+        api_key = os.environ.get('OPENAI_API_KEY')
         if not api_key:
-            raise HTTPException(status_code=500, detail="EMERGENT_LLM_KEY not configured")
+            raise HTTPException(status_code=500, detail="OPENAI_API_KEY not configured")
         
-        # Initialize OpenAI client with standard OpenAI base URL for Whisper
-        # Note: Whisper API uses the standard OpenAI endpoint, not gputopia
-        client = openai.OpenAI(
-            api_key=api_key,
-            base_url="https://api.openai.com/v1"
-        )
+        # Initialize OpenAI client for Whisper
+        client = openai.OpenAI(api_key=api_key)
         
         # Read audio file
         audio_content = await file.read()
