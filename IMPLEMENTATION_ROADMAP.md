@@ -508,8 +508,13 @@ Response:
 **Phase 5 (Dispensary):** Medium - 2 days
 **Phase 6 (LandingAI):** Low - 1 day (just integration)
 **Phase 7 (Analytics):** Medium - 2 days
+**Phase 8 (Intelligent Search):** Medium-High - 1-2 weeks
+  - Phase 8.1 (Basic Search): 1-2 days
+  - Phase 8.2 (Visual Grounding): 2-3 days
+  - Phase 8.3 (Advanced Features): 3-4 days
+  - Phase 8.4 (Case Analytics): 3-4 days
 
-**Total:** ~2-3 weeks for complete system
+**Total (All Phases):** ~3-4 weeks for complete system
 
 ---
 
