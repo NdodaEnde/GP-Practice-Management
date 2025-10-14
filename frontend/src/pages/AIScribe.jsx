@@ -4,8 +4,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import axios from 'axios';
+import PrescriptionBuilder from '@/components/PrescriptionBuilder';
+import SickNoteBuilder from '@/components/SickNoteBuilder';
+import ReferralBuilder from '@/components/ReferralBuilder';
 import {
   Mic,
   Square,
@@ -15,7 +24,10 @@ import {
   ArrowLeft,
   Clock,
   FileText,
-  Loader2
+  Loader2,
+  Pill,
+  Send,
+  Zap
 } from 'lucide-react';
 
 const AIScribe = () => {
