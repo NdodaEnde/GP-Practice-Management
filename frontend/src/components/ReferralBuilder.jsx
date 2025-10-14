@@ -15,17 +15,17 @@ import {
 import { Send, Save } from 'lucide-react';
 import { useToast } from '../hooks/use-toast';
 
-const ReferralBuilder = ({ patientId, encounterId, doctorName, onSave }) => {
+const ReferralBuilder = ({ patientId, encounterId, doctorName, initialData, onSave }) => {
   const { toast } = useToast();
   const [referralDate, setReferralDate] = useState(new Date().toISOString().split('T')[0]);
-  const [specialistType, setSpecialistType] = useState('');
+  const [specialistType, setSpecialistType] = useState(initialData?.specialist_type || '');
   const [specialistName, setSpecialistName] = useState('');
   const [specialistPractice, setSpecialistPractice] = useState('');
-  const [reasonForReferral, setReasonForReferral] = useState('');
-  const [clinicalFindings, setClinicalFindings] = useState('');
+  const [reasonForReferral, setReasonForReferral] = useState(initialData?.reason || '');
+  const [clinicalFindings, setClinicalFindings] = useState(initialData?.clinical_findings || '');
   const [investigationsDone, setInvestigationsDone] = useState('');
   const [currentMedications, setCurrentMedications] = useState('');
-  const [urgency, setUrgency] = useState('routine');
+  const [urgency, setUrgency] = useState(initialData?.urgency || 'routine');
   const [saving, setSaving] = useState(false);
 
   const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
