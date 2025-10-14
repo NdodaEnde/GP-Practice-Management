@@ -992,49 +992,114 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
               <Card>
                 <CardHeader>
                   <CardTitle>Vital Signs</CardTitle>
+                  <p className="text-sm text-gray-500 mt-1">Edit vital signs records</p>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {Object.keys(vitals).length > 0 ? (
-                    Object.entries(vitals).map(([key, value]) => {
-                      // Handle array of vital signs records
-                      if (key === 'vital_signs_records' && Array.isArray(value)) {
-                        return (
-                          <div key={key} className="space-y-2">
-                            <label className="text-sm font-medium text-gray-600 capitalize">
-                              Vital Signs Records
-                            </label>
-                            {value.map((record, idx) => (
-                              <div key={idx} className="p-3 bg-gray-50 rounded border space-y-1">
-                                {Object.entries(record).map(([field, val]) => (
-                                  <div key={field} className="flex justify-between text-sm">
-                                    <span className="text-gray-600 capitalize">
-                                      {field.replace(/_/g, ' ')}:
-                                    </span>
-                                    <span className="font-medium">
-                                      {typeof val === 'object' ? JSON.stringify(val) : val || 'N/A'}
-                                    </span>
-                                  </div>
-                                ))}
+                  {editedVitals.vital_signs_records && editedVitals.vital_signs_records.length > 0 ? (
+                    <div className="space-y-3">
+                      {editedVitals.vital_signs_records.map((record, idx) => (
+                        <div key={idx} className="p-4 bg-gray-50 rounded-lg border-2 border-gray-200">
+                          <div className="flex items-center justify-between mb-3">
+                            <h4 className="font-medium text-gray-700">Record {idx + 1}</h4>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                const newRecords = editedVitals.vital_signs_records.filter((_, i) => i !== idx);
+                                setEditedVitals(prev => ({
+                                  ...prev,
+                                  vital_signs_records: newRecords
+                                }));
+                                trackModification(
+                                  `vital_signs_records[${idx}]`,
+                                  vitals.vital_signs_records?.[idx],
+                                  null,
+                                  'vitals'
+                                );
+                              }}
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {Object.entries(record).map(([field, val]) => (
+                              <div key={field} className="flex flex-col">
+                                <Label htmlFor={`vital-${idx}-${field}`} className="text-xs font-medium text-gray-600 capitalize mb-1">
+                                  {field.replace(/_/g, ' ')}
+                                </Label>
+                                <Input
+                                  id={`vital-${idx}-${field}`}
+                                  value={typeof val === 'object' ? JSON.stringify(val) : val || ''}
+                                  onChange={(e) => {
+                                    const newRecords = [...editedVitals.vital_signs_records];
+                                    newRecords[idx][field] = e.target.value;
+                                    setEditedVitals(prev => ({
+                                      ...prev,
+                                      vital_signs_records: newRecords
+                                    }));
+                                    trackModification(
+                                      `vital_signs_records[${idx}].${field}`,
+                                      vitals.vital_signs_records?.[idx]?.[field],
+                                      e.target.value,
+                                      'vitals'
+                                    );
+                                  }}
+                                  className="text-sm"
+                                />
                               </div>
                             ))}
                           </div>
-                        );
-                      }
-                      
-                      // Handle other fields
-                      return (
-                        <div key={key} className="flex flex-col">
-                          <label className="text-sm font-medium text-gray-600 capitalize mb-1">
-                            {key.replace(/_/g, ' ')}
-                          </label>
-                          <div className="p-2 bg-gray-50 rounded border">
-                            {typeof value === 'object' ? JSON.stringify(value, null, 2) : value || 'Not recorded'}
-                          </div>
                         </div>
-                      );
-                    })
+                      ))}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const newRecord = {
+                            date: '',
+                            blood_pressure: '',
+                            heart_rate: '',
+                            temperature: '',
+                            weight: '',
+                            height: ''
+                          };
+                          setEditedVitals(prev => ({
+                            ...prev,
+                            vital_signs_records: [...(prev.vital_signs_records || []), newRecord]
+                          }));
+                        }}
+                        className="gap-2 w-full"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Add Vital Signs Record
+                      </Button>
+                    </div>
                   ) : (
-                    <p className="text-gray-500">No vital signs data extracted</p>
+                    <div className="text-center py-8">
+                      <p className="text-gray-500 mb-4">No vital signs records</p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const newRecord = {
+                            date: '',
+                            blood_pressure: '',
+                            heart_rate: '',
+                            temperature: '',
+                            weight: '',
+                            height: ''
+                          };
+                          setEditedVitals({
+                            vital_signs_records: [newRecord]
+                          });
+                        }}
+                        className="gap-2"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Add First Record
+                      </Button>
+                    </div>
                   )}
                 </CardContent>
               </Card>
