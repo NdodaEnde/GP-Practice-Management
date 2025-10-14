@@ -242,7 +242,7 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
             )}
           </div>
           
-          <div className="flex-1 overflow-auto p-4 bg-gray-100">
+          <div className="flex-1 overflow-auto p-4 bg-gray-100" ref={pdfContainerRef}>
             {pdfUrl ? (
               <div className="flex justify-center relative">
                 <Document
@@ -277,49 +277,57 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
                     </div>
                   }
                 >
-                  <div className="relative">
+                  <div ref={pageRef} className="relative">
                     <Page 
                       pageNumber={pageNumber} 
                       scale={pdfScale}
                       renderTextLayer={false}
                       renderAnnotationLayer={false}
+                      onLoadSuccess={onPageLoadSuccess}
                     />
-                    {/* Highlight overlays for current page */}
-                    {chunks
-                      .filter(chunk => chunk.grounding && (chunk.grounding.page + 1) === pageNumber)
-                      .map((chunk, idx) => {
-                        const chunkId = `chunk_${chunks.indexOf(chunk)}`;
-                        const isSelected = selectedChunkId === chunkId;
-                        const isHovered = hoveredChunkId === chunkId;
-                        
-                        if (!isSelected && !isHovered) return null;
-                        
-                        const box = chunk.grounding.box;
-                        if (!box) return null;
-                        
-                        // Calculate position based on PDF scale and bounding box
-                        // These are relative coordinates (0-1), need to convert to pixels
-                        // Assuming standard PDF dimensions (will need adjustment)
-                        const pdfWidth = 595 * pdfScale; // A4 width in points
-                        const pdfHeight = 842 * pdfScale; // A4 height in points
-                        
-                        return (
-                          <div
-                            key={chunkId}
-                            className={`absolute pointer-events-none transition-opacity duration-200 ${
-                              isSelected ? 'bg-yellow-300 opacity-40' : 'bg-blue-300 opacity-30'
-                            }`}
-                            style={{
-                              left: `${box.left * pdfWidth}px`,
-                              top: `${box.top * pdfHeight}px`,
-                              width: `${(box.right - box.left) * pdfWidth}px`,
-                              height: `${(box.bottom - box.top) * pdfHeight}px`,
-                              border: isSelected ? '2px solid #fbbf24' : '2px solid #3b82f6',
-                            }}
-                            onClick={() => handleChunkClick(chunkId, chunk.grounding)}
-                          />
-                        );
-                      })}
+                    
+                    {/* Clickable overlay layer for grounding boxes */}
+                    {pageSize.width > 0 && chunks.length > 0 && (
+                      <div className="absolute inset-0 pointer-events-auto">
+                        {chunks
+                          .filter(chunk => chunk.grounding && (chunk.grounding.page + 1) === pageNumber)
+                          .map((chunk, idx) => {
+                            const chunkIndex = chunks.indexOf(chunk);
+                            const chunkId = `chunk_${chunkIndex}`;
+                            const isSelected = selectedChunkId === chunkId;
+                            const isHovered = hoveredChunkId === chunkId;
+                            
+                            const box = chunk.grounding.box;
+                            if (!box) return null;
+                            
+                            return (
+                              <div
+                                key={chunkId}
+                                className={`absolute cursor-pointer transition-all ${
+                                  isSelected 
+                                    ? 'border-2 border-yellow-400 bg-yellow-300/30 shadow-lg z-20' 
+                                    : isHovered
+                                    ? 'border-2 border-blue-400 bg-blue-300/20 z-10'
+                                    : 'border-2 border-transparent hover:border-blue-300 hover:bg-blue-300/10'
+                                }`}
+                                style={{
+                                  left: `${box.left * 100}%`,
+                                  top: `${box.top * 100}%`,
+                                  width: `${(box.right - box.left) * 100}%`,
+                                  height: `${(box.bottom - box.top) * 100}%`,
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleChunkClick(chunkId, chunk.grounding, chunkIndex);
+                                }}
+                                onMouseEnter={() => handleChunkHover(chunkId)}
+                                onMouseLeave={handleChunkUnhover}
+                                title={`Chunk ${chunkIndex + 1}: ${(chunk.markdown || '').substring(0, 50)}...`}
+                              />
+                            );
+                          })}
+                      </div>
+                    )}
                   </div>
                 </Document>
               </div>
