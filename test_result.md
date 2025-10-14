@@ -156,16 +156,13 @@ metadata:
 
 test_plan:
   current_focus:
-    - "GP validation save endpoint"
-    - "Editable Demographics tab"
-    - "Editable Chronic Care tab with tables"
-    - "Editable Vitals tab"
-    - "Editable Clinical Notes tab"
-    - "Modification tracking"
-    - "Save validated data button"
-  stuck_tasks: []
+    - "AI Scribe audio transcription endpoint"
+    - "AI Scribe SOAP note generation endpoint"
+    - "AI Scribe recording interface"
+  stuck_tasks:
+    - "AI Scribe audio transcription endpoint"
   test_all: false
-  test_priority: "high_first"
+  test_priority: "stuck_first"
 
 agent_communication:
   - agent: "main"
