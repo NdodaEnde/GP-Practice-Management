@@ -113,45 +113,127 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
     setModifications(prev => [...prev, modification]);
   };
 
-  // Handle save validated data
+  // Handle save validated data - Step 1: Find patient matches
   const handleValidate = async () => {
     setIsSaving(true);
+    setIsMatchingPatient(true);
+    
     try {
       const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
       
-      // Prepare validated data
+      // Step 1: Search for patient matches
+      const matchResponse = await axios.post(
+        `${backendUrl}/api/gp/validation/match-patient`,
+        {
+          document_id: documentId,
+          demographics: editedDemographics
+        }
+      );
+
+      setPatientMatches(matchResponse.data.matches || []);
+      setShowMatchDialog(true);
+      setIsMatchingPatient(false);
+      
+    } catch (error) {
+      console.error('Error finding patient matches:', error);
+      toast({
+        title: "Error",
+        description: error.response?.data?.detail || "Failed to search for patient matches",
+        variant: "destructive"
+      });
+      setIsMatchingPatient(false);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Handle confirm patient match
+  const handleConfirmMatch = async (matchedPatient) => {
+    setIsSaving(true);
+    
+    try {
+      const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
+      
       const validatedData = {
-        document_id: documentId,
-        parsed_data: {
-          demographics: editedDemographics,
-          chronic_summary: editedChronicCare,
-          vitals: editedVitals,
-          clinical_notes: editedClinicalNotes
-        },
-        modifications: modifications,
-        status: 'approved',
-        notes: `Validated at ${new Date().toISOString()}`
+        demographics: editedDemographics,
+        chronic_summary: editedChronicCare,
+        vitals: editedVitals,
+        clinical_notes: editedClinicalNotes
       };
 
-      // Save to backend
+      // Confirm match and create encounter
       const response = await axios.post(
-        `${backendUrl}/api/gp/validation/save`,
-        validatedData
+        `${backendUrl}/api/gp/validation/confirm-match`,
+        {
+          document_id: documentId,
+          patient_id: matchedPatient.patient_id,
+          parsed_data: validatedData,
+          modifications: modifications
+        }
       );
 
       toast({
         title: "Success",
-        description: "Patient data has been validated and saved successfully",
+        description: `Patient matched successfully. Encounter created for ${matchedPatient.first_name} ${matchedPatient.last_name}`,
       });
 
+      setShowMatchDialog(false);
+      
       if (onValidationComplete) {
-        onValidationComplete(validatedData);
+        onValidationComplete(response.data);
       }
     } catch (error) {
-      console.error('Error saving validated data:', error);
+      console.error('Error confirming patient match:', error);
       toast({
         title: "Error",
-        description: error.response?.data?.detail || "Failed to save validated data",
+        description: error.response?.data?.detail || "Failed to confirm patient match",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Handle create new patient
+  const handleCreateNewPatient = async (extractedData) => {
+    setIsSaving(true);
+    
+    try {
+      const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
+      
+      const validatedData = {
+        demographics: editedDemographics,
+        chronic_summary: editedChronicCare,
+        vitals: editedVitals,
+        clinical_notes: editedClinicalNotes
+      };
+
+      // Create new patient and encounter
+      const response = await axios.post(
+        `${backendUrl}/api/gp/validation/create-new-patient`,
+        {
+          document_id: documentId,
+          demographics: editedDemographics,
+          parsed_data: validatedData,
+          modifications: modifications
+        }
+      );
+
+      toast({
+        title: "Success",
+        description: "New patient created and encounter added to their record",
+      });
+
+      setShowMatchDialog(false);
+      
+      if (onValidationComplete) {
+        onValidationComplete(response.data);
+      }
+    } catch (error) {
+      console.error('Error creating new patient:', error);
+      toast({
+        title: "Error",
+        description: error.response?.data?.detail || "Failed to create new patient",
         variant: "destructive"
       });
     } finally {
