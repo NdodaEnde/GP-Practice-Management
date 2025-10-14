@@ -176,6 +176,98 @@ class InvoiceCreate(BaseModel):
     total_amount: float
     notes: Optional[str] = None
 
+# ==================== Phase 4.2: Prescription Module Models ====================
+
+class PrescriptionItem(BaseModel):
+    medication_name: str
+    dosage: str
+    frequency: str
+    duration: str
+    quantity: Optional[str] = None
+    instructions: Optional[str] = None
+
+class PrescriptionCreate(BaseModel):
+    patient_id: str
+    encounter_id: Optional[str] = None
+    doctor_name: str
+    prescription_date: str  # YYYY-MM-DD
+    items: List[PrescriptionItem]
+    notes: Optional[str] = None
+
+class PrescriptionResponse(BaseModel):
+    id: str
+    tenant_id: str
+    workspace_id: str
+    patient_id: str
+    encounter_id: Optional[str]
+    doctor_name: str
+    prescription_date: str
+    status: str
+    items: List[Dict[str, Any]]
+    notes: Optional[str]
+    created_at: str
+
+class SickNoteCreate(BaseModel):
+    patient_id: str
+    encounter_id: Optional[str] = None
+    doctor_name: str
+    issue_date: str  # YYYY-MM-DD
+    start_date: str
+    end_date: str
+    diagnosis: str
+    fitness_status: str  # 'unfit', 'fit_with_restrictions', 'fit'
+    restrictions: Optional[str] = None
+    additional_notes: Optional[str] = None
+
+class SickNoteResponse(BaseModel):
+    id: str
+    tenant_id: str
+    workspace_id: str
+    patient_id: str
+    encounter_id: Optional[str]
+    doctor_name: str
+    issue_date: str
+    start_date: str
+    end_date: str
+    diagnosis: str
+    fitness_status: str
+    restrictions: Optional[str]
+    additional_notes: Optional[str]
+    created_at: str
+
+class ReferralCreate(BaseModel):
+    patient_id: str
+    encounter_id: Optional[str] = None
+    referring_doctor_name: str
+    referral_date: str  # YYYY-MM-DD
+    specialist_type: str
+    specialist_name: Optional[str] = None
+    specialist_practice: Optional[str] = None
+    reason_for_referral: str
+    clinical_findings: str
+    investigations_done: Optional[str] = None
+    current_medications: Optional[str] = None
+    urgency: str = 'routine'  # 'urgent', 'routine', 'non-urgent'
+
+class ReferralResponse(BaseModel):
+    id: str
+    tenant_id: str
+    workspace_id: str
+    patient_id: str
+    encounter_id: Optional[str]
+    referring_doctor_name: str
+    referral_date: str
+    specialist_type: str
+    specialist_name: Optional[str]
+    specialist_practice: Optional[str]
+    reason_for_referral: str
+    clinical_findings: str
+    investigations_done: Optional[str]
+    current_medications: Optional[str]
+    urgency: str
+    status: str
+    created_at: str
+
 # ==================== Helper Functions ====================
 
 async def init_demo_tenant():
