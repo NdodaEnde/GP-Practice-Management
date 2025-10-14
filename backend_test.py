@@ -384,16 +384,13 @@ class AIScribeTester:
         
         return critical_success
     
-    def cleanup_test_data(self, document_id):
+    def cleanup_test_data(self):
         """Clean up test data (optional)"""
         try:
-            # Remove test documents if they were created for testing
-            if document_id:
-                self.db.gp_scanned_documents.delete_one({"document_id": document_id})
-                self.db.gp_validated_documents.delete_one({"document_id": document_id})
-                print(f"🧹 Cleaned up test data for document: {document_id}")
+            # AI Scribe tests don't create persistent data, so minimal cleanup needed
+            print("🧹 AI Scribe tests completed - no persistent data to clean up")
         except Exception as e:
-            print(f"⚠️  Error cleaning up test data: {str(e)}")
+            print(f"⚠️  Error in cleanup: {str(e)}")
     
     def close_connections(self):
         """Close database connections"""
