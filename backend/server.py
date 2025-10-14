@@ -2594,6 +2594,92 @@ Format the output as:
         logger.error(f"Error generating SOAP notes: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@api_router.post("/ai-scribe/extract-clinical-actions")
+async def extract_clinical_actions(request: dict):
+    """Extract structured clinical actions from SOAP notes for auto-population"""
+    try:
+        import openai
+        
+        soap_notes = request.get('soap_notes', '')
+        patient_context = request.get('patient_context', {})
+        
+        if not soap_notes:
+            raise HTTPException(status_code=400, detail="SOAP notes required")
+        
+        # Get OpenAI API key
+        api_key = os.environ.get('OPENAI_API_KEY')
+        if not api_key:
+            raise HTTPException(status_code=500, detail="OPENAI_API_KEY not configured")
+        
+        client = openai.OpenAI(api_key=api_key)
+        
+        # System prompt for extraction
+        system_prompt = """You are a medical AI assistant that extracts structured clinical actions from SOAP notes.
+
+Extract the following information from the SOAP notes and return as JSON:
+
+1. PRESCRIPTIONS: List of medications mentioned in the Plan section
+   - medication_name: Full name of medication
+   - dosage: Dose amount (e.g., "500mg")
+   - frequency: How often (e.g., "Twice daily", "Three times daily")
+   - duration: How long (e.g., "7 days", "2 weeks")
+   - instructions: Special instructions (e.g., "Take with food")
+
+2. SICK_NOTE: If patient needs time off work
+   - needed: true/false
+   - diagnosis: Main diagnosis
+   - days_off: Number of days off work
+   - fitness_status: "unfit", "fit_with_restrictions", or "fit"
+   - restrictions: Any work restrictions
+
+3. REFERRAL: If specialist referral is needed
+   - needed: true/false
+   - specialist_type: Type of specialist (e.g., "Cardiologist", "Orthopedist")
+   - reason: Brief reason for referral
+   - urgency: "urgent", "routine", or "non-urgent"
+
+Return ONLY valid JSON. If no prescriptions/sick note/referral needed, return empty arrays/false values."""
+
+        user_prompt = f"""Extract clinical actions from these SOAP notes:
+
+{soap_notes}
+
+Patient Context:
+- Name: {patient_context.get('name', 'N/A')}
+- Age: {patient_context.get('age', 'N/A')}
+
+Return structured JSON with prescriptions, sick_note, and referral sections."""
+
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.3,  # Lower temperature for more consistent extraction
+            max_tokens=2000,
+            response_format={"type": "json_object"}
+        )
+        
+        extracted_data = response.choices[0].message.content
+        
+        # Parse JSON response
+        import json
+        parsed_data = json.loads(extracted_data)
+        
+        logger.info(f"Clinical actions extracted from SOAP notes")
+        
+        return {
+            'status': 'success',
+            'extracted_data': parsed_data
+        }
+    except json.JSONDecodeError as e:
+        logger.error(f"Error parsing extracted data: {e}")
+        raise HTTPException(status_code=500, detail="Failed to parse extracted data")
+    except Exception as e:
+        logger.error(f"Error extracting clinical actions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ==================== Phase 4.2: Prescription Module Endpoints ====================
 
 @api_router.post("/prescriptions")
