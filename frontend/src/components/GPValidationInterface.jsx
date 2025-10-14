@@ -239,9 +239,16 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-hidden flex">
-        {/* Left Panel - Document Preview with PDF Viewer */}
-        <div className="w-1/2 border-r bg-white overflow-hidden flex flex-col">
+      <div 
+        ref={containerRef}
+        className="flex-1 overflow-hidden flex"
+        style={{ cursor: isDragging ? 'col-resize' : 'default' }}
+      >
+        {/* Left Panel - Document Preview with All Pages */}
+        <div 
+          className="border-r bg-white overflow-hidden flex flex-col"
+          style={{ width: `${leftWidth}%` }}
+        >
           <div className="p-4 border-b bg-gray-50">
             <h3 className="font-semibold flex items-center gap-2">
               <FileText className="w-4 h-4" />
@@ -249,30 +256,13 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
             </h3>
             {numPages && (
               <div className="flex items-center gap-2 mt-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={goToPrevPage}
-                  disabled={pageNumber <= 1}
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </Button>
                 <span className="text-sm">
-                  Page {pageNumber} of {numPages}
+                  {numPages} page{numPages > 1 ? 's' : ''} • {Math.round(pdfScale * 100)}%
                 </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={goToNextPage}
-                  disabled={pageNumber >= numPages}
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </Button>
-                <div className="ml-4 flex items-center gap-2">
+                <div className="ml-auto flex items-center gap-2">
                   <Button variant="outline" size="sm" onClick={zoomOut}>
                     <ZoomOut className="w-4 h-4" />
                   </Button>
-                  <span className="text-sm">{Math.round(pdfScale * 100)}%</span>
                   <Button variant="outline" size="sm" onClick={zoomIn}>
                     <ZoomIn className="w-4 h-4" />
                   </Button>
@@ -283,7 +273,7 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
           
           <div className="flex-1 overflow-auto p-4 bg-gray-100" ref={pdfContainerRef}>
             {pdfUrl ? (
-              <div className="flex justify-center relative">
+              <div className="flex flex-col items-center gap-4">
                 <Document
                   file={pdfUrl}
                   onLoadSuccess={onDocumentLoadSuccess}
@@ -304,70 +294,74 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
                   error={
                     <div className="text-center text-red-600 p-8">
                       <p className="font-semibold">Failed to load PDF</p>
-                      <p className="text-sm text-gray-600 mt-2">
-                        Document ID: {documentId}
-                      </p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        URL: {pdfUrl}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-2">
-                        Check browser console for details
-                      </p>
+                      <p className="text-sm text-gray-600 mt-2">Document ID: {documentId}</p>
+                      <p className="text-xs text-gray-400 mt-1">URL: {pdfUrl}</p>
                     </div>
                   }
                 >
-                  <div ref={pageRef} className="relative">
-                    <Page 
-                      pageNumber={pageNumber} 
-                      scale={pdfScale}
-                      renderTextLayer={false}
-                      renderAnnotationLayer={false}
-                      onLoadSuccess={onPageLoadSuccess}
-                    />
-                    
-                    {/* Clickable overlay layer for grounding boxes */}
-                    {pageSize.width > 0 && chunks.length > 0 && (
-                      <div className="absolute inset-0 pointer-events-auto">
-                        {chunks
-                          .filter(chunk => chunk.grounding && (chunk.grounding.page + 1) === pageNumber)
-                          .map((chunk, idx) => {
-                            const chunkIndex = chunks.indexOf(chunk);
-                            const chunkId = `chunk_${chunkIndex}`;
-                            const isSelected = selectedChunkId === chunkId;
-                            const isHovered = hoveredChunkId === chunkId;
-                            
-                            const box = chunk.grounding.box;
-                            if (!box) return null;
-                            
-                            return (
-                              <div
-                                key={chunkId}
-                                className={`absolute cursor-pointer transition-all ${
-                                  isSelected 
-                                    ? 'border-2 border-yellow-400 bg-yellow-300/30 shadow-lg z-20' 
-                                    : isHovered
-                                    ? 'border-2 border-blue-400 bg-blue-300/20 z-10'
-                                    : 'border-2 border-transparent hover:border-blue-300 hover:bg-blue-300/10'
-                                }`}
-                                style={{
-                                  left: `${box.left * 100}%`,
-                                  top: `${box.top * 100}%`,
-                                  width: `${(box.right - box.left) * 100}%`,
-                                  height: `${(box.bottom - box.top) * 100}%`,
-                                }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleChunkClick(chunkId, chunk.grounding, chunkIndex);
-                                }}
-                                onMouseEnter={() => handleChunkHover(chunkId)}
-                                onMouseLeave={handleChunkUnhover}
-                                title={`Chunk ${chunkIndex + 1}: ${(chunk.markdown || '').substring(0, 50)}...`}
-                              />
-                            );
-                          })}
+                  {/* Render all pages for continuous scrolling */}
+                  {Array.from(new Array(numPages), (el, index) => {
+                    const currentPage = index + 1;
+                    return (
+                      <div key={`page_${currentPage}`} className="relative mb-4" ref={currentPage === 1 ? pageRef : null}>
+                        <Page 
+                          pageNumber={currentPage} 
+                          scale={pdfScale}
+                          renderTextLayer={false}
+                          renderAnnotationLayer={false}
+                          onLoadSuccess={currentPage === 1 ? onPageLoadSuccess : undefined}
+                        />
+                        
+                        {/* Clickable overlay layer for grounding boxes on this page */}
+                        {pageSize.width > 0 && chunks.length > 0 && (
+                          <div className="absolute inset-0 pointer-events-auto">
+                            {chunks
+                              .filter(chunk => chunk.grounding && (chunk.grounding.page + 1) === currentPage)
+                              .map((chunk, idx) => {
+                                const chunkIndex = chunks.indexOf(chunk);
+                                const chunkId = `chunk_${chunkIndex}`;
+                                const isSelected = selectedChunkId === chunkId;
+                                const isHovered = hoveredChunkId === chunkId;
+                                
+                                const box = chunk.grounding.box;
+                                if (!box) return null;
+                                
+                                return (
+                                  <div
+                                    key={chunkId}
+                                    className={`absolute cursor-pointer transition-all ${
+                                      isSelected 
+                                        ? 'border-2 border-yellow-400 bg-yellow-300/30 shadow-lg z-20' 
+                                        : isHovered
+                                        ? 'border-2 border-blue-400 bg-blue-300/20 z-10'
+                                        : 'border-2 border-transparent hover:border-blue-300 hover:bg-blue-300/10'
+                                    }`}
+                                    style={{
+                                      left: `${box.left * 100}%`,
+                                      top: `${box.top * 100}%`,
+                                      width: `${(box.right - box.left) * 100}%`,
+                                      height: `${(box.bottom - box.top) * 100}%`,
+                                    }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleChunkClick(chunkId, chunk.grounding, chunkIndex);
+                                    }}
+                                    onMouseEnter={() => handleChunkHover(chunkId)}
+                                    onMouseLeave={handleChunkUnhover}
+                                    title={`Chunk ${chunkIndex + 1}: ${(chunk.markdown || '').substring(0, 50)}...`}
+                                  />
+                                );
+                              })}
+                          </div>
+                        )}
+                        
+                        {/* Page number indicator */}
+                        <div className="text-center mt-2 mb-2 text-xs text-gray-500">
+                          Page {currentPage} of {numPages}
+                        </div>
                       </div>
-                    )}
-                  </div>
+                    );
+                  })}
                 </Document>
               </div>
             ) : (
@@ -375,12 +369,20 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
                 <div className="text-center">
                   <FileText className="w-16 h-16 mx-auto mb-4" />
                   <p>Document not available</p>
-                  <p className="text-sm mt-2">PDF path: {filePath || 'Not provided'}</p>
-                  <p className="text-sm">Document ID: {documentId || 'Not provided'}</p>
+                  <p className="text-sm mt-2">Document ID: {documentId || 'Not provided'}</p>
                 </div>
               </div>
             )}
           </div>
+        </div>
+
+        {/* Resizable Divider */}
+        <div
+          className="w-1 bg-gray-300 hover:bg-teal-500 cursor-col-resize flex-shrink-0 relative group transition-colors select-none"
+          onMouseDown={handleMouseDown}
+          style={{ touchAction: 'none' }}
+        >
+          <div className="absolute inset-y-0 -left-2 -right-2 group-hover:bg-teal-500 group-hover:bg-opacity-20" />
         </div>
 
         {/* Right Panel - Extracted Data */}
