@@ -219,6 +219,12 @@ const PatientEHR = () => {
                 <span className="text-purple-700">AI Scribe</span>
               </Button>
             </Link>
+            <Link to={`/patients/${patientId}/prescriptions`}>
+              <Button variant="outline" className="shadow-md gap-2 bg-blue-50 border-blue-300 hover:bg-blue-100">
+                <Pill className="w-4 h-4 text-blue-600" />
+                <span className="text-blue-700">Prescriptions</span>
+              </Button>
+            </Link>
             <Link to={`/patients/${patientId}/documents`}>
               <Button variant="outline" className="shadow-md gap-2">
                 <FolderOpen className="w-4 h-4" />
