@@ -219,43 +219,47 @@ class GPDocumentTester:
             self.log_test("Create Test Patient", False, f"Error creating test patient: {str(e)}")
             return False, None
     
-    def test_ai_scribe_transcribe_endpoint(self):
-        """Test the AI Scribe audio transcription endpoint"""
+    def test_gp_document_upload(self):
+        """Test GP document upload and processing"""
         try:
-            # Create test audio file
-            audio_data, filename = self.create_test_audio_file()
-            if not audio_data:
+            # Create test PDF document
+            pdf_data, filename = self.create_test_pdf_document()
+            if not pdf_data:
                 return False, None
             
             # Prepare multipart form data
             files = {
-                'file': (filename, audio_data, 'audio/wav')
+                'file': (filename, pdf_data, 'application/pdf')
+            }
+            data = {
+                'processing_mode': 'smart'
             }
             
             # Make API call
             response = requests.post(
-                f"{self.backend_url}/ai-scribe/transcribe",
+                f"{self.backend_url}/gp/upload-patient-file",
                 files=files,
-                timeout=60  # Longer timeout for transcription
+                data=data,
+                timeout=180  # Longer timeout for document processing
             )
             
             if response.status_code == 200:
                 result = response.json()
-                expected_fields = ['status', 'transcription']
+                expected_fields = ['document_id', 'status']
                 
                 if all(field in result for field in expected_fields):
-                    if result['status'] == 'success' and result['transcription']:
-                        transcription_length = len(result['transcription'])
-                        self.log_test("AI Scribe Transcription API", True, 
-                                    f"Successfully transcribed audio ({transcription_length} characters)")
+                    if result['status'] in ['success', 'processed']:
+                        self.test_document_id = result.get('document_id')
+                        self.log_test("GP Document Upload", True, 
+                                    f"Successfully uploaded and processed document: {self.test_document_id}")
                         return True, result
                     else:
-                        self.log_test("AI Scribe Transcription API", False, 
-                                    f"Invalid response: status={result.get('status')}, transcription_empty={not result.get('transcription')}")
+                        self.log_test("GP Document Upload", False, 
+                                    f"Document processing failed: status={result.get('status')}")
                         return False, result
                 else:
                     missing_fields = [f for f in expected_fields if f not in result]
-                    self.log_test("AI Scribe Transcription API", False, 
+                    self.log_test("GP Document Upload", False, 
                                 f"Missing fields in response: {missing_fields}")
                     return False, result
             else:
@@ -266,11 +270,11 @@ class GPDocumentTester:
                 except:
                     error_msg += f": {response.text}"
                 
-                self.log_test("AI Scribe Transcription API", False, error_msg)
+                self.log_test("GP Document Upload", False, error_msg)
                 return False, None
                 
         except Exception as e:
-            self.log_test("AI Scribe Transcription API", False, f"Request failed: {str(e)}")
+            self.log_test("GP Document Upload", False, f"Request failed: {str(e)}")
             return False, None
     
     def test_ai_scribe_soap_generation_endpoint(self, transcription_text):
