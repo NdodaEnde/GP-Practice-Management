@@ -201,9 +201,14 @@ metadata:
 
 test_plan:
   current_focus:
-    - "AI Scribe recording interface"
+    - "GP Document Upload & Processing"
+    - "Patient Matching Workflow"
+    - "Patient Match Confirmation"
+    - "New Patient Creation"
+    - "Validation Data Save"
+    - "Document Archive"
   stuck_tasks: []
-  test_all: false
+  test_all: true
   test_priority: "high_first"
 
 agent_communication:
