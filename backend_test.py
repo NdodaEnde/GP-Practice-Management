@@ -679,75 +679,7 @@ class QueueManagementTester:
             self.log_test("Consultation Call-Next Endpoint", False, f"Request failed: {str(e)}")
             return False, None
     
-    def test_gp_document_upload(self):
-        """Test GP document upload and processing (using existing document for testing)"""
-        try:
-            # Instead of uploading a new document (which requires a valid PDF and LandingAI processing),
-            # we'll use an existing document from the database for testing the workflow
-            
-            # Get an existing document from MongoDB
-            existing_docs = list(self.db.gp_scanned_documents.find({}, {'document_id': 1}).limit(1))
-            
-            if existing_docs:
-                self.test_document_id = existing_docs[0]['document_id']
-                self.log_test("GP Document Upload", True, 
-                            f"Using existing document for testing: {self.test_document_id}")
-                
-                # Mock a successful upload response structure
-                mock_result = {
-                    'document_id': self.test_document_id,
-                    'status': 'processed',
-                    'message': 'Using existing document for workflow testing'
-                }
-                return True, mock_result
-            else:
-                # If no existing documents, try to create a simple test
-                # Note: This will likely fail due to LandingAI validation, but we'll test the endpoint
-                try:
-                    # Create a minimal valid PDF structure
-                    pdf_data, filename = self.create_test_pdf_document()
-                    if not pdf_data:
-                        return False, None
-                    
-                    files = {'file': (filename, pdf_data, 'application/pdf')}
-                    data = {'processing_mode': 'smart'}
-                    
-                    response = requests.post(
-                        f"{self.backend_url}/gp/upload-patient-file",
-                        files=files,
-                        data=data,
-                        timeout=60
-                    )
-                    
-                    if response.status_code == 200:
-                        result = response.json()
-                        if 'document_id' in result:
-                            self.test_document_id = result['document_id']
-                            self.log_test("GP Document Upload", True, 
-                                        f"Successfully uploaded document: {self.test_document_id}")
-                            return True, result
-                        else:
-                            self.log_test("GP Document Upload", False, 
-                                        f"Upload succeeded but no document_id in response: {result}")
-                            return False, result
-                    else:
-                        # Expected failure due to PDF validation - this is not a critical failure
-                        self.log_test("GP Document Upload", False, 
-                                    f"Upload failed (expected - PDF validation): {response.status_code}")
-                        # Use a mock document ID for testing other endpoints
-                        self.test_document_id = "test-doc-mock-123"
-                        return False, None
-                        
-                except Exception as upload_error:
-                    self.log_test("GP Document Upload", False, 
-                                f"Upload attempt failed: {str(upload_error)}")
-                    # Use mock document ID for testing other endpoints
-                    self.test_document_id = "test-doc-mock-123"
-                    return False, None
-                
-        except Exception as e:
-            self.log_test("GP Document Upload", False, f"Test setup failed: {str(e)}")
-            return False, None
+    # Old GP document methods removed - replaced with queue management tests above
     
     def test_patient_matching(self):
         """Test patient matching workflow"""
