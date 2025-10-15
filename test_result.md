@@ -261,14 +261,14 @@ metadata:
 
 test_plan:
   current_focus:
-    - "GP Document Upload & Processing"
-    - "Patient Matching Workflow"
-    - "Patient Match Confirmation"
-    - "New Patient Creation"
-    - "Validation Data Save"
-    - "Document Archive"
-  stuck_tasks: []
-  test_all: true
+    - "Queue Check-in Flow"
+    - "Queue Display and Statistics"
+    - "Workstation Dashboard Integration"
+    - "Queue Status Updates"
+    - "AI Scribe Integration Points"
+  stuck_tasks:
+    - "AI Scribe Integration Points"
+  test_all: false
   test_priority: "high_first"
 
 agent_communication:
