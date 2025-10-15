@@ -56,6 +56,31 @@ const ReceptionCheckIn = () => {
     }
   };
 
+  const fetchPatientById = async (patientId) => {
+    try {
+      const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
+      const response = await axios.get(`${backendUrl}/api/patients/${patientId}`);
+      
+      if (response.data) {
+        setSelectedPatient(response.data);
+        setSearchResults([response.data]);
+        setHasSearched(true);
+        
+        toast({
+          title: "Patient Loaded",
+          description: `${response.data.first_name} ${response.data.last_name} ready for check-in`,
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching patient:', error);
+      toast({
+        title: "Error",
+        description: "Could not load patient details",
+        variant: "destructive"
+      });
+    }
+  };
+
   const searchPatients = async () => {
     if (!searchQuery.trim()) return;
     
