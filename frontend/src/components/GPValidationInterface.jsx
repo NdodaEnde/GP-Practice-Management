@@ -343,10 +343,8 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
     setSelectedChunkId(wasSelected ? null : chunkId);
     
     if (!wasSelected && grounding && grounding.page !== undefined) {
-      // Navigate to the page where this chunk is located
-      setPageNumber(grounding.page + 1); // PDF pages are 1-indexed
-      
-      // Scroll to the highlighted region after a delay
+      // Scroll to the highlighted region
+      // Note: We DON'T change pageNumber to avoid PDF jumping back
       const chunk = chunks[chunkIndex];
       setTimeout(() => scrollToHighlightedRegion(chunk), 200);
     }
