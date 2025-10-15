@@ -2733,7 +2733,6 @@ async def save_consultation_to_ehr(request: dict):
             'status': 'completed',
             'chief_complaint': extracted_info.get('chief_complaint', 'Consultation'),
             'gp_notes': soap_notes,
-            'consultation_type': 'AI Scribe Consultation',
             'created_at': datetime.now(timezone.utc).isoformat()
         }
         
