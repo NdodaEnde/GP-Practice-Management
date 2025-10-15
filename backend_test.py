@@ -438,35 +438,159 @@ class GPDocumentTester:
             self.log_test("Patient Match Confirmation", False, f"Request failed: {str(e)}")
             return False, None
     
-    def test_ai_scribe_with_mock_transcription(self):
-        """Test SOAP generation with mock transcription (fallback if Whisper fails)"""
+    def test_new_patient_creation(self):
+        """Test creating new patient from document"""
         try:
-            # Use a realistic medical consultation transcription
-            mock_transcription = """
-            Patient Sarah Johnson, 42 years old, presents with complaints of increased thirst and frequent urination over the past two weeks. 
-            She reports feeling more tired than usual and has noticed some blurred vision. 
-            Patient has a family history of diabetes. 
-            On examination, blood pressure is 145 over 90, heart rate 88 beats per minute. 
-            Patient appears well but slightly dehydrated. 
-            Blood glucose finger stick shows 280 milligrams per deciliter. 
-            I suspect new onset diabetes mellitus type 2. 
-            Plan to start metformin 500 milligrams twice daily, recommend dietary changes, and follow up in one week with lab work including hemoglobin A1C and comprehensive metabolic panel.
-            """
+            # Demographics for a new patient (different from test patient)
+            demographics = {
+                "first_name": "Jane",
+                "last_name": "Doe",
+                "dob": "1985-03-20",
+                "id_number": "8503205555084",
+                "contact_number": "+27987654321",
+                "email": "jane.doe@example.com"
+            }
             
-            # Test SOAP generation with mock transcription
-            success, result = self.test_ai_scribe_soap_generation_endpoint(mock_transcription)
+            # Mock parsed data
+            parsed_data = {
+                "demographics": demographics,
+                "vitals": {
+                    "vital_signs_records": [{
+                        "blood_pressure": "120/80",
+                        "heart_rate": 70,
+                        "temperature": 36.8
+                    }]
+                },
+                "clinical_notes": {
+                    "chief_complaint": "Annual physical exam",
+                    "diagnosis": "Healthy"
+                }
+            }
             
-            if success:
-                self.log_test("AI Scribe Mock Transcription Test", True, 
-                            "SOAP generation works with realistic medical transcription")
-                return True, result
+            payload = {
+                "document_id": self.test_document_id or "test-doc-new-patient",
+                "demographics": demographics,
+                "parsed_data": parsed_data,
+                "modifications": []
+            }
+            
+            # Make API call
+            response = requests.post(
+                f"{self.backend_url}/gp/validation/create-new-patient",
+                json=payload,
+                headers={'Content-Type': 'application/json'},
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                expected_fields = ['status', 'patient_id', 'encounter_id', 'document_id']
+                
+                if all(field in result for field in expected_fields):
+                    if result['status'] == 'success':
+                        new_patient_id = result['patient_id']
+                        new_encounter_id = result['encounter_id']
+                        self.log_test("New Patient Creation", True, 
+                                    f"Successfully created new patient: {new_patient_id}, encounter: {new_encounter_id}")
+                        return True, result
+                    else:
+                        self.log_test("New Patient Creation", False, 
+                                    f"Patient creation failed: {result.get('status')}")
+                        return False, result
+                else:
+                    missing_fields = [f for f in expected_fields if f not in result]
+                    self.log_test("New Patient Creation", False, 
+                                f"Missing fields in response: {missing_fields}")
+                    return False, result
             else:
-                self.log_test("AI Scribe Mock Transcription Test", False, 
-                            "SOAP generation failed with mock transcription")
+                error_msg = f"API returned status {response.status_code}"
+                try:
+                    error_detail = response.json()
+                    error_msg += f": {error_detail}"
+                except:
+                    error_msg += f": {response.text}"
+                
+                self.log_test("New Patient Creation", False, error_msg)
                 return False, None
                 
         except Exception as e:
-            self.log_test("AI Scribe Mock Transcription Test", False, f"Error in mock transcription test: {str(e)}")
+            self.log_test("New Patient Creation", False, f"Request failed: {str(e)}")
+            return False, None
+    
+    def test_validation_data_save(self):
+        """Test saving validated document data"""
+        try:
+            # Mock validated data with modifications
+            validated_data = {
+                "demographics": {
+                    "first_name": "John",
+                    "last_name": "Smith",
+                    "dob": "1980-05-15",
+                    "id_number": "8005155555083"
+                },
+                "clinical_notes": {
+                    "chief_complaint": "Routine checkup - VALIDATED",
+                    "diagnosis": "Hypertension - confirmed"
+                }
+            }
+            
+            modifications = [
+                {
+                    "field": "clinical_notes.chief_complaint",
+                    "original_value": "Routine checkup",
+                    "new_value": "Routine checkup - VALIDATED",
+                    "modification_type": "correction"
+                }
+            ]
+            
+            payload = {
+                "document_id": self.test_document_id or "test-doc-123",
+                "parsed_data": validated_data,
+                "modifications": modifications,
+                "status": "approved",
+                "notes": "Validated by testing agent"
+            }
+            
+            # Make API call
+            response = requests.post(
+                f"{self.backend_url}/gp/validation/save",
+                json=payload,
+                headers={'Content-Type': 'application/json'},
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                expected_fields = ['status', 'message', 'document_id', 'modifications_count']
+                
+                if all(field in result for field in expected_fields):
+                    if result['status'] == 'success':
+                        mod_count = result['modifications_count']
+                        self.log_test("Validation Data Save", True, 
+                                    f"Successfully saved validation with {mod_count} modifications")
+                        return True, result
+                    else:
+                        self.log_test("Validation Data Save", False, 
+                                    f"Validation save failed: {result.get('status')}")
+                        return False, result
+                else:
+                    missing_fields = [f for f in expected_fields if f not in result]
+                    self.log_test("Validation Data Save", False, 
+                                f"Missing fields in response: {missing_fields}")
+                    return False, result
+            else:
+                error_msg = f"API returned status {response.status_code}"
+                try:
+                    error_detail = response.json()
+                    error_msg += f": {error_detail}"
+                except:
+                    error_msg += f": {response.text}"
+                
+                self.log_test("Validation Data Save", False, error_msg)
+                return False, None
+                
+        except Exception as e:
+            self.log_test("Validation Data Save", False, f"Request failed: {str(e)}")
             return False, None
     
     def run_complete_ai_scribe_workflow_test(self):
