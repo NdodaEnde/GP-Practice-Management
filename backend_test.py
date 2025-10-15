@@ -782,11 +782,6 @@ class QueueManagementTester:
             print(f"❌ Failed components: {', '.join(failed_tests)}")
         
         return critical_success
-                return False, None
-                
-        except Exception as e:
-            self.log_test("Patient Match Confirmation", False, f"Request failed: {str(e)}")
-            return False, None
     
     def test_new_patient_creation(self):
         """Test creating new patient from document"""
