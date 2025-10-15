@@ -107,50 +107,117 @@ class GPDocumentTester:
             self.log_test("Microservice Connection", False, f"Cannot connect to microservice: {str(e)}")
             return False
     
-    def create_test_audio_file(self):
-        """Create a test audio file for transcription testing"""
+    def create_test_pdf_document(self):
+        """Create a test PDF document for GP document processing"""
         try:
-            # Create a simple WAV file with a sine wave (simulating speech)
-            sample_rate = 16000  # 16kHz sample rate
-            duration = 3  # 3 seconds
-            frequency = 440  # A4 note frequency
+            # Create a simple PDF-like content (base64 encoded)
+            # This simulates a medical document with patient information
+            test_pdf_content = b"""
+            %PDF-1.4
+            1 0 obj
+            <<
+            /Type /Catalog
+            /Pages 2 0 R
+            >>
+            endobj
             
-            # Generate sine wave data
-            samples = []
-            for i in range(int(sample_rate * duration)):
-                # Create a simple sine wave that varies in frequency (simulating speech patterns)
-                t = i / sample_rate
-                # Mix multiple frequencies to simulate speech-like audio
-                sample = (
-                    0.3 * math.sin(2 * math.pi * frequency * t) +
-                    0.2 * math.sin(2 * math.pi * (frequency * 1.5) * t) +
-                    0.1 * math.sin(2 * math.pi * (frequency * 0.7) * t)
-                )
-                # Convert to 16-bit integer
-                sample_int = int(sample * 32767)
-                samples.append(sample_int)
+            2 0 obj
+            <<
+            /Type /Pages
+            /Kids [3 0 R]
+            /Count 1
+            >>
+            endobj
             
-            # Create WAV file in memory
-            audio_buffer = io.BytesIO()
+            3 0 obj
+            <<
+            /Type /Page
+            /Parent 2 0 R
+            /MediaBox [0 0 612 792]
+            /Contents 4 0 R
+            >>
+            endobj
             
-            with wave.open(audio_buffer, 'wb') as wav_file:
-                wav_file.setnchannels(1)  # Mono
-                wav_file.setsampwidth(2)  # 16-bit
-                wav_file.setframerate(sample_rate)
-                
-                # Write samples
-                for sample in samples:
-                    wav_file.writeframes(struct.pack('<h', sample))
+            4 0 obj
+            <<
+            /Length 200
+            >>
+            stream
+            BT
+            /F1 12 Tf
+            100 700 Td
+            (MEDICAL RECORD) Tj
+            0 -20 Td
+            (Patient: John Smith) Tj
+            0 -20 Td
+            (DOB: 1980-05-15) Tj
+            0 -20 Td
+            (ID: 8005155555083) Tj
+            0 -20 Td
+            (Diagnosis: Hypertension) Tj
+            0 -20 Td
+            (Medication: Lisinopril 10mg daily) Tj
+            ET
+            endstream
+            endobj
             
-            audio_buffer.seek(0)
-            audio_data = audio_buffer.getvalue()
+            xref
+            0 5
+            0000000000 65535 f 
+            0000000009 00000 n 
+            0000000058 00000 n 
+            0000000115 00000 n 
+            0000000206 00000 n 
+            trailer
+            <<
+            /Size 5
+            /Root 1 0 R
+            >>
+            startxref
+            456
+            %%EOF
+            """
             
-            self.log_test("Create Test Audio", True, f"Created {len(audio_data)} byte WAV file")
-            return audio_data, "test_consultation.wav"
+            self.log_test("Create Test PDF", True, f"Created {len(test_pdf_content)} byte PDF document")
+            return test_pdf_content, "test_medical_record.pdf"
             
         except Exception as e:
-            self.log_test("Create Test Audio", False, f"Error creating test audio: {str(e)}")
+            self.log_test("Create Test PDF", False, f"Error creating test PDF: {str(e)}")
             return None, None
+    
+    def create_test_patient(self):
+        """Create a test patient for matching tests"""
+        try:
+            patient_data = {
+                "first_name": "John",
+                "last_name": "Smith", 
+                "dob": "1980-05-15",
+                "id_number": "8005155555083",
+                "contact_number": "+27123456789",
+                "email": "john.smith@example.com",
+                "address": "123 Main Street, Cape Town",
+                "medical_aid": "Discovery Health"
+            }
+            
+            response = requests.post(
+                f"{self.backend_url}/patients",
+                json=patient_data,
+                headers={'Content-Type': 'application/json'},
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                self.test_patient_id = result['id']
+                self.log_test("Create Test Patient", True, f"Created test patient: {self.test_patient_id}")
+                return True, result
+            else:
+                self.log_test("Create Test Patient", False, f"Failed to create patient: {response.status_code}")
+                return False, None
+                
+        except Exception as e:
+            self.log_test("Create Test Patient", False, f"Error creating test patient: {str(e)}")
+            return False, None
     
     def test_ai_scribe_transcribe_endpoint(self):
         """Test the AI Scribe audio transcription endpoint"""
