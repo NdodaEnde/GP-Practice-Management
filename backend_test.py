@@ -380,6 +380,305 @@ class QueueManagementTester:
             self.log_test("Queue Stats", False, f"Request failed: {str(e)}")
             return False, None
     
+    def test_workstation_call_next(self):
+        """Test Scenario 3: Workstation Dashboard - Call next patient"""
+        try:
+            if not self.test_queue_id:
+                self.log_test("Workstation Call Next", False, "No test queue entry available")
+                return False, None
+            
+            # Test calling next patient to consultation
+            response = requests.post(
+                f"{self.backend_url}/queue/{self.test_queue_id}/call-next",
+                params={"station": "consultation"},
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                expected_fields = ['status', 'message', 'queue_number', 'patient_name']
+                
+                if all(field in result for field in expected_fields):
+                    if result['status'] == 'success':
+                        self.log_test("Workstation Call Next", True, 
+                                    f"Successfully called patient {result['patient_name']} to consultation")
+                        
+                        # Verify status change in MongoDB
+                        queue_entry = self.db.queue_entries.find_one({'id': self.test_queue_id})
+                        if queue_entry and queue_entry.get('status') == 'in_consultation':
+                            self.log_test("Status Update Verification", True, 
+                                        "Queue status correctly updated to 'in_consultation'")
+                            
+                            # Check if timestamp was recorded
+                            if queue_entry.get('called_at'):
+                                self.log_test("Timestamp Recording", True, 
+                                            "Call timestamp properly recorded")
+                            else:
+                                self.log_test("Timestamp Recording", False, 
+                                            "Call timestamp not recorded")
+                        else:
+                            self.log_test("Status Update Verification", False, 
+                                        "Queue status not updated correctly in MongoDB")
+                        
+                        return True, result
+                    else:
+                        self.log_test("Workstation Call Next", False, 
+                                    f"Call next failed: {result.get('status')}")
+                        return False, result
+                else:
+                    missing_fields = [f for f in expected_fields if f not in result]
+                    self.log_test("Workstation Call Next", False, 
+                                f"Missing fields in response: {missing_fields}")
+                    return False, result
+            else:
+                self.log_test("Workstation Call Next", False, 
+                            f"API returned status {response.status_code}")
+                return False, None
+                
+        except Exception as e:
+            self.log_test("Workstation Call Next", False, f"Request failed: {str(e)}")
+            return False, None
+    
+    def test_patient_details_with_vitals(self):
+        """Test Scenario 3: Patient details endpoint with vitals"""
+        try:
+            if not self.test_patient_id:
+                self.log_test("Patient Details with Vitals", False, "No test patient available")
+                return False, None
+            
+            # First create an encounter with vitals for the patient
+            encounter_data = {
+                "patient_id": self.test_patient_id,
+                "chief_complaint": "Routine checkup",
+                "vitals": {
+                    "blood_pressure": "120/80",
+                    "heart_rate": 72,
+                    "temperature": 36.6,
+                    "weight": 70.5,
+                    "height": 175.0,
+                    "oxygen_saturation": 98
+                }
+            }
+            
+            encounter_response = requests.post(
+                f"{self.backend_url}/encounters",
+                json=encounter_data,
+                headers={'Content-Type': 'application/json'},
+                timeout=30
+            )
+            
+            if encounter_response.status_code == 200:
+                encounter_result = encounter_response.json()
+                self.test_encounter_id = encounter_result['id']
+                
+                # Now test getting patient details
+                response = requests.get(
+                    f"{self.backend_url}/patients/{self.test_patient_id}",
+                    timeout=30
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    expected_fields = ['id', 'first_name', 'last_name', 'dob']
+                    
+                    if all(field in result for field in expected_fields):
+                        self.log_test("Patient Details", True, 
+                                    f"Successfully retrieved patient details for {result['first_name']} {result['last_name']}")
+                        
+                        # Note: The current implementation doesn't include latest_vitals in patient response
+                        # This is a gap that should be noted
+                        if 'latest_vitals' in result:
+                            self.log_test("Latest Vitals Integration", True, 
+                                        "Patient response includes latest vitals")
+                        else:
+                            self.log_test("Latest Vitals Integration", False, 
+                                        "MISSING FEATURE: Patient response should include latest_vitals field")
+                        
+                        return True, result
+                    else:
+                        missing_fields = [f for f in expected_fields if f not in result]
+                        self.log_test("Patient Details", False, 
+                                    f"Missing fields in response: {missing_fields}")
+                        return False, result
+                else:
+                    self.log_test("Patient Details", False, 
+                                f"API returned status {response.status_code}")
+                    return False, None
+            else:
+                self.log_test("Patient Details with Vitals", False, 
+                            f"Failed to create encounter with vitals: {encounter_response.status_code}")
+                return False, None
+                
+        except Exception as e:
+            self.log_test("Patient Details with Vitals", False, f"Request failed: {str(e)}")
+            return False, None
+    
+    def test_queue_status_updates(self):
+        """Test Scenario 4: Queue status updates"""
+        try:
+            if not self.test_queue_id:
+                self.log_test("Queue Status Updates", False, "No test queue entry available")
+                return False, None
+            
+            # Test updating status from in_consultation to completed
+            update_data = {
+                "status": "completed",
+                "station": "consultation",
+                "notes": "Consultation completed successfully"
+            }
+            
+            response = requests.put(
+                f"{self.backend_url}/queue/{self.test_queue_id}/update-status",
+                json=update_data,
+                headers={'Content-Type': 'application/json'},
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                expected_fields = ['status', 'message', 'queue_id']
+                
+                if all(field in result for field in expected_fields):
+                    if result['status'] == 'success':
+                        self.log_test("Queue Status Updates", True, 
+                                    "Successfully updated queue status to completed")
+                        
+                        # Verify status change and timestamp in MongoDB
+                        queue_entry = self.db.queue_entries.find_one({'id': self.test_queue_id})
+                        if queue_entry:
+                            if queue_entry.get('status') == 'completed':
+                                self.log_test("Status Change Verification", True, 
+                                            "Queue status correctly updated to 'completed'")
+                                
+                                # Check if completion timestamp was recorded
+                                if queue_entry.get('completed_at'):
+                                    self.log_test("Completion Timestamp", True, 
+                                                "Completion timestamp properly recorded")
+                                else:
+                                    self.log_test("Completion Timestamp", False, 
+                                                "Completion timestamp not recorded")
+                                
+                                # Check audit logging
+                                audit_entry = self.db.audit_events.find_one({
+                                    'event_type': 'queue_status_updated',
+                                    'queue_id': self.test_queue_id
+                                })
+                                if audit_entry:
+                                    self.log_test("Audit Logging", True, 
+                                                "Status update properly logged in audit events")
+                                else:
+                                    self.log_test("Audit Logging", False, 
+                                                "Status update not found in audit events")
+                            else:
+                                self.log_test("Status Change Verification", False, 
+                                            f"Queue status not updated correctly: {queue_entry.get('status')}")
+                        else:
+                            self.log_test("Status Change Verification", False, 
+                                        "Queue entry not found in MongoDB")
+                        
+                        return True, result
+                    else:
+                        self.log_test("Queue Status Updates", False, 
+                                    f"Status update failed: {result.get('status')}")
+                        return False, result
+                else:
+                    missing_fields = [f for f in expected_fields if f not in result]
+                    self.log_test("Queue Status Updates", False, 
+                                f"Missing fields in response: {missing_fields}")
+                    return False, result
+            else:
+                self.log_test("Queue Status Updates", False, 
+                            f"API returned status {response.status_code}")
+                return False, None
+                
+        except Exception as e:
+            self.log_test("Queue Status Updates", False, f"Request failed: {str(e)}")
+            return False, None
+    
+    def test_ai_scribe_integration_endpoints(self):
+        """Test Scenario 5: Integration points - AI Scribe navigation endpoints"""
+        try:
+            if not self.test_patient_id:
+                self.log_test("AI Scribe Integration", False, "No test patient available")
+                return False, None
+            
+            # Test if patient endpoint exists (for EHR viewing)
+            response = requests.get(
+                f"{self.backend_url}/patients/{self.test_patient_id}",
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                self.log_test("EHR Navigation Endpoint", True, 
+                            "Patient endpoint accessible for EHR viewing")
+            else:
+                self.log_test("EHR Navigation Endpoint", False, 
+                            f"Patient endpoint not accessible: {response.status_code}")
+                return False, None
+            
+            # Check if AI Scribe endpoint exists (mentioned in review request)
+            # Note: The review mentions /patients/{id}/ai-scribe but this doesn't exist in current backend
+            ai_scribe_response = requests.get(
+                f"{self.backend_url}/patients/{self.test_patient_id}/ai-scribe",
+                timeout=30
+            )
+            
+            if ai_scribe_response.status_code == 200:
+                self.log_test("AI Scribe Navigation Endpoint", True, 
+                            "AI Scribe navigation endpoint exists")
+            else:
+                self.log_test("AI Scribe Navigation Endpoint", False, 
+                            f"MISSING FEATURE: /patients/{{id}}/ai-scribe endpoint not implemented (status: {ai_scribe_response.status_code})")
+            
+            # Test AI Scribe transcription endpoint
+            transcribe_response = requests.get(
+                f"{self.backend_url}/ai-scribe/transcribe",
+                timeout=10
+            )
+            
+            # We expect this to fail without a file, but endpoint should exist
+            if transcribe_response.status_code in [400, 422]:  # Bad request or validation error
+                self.log_test("AI Scribe Transcribe Endpoint", True, 
+                            "AI Scribe transcription endpoint exists (validation error expected)")
+            elif transcribe_response.status_code == 404:
+                self.log_test("AI Scribe Transcribe Endpoint", False, 
+                            "AI Scribe transcription endpoint not found")
+            else:
+                self.log_test("AI Scribe Transcribe Endpoint", True, 
+                            f"AI Scribe transcription endpoint accessible (status: {transcribe_response.status_code})")
+            
+            return True, None
+                
+        except Exception as e:
+            self.log_test("AI Scribe Integration", False, f"Request failed: {str(e)}")
+            return False, None
+    
+    def test_consultation_call_next_endpoint(self):
+        """Test the specific /api/queue/consultation/call-next endpoint mentioned in review"""
+        try:
+            # Test the specific endpoint mentioned in the review request
+            response = requests.post(
+                f"{self.backend_url}/queue/consultation/call-next",
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                self.log_test("Consultation Call-Next Endpoint", True, 
+                            "Consultation call-next endpoint exists and accessible")
+                return True, response.json()
+            elif response.status_code == 404:
+                self.log_test("Consultation Call-Next Endpoint", False, 
+                            "MISSING FEATURE: /api/queue/consultation/call-next endpoint not implemented")
+                return False, None
+            else:
+                self.log_test("Consultation Call-Next Endpoint", False, 
+                            f"Consultation call-next endpoint error: {response.status_code}")
+                return False, None
+                
+        except Exception as e:
+            self.log_test("Consultation Call-Next Endpoint", False, f"Request failed: {str(e)}")
+            return False, None
+    
     def test_gp_document_upload(self):
         """Test GP document upload and processing (using existing document for testing)"""
         try:
