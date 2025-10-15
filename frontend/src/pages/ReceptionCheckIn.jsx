@@ -23,6 +23,7 @@ const ReceptionCheckIn = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [reasonForVisit, setReasonForVisit] = useState('');
   const [priority, setPriority] = useState('normal');
