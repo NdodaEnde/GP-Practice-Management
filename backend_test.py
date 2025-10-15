@@ -93,6 +93,20 @@ class GPDocumentTester:
             self.log_test("MongoDB Connection", False, f"MongoDB connection failed: {str(e)}")
             return False, 0
     
+    def test_microservice_connection(self):
+        """Test microservice connection"""
+        try:
+            response = requests.get(f"{self.microservice_url}/health", timeout=10)
+            if response.status_code == 200:
+                self.log_test("Microservice Connection", True, "LandingAI microservice is accessible")
+                return True
+            else:
+                self.log_test("Microservice Connection", False, f"Microservice returned status {response.status_code}")
+                return False
+        except Exception as e:
+            self.log_test("Microservice Connection", False, f"Cannot connect to microservice: {str(e)}")
+            return False
+    
     def create_test_audio_file(self):
         """Create a test audio file for transcription testing"""
         try:
