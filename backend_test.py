@@ -1279,11 +1279,11 @@ class QueueManagementTester:
 
 def main():
     """Main test execution"""
-    tester = GPDocumentTester()
+    tester = QueueManagementTester()
     
     try:
         # Run the complete workflow test
-        success = tester.run_complete_gp_workflow_test()
+        success = tester.run_complete_queue_management_test()
         
         # Print detailed results
         print("\n" + "="*80)
