@@ -690,34 +690,6 @@ class QueueManagementTester:
         print("\n" + "="*80)
         print("QUEUE MANAGEMENT SYSTEM PHASE 2 - COMPLETE WORKFLOW TEST")
         print("="*80)
-            parsed_data = {
-                "demographics": {
-                    "first_name": "John",
-                    "last_name": "Smith",
-                    "dob": "1980-05-15",
-                    "id_number": "8005155555083"
-                },
-                "vitals": {
-                    "vital_signs_records": [{
-                        "blood_pressure": "140/90",
-                        "heart_rate": 75,
-                        "temperature": 36.5,
-                        "weight": 80.0,
-                        "height": 175.0
-                    }]
-                },
-                "clinical_notes": {
-                    "chief_complaint": "Routine checkup",
-                    "diagnosis": "Hypertension"
-                },
-                "chronic_summary": {
-                    "chronic_conditions": ["Hypertension"],
-                    "current_medications": ["Lisinopril 10mg daily"]
-                }
-            }
-            
-            # Use actual document ID if available
-            document_id = self.test_document_id or "test-doc-mock-123"
             
             payload = {
                 "document_id": document_id,
