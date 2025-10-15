@@ -1,19 +1,24 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, UserPlus, User, Calendar, Phone, Mail, FileText } from 'lucide-react';
+import { Search, UserPlus, User, Calendar, Phone, Mail, FileText, CheckCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { patientAPI } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
+import axios from 'axios';
 
 const PatientRegistry = () => {
   const [patients, setPatients] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [checkInDialogOpen, setCheckInDialogOpen] = useState(false);
+  const [newlyCreatedPatient, setNewlyCreatedPatient] = useState(null);
+  const [isCheckingIn, setIsCheckingIn] = useState(false);
   const { toast } = useToast();
 
   const [formData, setFormData] = useState({
@@ -25,6 +30,11 @@ const PatientRegistry = () => {
     email: '',
     address: '',
     medical_aid: ''
+  });
+
+  const [checkInData, setCheckInData] = useState({
+    reason_for_visit: '',
+    priority: 'normal'
   });
 
   useEffect(() => {
