@@ -297,6 +297,27 @@ const AIScribe = () => {
         consultationData
       );
 
+      // Update queue status to completed if patient is in queue
+      try {
+        const queueResponse = await axios.get(`${backendUrl}/api/queue/current`);
+        const patientInQueue = queueResponse.data.queue?.find(
+          entry => entry.patient_id === patientId && entry.status === 'in_consultation'
+        );
+        
+        if (patientInQueue) {
+          await axios.put(
+            `${backendUrl}/api/queue/${patientInQueue.id}/update-status`,
+            {
+              status: 'completed',
+              station: 'consultation',
+              notes: 'Consultation completed via AI Scribe'
+            }
+          );
+        }
+      } catch (queueError) {
+        console.log('Queue update skipped:', queueError.message);
+      }
+
       toast({
         title: "Success",
         description: `Consultation saved to EHR. Diagnosis: ${response.data.diagnosis || 'N/A'}`,
