@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 """
-Backend API Testing for AI Scribe Endpoints
-Tests the AI Scribe audio transcription and SOAP note generation endpoints
+Backend API Testing for GP Document-to-EHR Integration Workflow
+Tests the complete GP document processing workflow including:
+- Document upload and processing
+- Patient matching
+- Patient match confirmation
+- New patient creation
+- Validation data save
+- Document archive
 """
 
 import requests
@@ -15,11 +21,14 @@ import io
 import wave
 import struct
 import math
+import base64
+import time
 
 # Configuration
 BACKEND_URL = "https://healthcare-ehr.preview.emergentagent.com/api"
 MONGO_URL = "mongodb://localhost:27017"
 DATABASE_NAME = "surgiscan_documents"
+MICROSERVICE_URL = "http://localhost:5001"
 
 class AIScribeTester:
     def __init__(self):
