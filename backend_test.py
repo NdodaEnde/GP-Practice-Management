@@ -355,49 +355,88 @@ class GPDocumentTester:
             self.log_test("Patient Matching", False, f"Request failed: {str(e)}")
             return False, None
     
-    def test_ai_scribe_error_handling(self):
-        """Test AI Scribe endpoints error handling"""
+    def test_patient_match_confirmation(self):
+        """Test patient match confirmation and encounter creation"""
         try:
-            # Test 1: Transcribe endpoint with invalid file
-            invalid_files = {
-                'file': ('test.txt', b'This is not an audio file', 'text/plain')
+            if not self.test_patient_id:
+                self.log_test("Patient Match Confirmation", False, "No test patient available")
+                return False, None
+            
+            # Mock parsed data from document
+            parsed_data = {
+                "demographics": {
+                    "first_name": "John",
+                    "last_name": "Smith",
+                    "dob": "1980-05-15",
+                    "id_number": "8005155555083"
+                },
+                "vitals": {
+                    "vital_signs_records": [{
+                        "blood_pressure": "140/90",
+                        "heart_rate": 75,
+                        "temperature": 36.5,
+                        "weight": 80.0,
+                        "height": 175.0
+                    }]
+                },
+                "clinical_notes": {
+                    "chief_complaint": "Routine checkup",
+                    "diagnosis": "Hypertension"
+                },
+                "chronic_summary": {
+                    "chronic_conditions": ["Hypertension"],
+                    "current_medications": ["Lisinopril 10mg daily"]
+                }
             }
             
-            response = requests.post(
-                f"{self.backend_url}/ai-scribe/transcribe",
-                files=invalid_files,
-                timeout=30
-            )
-            
-            transcribe_error_handled = response.status_code in [400, 422, 500]
-            
-            # Test 2: SOAP generation with empty transcription
-            empty_payload = {
-                "transcription": "",
-                "patient_context": {}
+            payload = {
+                "document_id": self.test_document_id or "test-doc-123",
+                "patient_id": self.test_patient_id,
+                "parsed_data": parsed_data,
+                "modifications": []
             }
             
+            # Make API call
             response = requests.post(
-                f"{self.backend_url}/ai-scribe/generate-soap",
-                json=empty_payload,
+                f"{self.backend_url}/gp/validation/confirm-match",
+                json=payload,
                 headers={'Content-Type': 'application/json'},
                 timeout=30
             )
             
-            soap_error_handled = response.status_code in [400, 422, 500]
-            
-            if transcribe_error_handled and soap_error_handled:
-                self.log_test("AI Scribe Error Handling", True, 
-                            "Both endpoints properly handle invalid inputs")
-                return True
+            if response.status_code == 200:
+                result = response.json()
+                expected_fields = ['status', 'patient_id', 'encounter_id', 'document_id']
+                
+                if all(field in result for field in expected_fields):
+                    if result['status'] == 'success':
+                        self.test_encounter_id = result['encounter_id']
+                        self.log_test("Patient Match Confirmation", True, 
+                                    f"Successfully confirmed match and created encounter: {self.test_encounter_id}")
+                        return True, result
+                    else:
+                        self.log_test("Patient Match Confirmation", False, 
+                                    f"Match confirmation failed: {result.get('status')}")
+                        return False, result
+                else:
+                    missing_fields = [f for f in expected_fields if f not in result]
+                    self.log_test("Patient Match Confirmation", False, 
+                                f"Missing fields in response: {missing_fields}")
+                    return False, result
             else:
-                self.log_test("AI Scribe Error Handling", False, 
-                            f"Error handling issues: transcribe={transcribe_error_handled}, soap={soap_error_handled}")
-                return False
+                error_msg = f"API returned status {response.status_code}"
+                try:
+                    error_detail = response.json()
+                    error_msg += f": {error_detail}"
+                except:
+                    error_msg += f": {response.text}"
+                
+                self.log_test("Patient Match Confirmation", False, error_msg)
+                return False, None
                 
         except Exception as e:
-            self.log_test("AI Scribe Error Handling", False, f"Error testing error handling: {str(e)}")
-            return False
+            self.log_test("Patient Match Confirmation", False, f"Request failed: {str(e)}")
+            return False, None
     
     def test_ai_scribe_with_mock_transcription(self):
         """Test SOAP generation with mock transcription (fallback if Whisper fails)"""
