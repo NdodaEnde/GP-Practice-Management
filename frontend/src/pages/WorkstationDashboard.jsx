@@ -310,14 +310,47 @@ const WorkstationDashboard = () => {
                         )}
                       </div>
 
-                      <div className="space-y-2">
+                      <div className="space-y-3">
                         <div className="flex items-start gap-2">
-                          <AlertCircle className="w-5 h-5 text-gray-500 mt-0.5" />
-                          <div>
-                            <p className="text-sm font-medium text-gray-600">Reason for Visit</p>
-                            <p className="text-gray-900">{activePatient.reason_for_visit}</p>
+                          <AlertCircle className="w-5 h-5 text-red-500 mt-0.5" />
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-gray-600">Chief Complaint</p>
+                            <p className="text-lg font-semibold text-gray-900">{activePatient.reason_for_visit}</p>
                           </div>
                         </div>
+                        
+                        {/* Display vitals if available */}
+                        {patientDetails && patientDetails.latest_vitals && (
+                          <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                            <p className="text-sm font-medium text-blue-900 mb-2">Recent Vitals</p>
+                            <div className="grid grid-cols-2 gap-2 text-sm">
+                              {patientDetails.latest_vitals.blood_pressure && (
+                                <div>
+                                  <span className="text-gray-600">BP:</span>{' '}
+                                  <span className="font-semibold">{patientDetails.latest_vitals.blood_pressure}</span>
+                                </div>
+                              )}
+                              {patientDetails.latest_vitals.heart_rate && (
+                                <div>
+                                  <span className="text-gray-600">HR:</span>{' '}
+                                  <span className="font-semibold">{patientDetails.latest_vitals.heart_rate} bpm</span>
+                                </div>
+                              )}
+                              {patientDetails.latest_vitals.temperature && (
+                                <div>
+                                  <span className="text-gray-600">Temp:</span>{' '}
+                                  <span className="font-semibold">{patientDetails.latest_vitals.temperature}°C</span>
+                                </div>
+                              )}
+                              {patientDetails.latest_vitals.weight && (
+                                <div>
+                                  <span className="text-gray-600">Weight:</span>{' '}
+                                  <span className="font-semibold">{patientDetails.latest_vitals.weight} kg</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
                         
                         <div className="flex items-center gap-2 text-sm text-gray-600">
                           <Clock className="w-4 h-4" />
@@ -326,7 +359,29 @@ const WorkstationDashboard = () => {
                       </div>
                     </div>
 
-                    {/* Action Buttons */}
+                    {/* Quick Action Buttons */}
+                    {selectedStation === 'consultation' && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <Button
+                          onClick={() => navigate(`/patients/${activePatient.patient_id}/ai-scribe`)}
+                          className="bg-purple-600 hover:bg-purple-700 h-12 text-lg"
+                        >
+                          <Mic className="w-5 h-5 mr-2" />
+                          Start AI Scribe
+                        </Button>
+                        
+                        <Button
+                          variant="outline"
+                          onClick={() => navigate(`/patients/${activePatient.patient_id}`)}
+                          className="h-12 text-lg border-2"
+                        >
+                          <FileText className="w-5 h-5 mr-2" />
+                          View EHR
+                        </Button>
+                      </div>
+                    )}
+
+                    {/* Status Action Buttons */}
                     <div className="flex gap-3">
                       <Button
                         onClick={handleCompleteConsultation}
@@ -334,7 +389,7 @@ const WorkstationDashboard = () => {
                         className="flex-1 bg-green-600 hover:bg-green-700 h-12 text-lg"
                       >
                         <CheckCircle className="w-5 h-5 mr-2" />
-                        Complete Consultation
+                        Complete
                       </Button>
 
                       {selectedStation !== 'dispensary' && (
