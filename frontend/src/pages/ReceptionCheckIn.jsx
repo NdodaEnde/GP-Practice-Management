@@ -217,7 +217,7 @@ const ReceptionCheckIn = () => {
                   </div>
                 )}
 
-                {searchQuery && searchResults.length === 0 && !isSearching && (
+                {hasSearched && searchResults.length === 0 && !isSearching && (
                   <div className="text-center py-8 text-gray-500">
                     <AlertCircle className="w-12 h-12 mx-auto mb-2 text-gray-400" />
                     <p>No patients found. Try a different search or register a new patient.</p>
