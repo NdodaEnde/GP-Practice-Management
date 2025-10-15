@@ -622,6 +622,46 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
                 { id: 'notes', label: 'Clinical Notes', icon: FileCheck },
               ].map(tab => {
                 const Icon = tab.icon;
+                
+                // Calculate badge content for each tab
+                let badgeContent = null;
+                let badgeColor = 'bg-gray-100 text-gray-600';
+                
+                if (tab.id === 'demographics') {
+                  if (demographicsCount > 0) {
+                    badgeContent = <><Check className="w-3 h-3" /> {demographicsCount}</>;
+                    badgeColor = 'bg-green-100 text-green-700';
+                  } else {
+                    badgeContent = <AlertCircle className="w-3 h-3" />;
+                    badgeColor = 'bg-orange-100 text-orange-600';
+                  }
+                } else if (tab.id === 'chronic') {
+                  const totalChronicItems = chronicConditionsCount + medicationsCount;
+                  if (totalChronicItems > 0) {
+                    badgeContent = <><Check className="w-3 h-3" /> {totalChronicItems}</>;
+                    badgeColor = 'bg-green-100 text-green-700';
+                  } else {
+                    badgeContent = <AlertCircle className="w-3 h-3" />;
+                    badgeColor = 'bg-orange-100 text-orange-600';
+                  }
+                } else if (tab.id === 'vitals') {
+                  if (vitalsCount > 0) {
+                    badgeContent = <><Check className="w-3 h-3" /> {vitalsCount}</>;
+                    badgeColor = 'bg-green-100 text-green-700';
+                  } else {
+                    badgeContent = <AlertCircle className="w-3 h-3" />;
+                    badgeColor = 'bg-orange-100 text-orange-600';
+                  }
+                } else if (tab.id === 'notes') {
+                  if (hasNotes) {
+                    badgeContent = <Check className="w-3 h-3" />;
+                    badgeColor = 'bg-green-100 text-green-700';
+                  } else {
+                    badgeContent = <AlertCircle className="w-3 h-3" />;
+                    badgeColor = 'bg-orange-100 text-orange-600';
+                  }
+                }
+                
                 return (
                   <button
                     key={tab.id}
@@ -635,7 +675,12 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
                     `}
                   >
                     <Icon className="w-4 h-4" />
-                    {tab.label}
+                    <span>{tab.label}</span>
+                    {badgeContent && (
+                      <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${badgeColor}`}>
+                        {badgeContent}
+                      </span>
+                    )}
                   </button>
                 );
               })}
