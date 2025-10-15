@@ -803,21 +803,13 @@ class QueueManagementTester:
             print("🧹 Queue management tests completed")
         except Exception as e:
             print(f"⚠️  Error in cleanup: {str(e)}")
-                "demographics": demographics,
-                "vitals": {
-                    "vital_signs_records": [{
-                        "blood_pressure": "120/80",
-                        "heart_rate": 70,
-                        "temperature": 36.8
-                    }]
-                },
-                "clinical_notes": {
-                    "chief_complaint": "Annual physical exam",
-                    "diagnosis": "Healthy"
-                }
-            }
-            
-            # Use actual document ID if available
+    
+    def close_connections(self):
+        """Close database connections"""
+        try:
+            self.mongo_client.close()
+        except:
+            pass
             document_id = self.test_document_id or "test-doc-new-patient-mock"
             
             payload = {
