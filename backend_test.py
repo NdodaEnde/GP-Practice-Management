@@ -783,7 +783,7 @@ class QueueManagementTester:
         
         return critical_success
     
-    def test_new_patient_creation(self):
+    def cleanup_test_data(self):
         """Test creating new patient from document"""
         try:
             # Demographics for a new patient (different from test patient)
