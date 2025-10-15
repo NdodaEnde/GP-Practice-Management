@@ -810,44 +810,8 @@ class QueueManagementTester:
             self.mongo_client.close()
         except:
             pass
-            document_id = self.test_document_id or "test-doc-new-patient-mock"
-            
-            payload = {
-                "document_id": document_id,
-                "demographics": demographics,
-                "parsed_data": parsed_data,
-                "modifications": []
-            }
-            
-            # Make API call
-            response = requests.post(
-                f"{self.backend_url}/gp/validation/create-new-patient",
-                json=payload,
-                headers={'Content-Type': 'application/json'},
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                expected_fields = ['status', 'patient_id', 'encounter_id', 'document_id']
-                
-                if all(field in result for field in expected_fields):
-                    if result['status'] == 'success':
-                        new_patient_id = result['patient_id']
-                        new_encounter_id = result['encounter_id']
-                        self.log_test("New Patient Creation", True, 
-                                    f"Successfully created new patient: {new_patient_id}, encounter: {new_encounter_id}")
-                        return True, result
-                    else:
-                        self.log_test("New Patient Creation", False, 
-                                    f"Patient creation failed: {result.get('status')}")
-                        return False, result
-                else:
-                    missing_fields = [f for f in expected_fields if f not in result]
-                    self.log_test("New Patient Creation", False, 
-                                f"Missing fields in response: {missing_fields}")
-                    return False, result
-            else:
+
+def main():
                 error_msg = f"API returned status {response.status_code}"
                 try:
                     error_detail = response.json()
