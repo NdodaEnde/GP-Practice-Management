@@ -79,6 +79,10 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
   const rawChronicSummary = extractedData.chronic_summary || {};
   const rawVitals = extractedData.vitals || {};
   
+  // Debug logging
+  console.log('Extracted chronic_summary:', extractedData.chronic_summary);
+  console.log('Raw chronic summary after normalization:', rawChronicSummary);
+  
   // Normalize chronic_summary data structure
   // LandingAI returns: conditions_mentioned, medications_mentioned
   // We need: chronic_conditions, current_medications
@@ -91,6 +95,8 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
                          rawChronicSummary.current_medications || 
                          []
   };
+  
+  console.log('Final chronicSummary:', chronicSummary);
   
   // Normalize vitals data structure
   // LandingAI returns: vital_entries
