@@ -21,10 +21,12 @@ import { useNavigate } from 'react-router-dom';
 
 const WorkstationDashboard = () => {
   const { toast } = useToast();
+  const navigate = useNavigate();
   
   const [selectedStation, setSelectedStation] = useState('consultation');
   const [queue, setQueue] = useState([]);
   const [activePatient, setActivePatient] = useState(null);
+  const [patientDetails, setPatientDetails] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
