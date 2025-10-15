@@ -555,8 +555,14 @@ class GPDocumentTester:
                 }
             ]
             
+            # Use the actual test document ID if available
+            document_id = self.test_document_id
+            if not document_id:
+                self.log_test("Validation Data Save", False, "No document ID available for validation test")
+                return False, None
+            
             payload = {
-                "document_id": self.test_document_id or "test-doc-123",
+                "document_id": document_id,
                 "parsed_data": validated_data,
                 "modifications": modifications,
                 "status": "approved",
