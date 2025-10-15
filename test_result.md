@@ -103,9 +103,9 @@
 #====================================================================================================
 
 user_problem_statement: |
-  AI Scribe Feature: Implement real-time audio recording, transcription using OpenAI Whisper, and 
-  AI-generated SOAP notes using OpenAI GPT-4o for medical consultations. Both endpoints now use 
-  OpenAI API directly with OPENAI_API_KEY (no Emergent LLM Key dependency).
+  Phase 1.6: Document-to-EHR Integration workflow - Comprehensive testing of GP document processing 
+  including document upload, LandingAI processing, patient matching, encounter creation, validation 
+  data save, and document archive functionality. All components implemented and ready for end-to-end validation.
 
 backend:
   - task: "AI Scribe audio transcription endpoint"
