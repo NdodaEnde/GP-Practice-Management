@@ -77,16 +77,16 @@ class QueueManagementTester:
             # Test connection
             self.mongo_client.admin.command('ping')
             
-            # Check if gp_scanned_documents collection exists and has data
+            # Check if queue_entries collection exists
             collections = self.db.list_collection_names()
-            has_gp_docs = 'gp_scanned_documents' in collections
+            has_queue_collection = 'queue_entries' in collections
             
-            if has_gp_docs:
-                doc_count = self.db.gp_scanned_documents.count_documents({})
-                self.log_test("MongoDB Connection", True, f"Connected. Found {doc_count} GP documents")
-                return True, doc_count
+            if has_queue_collection:
+                queue_count = self.db.queue_entries.count_documents({})
+                self.log_test("MongoDB Connection", True, f"Connected. Found {queue_count} queue entries")
+                return True, queue_count
             else:
-                self.log_test("MongoDB Connection", True, "Connected but no GP documents collection found")
+                self.log_test("MongoDB Connection", True, "Connected but no queue_entries collection found")
                 return True, 0
                 
         except Exception as e:
