@@ -73,6 +73,16 @@ const WorkstationDashboard = () => {
     }
   };
 
+  const fetchPatientDetails = async (patientId) => {
+    try {
+      const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
+      const response = await axios.get(`${backendUrl}/api/patients/${patientId}`);
+      setPatientDetails(response.data.patient);
+    } catch (error) {
+      console.error('Error fetching patient details:', error);
+    }
+  };
+
   const handleCallNext = async () => {
     try {
       setIsLoading(true);
