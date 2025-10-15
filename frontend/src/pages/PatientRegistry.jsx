@@ -63,19 +63,13 @@ const PatientRegistry = () => {
       const response = await patientAPI.create(formData);
       const createdPatient = response.data;
       
-      // Store the newly created patient
-      setNewlyCreatedPatient(createdPatient);
-      
       toast({
         title: 'Success',
-        description: 'Patient registered successfully'
+        description: 'Patient registered successfully. Redirecting to check-in...'
       });
       
       // Close registration dialog
       setDialogOpen(false);
-      
-      // Open check-in dialog
-      setCheckInDialogOpen(true);
       
       // Reset form
       setFormData({
@@ -89,7 +83,9 @@ const PatientRegistry = () => {
         medical_aid: ''
       });
       
-      loadPatients();
+      // Redirect to Reception Check-In with patient ID
+      navigate(`/reception?patientId=${createdPatient.id}`);
+      
     } catch (error) {
       console.error('Error creating patient:', error);
       toast({
@@ -98,67 +94,6 @@ const PatientRegistry = () => {
         variant: 'destructive'
       });
     }
-  };
-
-  const handleCheckIn = async () => {
-    if (!newlyCreatedPatient) return;
-    
-    if (!checkInData.reason_for_visit.trim()) {
-      toast({
-        title: 'Error',
-        description: 'Please enter reason for visit',
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    try {
-      setIsCheckingIn(true);
-      const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
-      
-      const response = await axios.post(
-        `${backendUrl}/api/queue/check-in`,
-        {
-          patient_id: newlyCreatedPatient.id,
-          reason_for_visit: checkInData.reason_for_visit,
-          priority: checkInData.priority
-        }
-      );
-
-      toast({
-        title: 'Success',
-        description: `${response.data.patient_name} checked in - Queue #${response.data.queue_number}`,
-      });
-
-      // Close check-in dialog
-      setCheckInDialogOpen(false);
-      
-      // Reset check-in form
-      setCheckInData({
-        reason_for_visit: '',
-        priority: 'normal'
-      });
-      setNewlyCreatedPatient(null);
-      
-    } catch (error) {
-      console.error('Error checking in patient:', error);
-      toast({
-        title: 'Error',
-        description: error.response?.data?.detail || 'Failed to check in patient',
-        variant: 'destructive'
-      });
-    } finally {
-      setIsCheckingIn(false);
-    }
-  };
-
-  const handleSkipCheckIn = () => {
-    setCheckInDialogOpen(false);
-    setCheckInData({
-      reason_for_visit: '',
-      priority: 'normal'
-    });
-    setNewlyCreatedPatient(null);
   };
 
   const handleInputChange = (e) => {
