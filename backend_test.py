@@ -621,30 +621,45 @@ class GPDocumentTester:
             if response.status_code == 200:
                 result = response.json()
                 
-                # Check if result is a list (array of documents)
-                if isinstance(result, list):
-                    doc_count = len(result)
-                    self.log_test("Document Archive", True, 
-                                f"Successfully retrieved {doc_count} documents for patient")
+                # Check if result is a dict with expected structure
+                if isinstance(result, dict):
+                    expected_fields = ['status', 'patient_id', 'documents', 'count']
                     
-                    # If we have documents, check their structure
-                    if doc_count > 0:
-                        first_doc = result[0]
-                        expected_fields = ['document_id', 'filename', 'status', 'upload_date']
-                        
-                        # Check if at least some expected fields are present
-                        present_fields = [f for f in expected_fields if f in first_doc]
-                        if len(present_fields) >= 2:
-                            self.log_test("Document Archive Structure", True, 
-                                        f"Document structure valid, has {len(present_fields)}/{len(expected_fields)} expected fields")
+                    if all(field in result for field in expected_fields):
+                        if result['status'] == 'success':
+                            doc_count = result['count']
+                            documents = result['documents']
+                            
+                            self.log_test("Document Archive", True, 
+                                        f"Successfully retrieved {doc_count} documents for patient")
+                            
+                            # If we have documents, check their structure
+                            if doc_count > 0 and documents:
+                                first_doc = documents[0]
+                                doc_fields = ['document_id', 'filename', 'status']
+                                
+                                # Check if at least some expected fields are present
+                                present_fields = [f for f in doc_fields if f in first_doc]
+                                if len(present_fields) >= 2:
+                                    self.log_test("Document Archive Structure", True, 
+                                                f"Document structure valid, has {len(present_fields)}/{len(doc_fields)} expected fields")
+                                else:
+                                    self.log_test("Document Archive Structure", False, 
+                                                f"Document structure incomplete, only {len(present_fields)}/{len(doc_fields)} fields")
+                            
+                            return True, result
                         else:
-                            self.log_test("Document Archive Structure", False, 
-                                        f"Document structure incomplete, only {len(present_fields)}/{len(expected_fields)} fields")
-                    
-                    return True, result
+                            self.log_test("Document Archive", False, 
+                                        f"Archive request failed: status={result.get('status')}")
+                            return False, result
+                    else:
+                        missing_fields = [f for f in expected_fields if f not in result]
+                        self.log_test("Document Archive", False, 
+                                    f"Missing fields in response: {missing_fields}")
+                        return False, result
                 else:
                     self.log_test("Document Archive", False, 
-                                f"Expected array response, got: {type(result)}")
+                                f"Expected dict response, got: {type(result)}")
                     return False, result
             else:
                 error_msg = f"API returned status {response.status_code}"
