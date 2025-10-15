@@ -82,7 +82,27 @@ const VitalsStation = () => {
     }
   };
 
-  const selectPatient = (patient, queueEntry = null) => {
+  const selectPatient = async (patient, queueEntry = null) => {
+    // If no queue entry provided, try to find it
+    if (!queueEntry && patient.id) {
+      try {
+        const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
+        const response = await axios.get(`${backendUrl}/api/queue/current`);
+        const allQueueEntries = response.data.queue || [];
+        
+        // Find queue entry for this patient
+        const foundEntry = allQueueEntries.find(entry => entry.patient_id === patient.id);
+        if (foundEntry) {
+          queueEntry = foundEntry;
+          console.log('✅ Found queue entry for patient:', foundEntry);
+        } else {
+          console.log('⚠️ No queue entry found for patient');
+        }
+      } catch (error) {
+        console.error('Error fetching queue entry:', error);
+      }
+    }
+    
     setSelectedPatient({ ...patient, queueEntry });
     setSearchQuery('');
     setSearchResults([]);
