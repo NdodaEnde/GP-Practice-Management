@@ -110,6 +110,13 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
   const clinicalNotes = extractedData.clinical_notes || {};
   
   const processingTime = responseData.processing_time;
+  
+  // Calculate data availability for badges
+  const demographicsCount = Object.keys(demographics).filter(key => demographics[key]).length;
+  const chronicConditionsCount = chronicSummary.chronic_conditions?.length || 0;
+  const medicationsCount = chronicSummary.current_medications?.length || 0;
+  const vitalsCount = vitals.vital_signs_records?.length || 0;
+  const hasNotes = clinicalNotes?.notes || clinicalNotes?.text || false;
   const pagesProcessed = responseData.pages_processed;
   const modelUsed = responseData.model_used || 'LandingAI';
   const chunks = responseData.chunks || [];
