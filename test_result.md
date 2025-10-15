@@ -103,9 +103,9 @@
 #====================================================================================================
 
 user_problem_statement: |
-  Phase 1.6: Document-to-EHR Integration workflow - Comprehensive testing of GP document processing 
-  including document upload, LandingAI processing, patient matching, encounter creation, validation 
-  data save, and document archive functionality. All components implemented and ready for end-to-end validation.
+  Phase 2: Complete Queue Management System with integration to AI Scribe consultation workflow.
+  Enhance Workstation Dashboard to show chief complaint, vitals, and provide direct navigation to
+  AI Scribe and Patient EHR. Auto-update queue status when consultation is completed.
 
 backend:
   - task: "GP Document Upload & Processing"
