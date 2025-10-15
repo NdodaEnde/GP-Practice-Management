@@ -63,6 +63,9 @@ const PatientRegistry = () => {
       const response = await patientAPI.create(formData);
       const createdPatient = response.data;
       
+      console.log('✅ Patient created:', createdPatient);
+      console.log('🚀 Navigating to /reception?patientId=' + createdPatient.id);
+      
       toast({
         title: 'Success',
         description: 'Patient registered successfully. Redirecting to check-in...'
