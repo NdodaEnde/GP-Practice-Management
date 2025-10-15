@@ -108,25 +108,7 @@ user_problem_statement: |
   data save, and document archive functionality. All components implemented and ready for end-to-end validation.
 
 backend:
-  - task: "AI Scribe audio transcription endpoint"
-    implemented: true
-    working: true
-    file: "/app/backend/server.py"
-    stuck_count: 1
-    priority: "high"
-    needs_retesting: false
-    status_history:
-      - working: false
-        agent: "user"
-        comment: "User reported 401 authentication error when trying to transcribe audio. Error: Incorrect API key provided."
-      - working: "NA"
-        agent: "main"
-        comment: "Root cause identified: Was using EMERGENT_LLM_KEY for Whisper API, but Emergent key only works for text LLM models (GPT, Claude, Gemini). Whisper requires separate OPENAI_API_KEY. Fixed by: 1) Added OPENAI_API_KEY to .env file with user-provided key, 2) Updated /api/ai-scribe/transcribe endpoint to use OPENAI_API_KEY instead of EMERGENT_LLM_KEY, 3) Restarted backend. Awaiting test."
-      - working: true
-        agent: "testing"
-        comment: "AUTHENTICATION ISSUE RESOLVED: Tested /api/ai-scribe/transcribe endpoint with test audio file. Successfully returns 200 OK with transcription text. OpenAI API key authentication now working correctly. Tested with 64KB WAV file, received valid transcription response. No 401 errors observed in backend logs."
-  
-  - task: "AI Scribe SOAP note generation endpoint"
+  - task: "GP Document Upload & Processing"
     implemented: true
     working: true
     file: "/app/backend/server.py"
@@ -135,17 +117,68 @@ backend:
     needs_retesting: false
     status_history:
       - working: true
-        agent: "main"
-        comment: "Created /api/ai-scribe/generate-soap endpoint using GPT-5 via emergentintegrations.llm.chat with EMERGENT_LLM_KEY. This endpoint was working correctly, only Whisper had the key issue."
+        agent: "testing"
+        comment: "COMPREHENSIVE TESTING COMPLETE: GP document upload endpoint (/api/gp/upload-patient-file) successfully proxies to LandingAI microservice on port 5001. Microservice is healthy and accessible. Document processing workflow tested with existing documents. LandingAI integration functional for valid PDF documents. Endpoint properly handles file upload, processing mode selection, and returns structured responses."
+
+  - task: "Patient Matching Workflow"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
       - working: true
         agent: "testing"
-        comment: "CONFIRMED WORKING: Tested /api/ai-scribe/generate-soap endpoint with realistic medical transcription. Successfully generates structured SOAP notes with all 4 sections (Subjective, Objective, Assessment, Plan). GPT-5 integration via EMERGENT_LLM_KEY functioning correctly. Generated 800-character professional SOAP note from test consultation."
-      - working: "NA"
-        agent: "main"
-        comment: "Per user request, switched from Emergent LLM Key to OpenAI direct API. Now uses OPENAI_API_KEY with GPT-4o model. Endpoint successfully tested: generates proper SOAP notes with all 4 sections. Logs confirm calling https://api.openai.com/v1/chat/completions directly."
+        comment: "PATIENT MATCHING FULLY FUNCTIONAL: Tested /api/gp/validation/match-patient endpoint with multiple scenarios. ✅ Scenario 1 (Exact Match): ID number matching returns 98% confidence with 'id_number' method. ✅ Scenario 2 (Partial Match): Fuzzy matching logic working for name variations. ✅ Scenario 3 (New Patient): Correctly identifies when no matches found (0 matches). Confidence scoring and match methods (id_number, name_dob, fuzzy) all operational."
+
+  - task: "Patient Match Confirmation"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
       - working: true
         agent: "testing"
-        comment: "OPENAI DIRECT API CONFIRMED WORKING: Tested /api/ai-scribe/generate-soap endpoint with GPT-4o model. Successfully generates structured SOAP notes with all 4 sections (S.O.A.P). Backend logs confirm direct calls to https://api.openai.com/v1/chat/completions. Generated 675-character professional SOAP note from realistic medical transcription (STEMI case). No dependency on Emergent LLM Key - uses OPENAI_API_KEY exclusively."
+        comment: "MATCH CONFIRMATION & ENCOUNTER CREATION WORKING: Tested /api/gp/validation/confirm-match endpoint successfully. ✅ Creates encounters from validated document data with proper vitals integration. ✅ Updates patient records with demographics, conditions, and medications from parsed data. ✅ Vitals are correctly added to encounter (blood_pressure, heart_rate, temperature, weight, height). ✅ Document status updated to 'linked' in MongoDB. ✅ Audit events logged for patient matching."
+
+  - task: "New Patient Creation"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "NEW PATIENT CREATION FULLY OPERATIONAL: Tested /api/gp/validation/create-new-patient endpoint successfully. ✅ Creates new patients in Supabase with complete demographics (first_name, last_name, dob, id_number, contact_number, email, address, medical_aid). ✅ Automatically creates encounter with extracted clinical data. ✅ Links document to new patient with proper status tracking. ✅ All demographics saved correctly from document extraction. ✅ Audit trail maintained for new patient creation events."
+
+  - task: "Validation Data Save"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "VALIDATION DATA SAVE CONFIRMED WORKING: Tested /api/gp/validation/save endpoint successfully. ✅ Validated documents saved to MongoDB gp_validated_documents collection. ✅ Modification tracking functional - tracks original vs validated data with detailed change logs. ✅ Audit events properly logged for document validation. ✅ Document status updated to 'validated' with timestamp. ✅ Modification count and validation notes properly stored."
+
+  - task: "Document Archive"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "DOCUMENT ARCHIVE RETRIEVAL WORKING: Tested /documents/patient/{patient_id} endpoint successfully. ✅ Returns structured response with status, patient_id, documents array, and count. ✅ Proper pagination and sorting capability confirmed. ✅ Document structure includes document_id, filename, status, and metadata. ✅ Handles empty results gracefully (0 documents for new patients). ✅ Response format consistent and well-structured for frontend consumption."
 
 frontend:
   - task: "AI Scribe recording interface"
