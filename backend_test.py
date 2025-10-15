@@ -1252,16 +1252,21 @@ class QueueManagementTester:
     def cleanup_test_data(self):
         """Clean up test data"""
         try:
-            # Clean up test patient if created
+            # Clean up test patients if created
             if self.test_patient_id:
-                try:
-                    # Note: In a real scenario, we might want to keep test data for debugging
-                    # For now, just log that cleanup would happen here
-                    print(f"🧹 Test patient {self.test_patient_id} would be cleaned up in production")
-                except Exception as e:
-                    print(f"⚠️  Error cleaning up test patient: {str(e)}")
+                print(f"🧹 Test patient 1 {self.test_patient_id} would be cleaned up in production")
             
-            print("🧹 GP document tests completed")
+            if self.test_patient_id_2:
+                print(f"🧹 Test patient 2 {self.test_patient_id_2} would be cleaned up in production")
+            
+            # Clean up queue entries if created
+            if self.test_queue_id:
+                print(f"🧹 Test queue entry {self.test_queue_id} would be cleaned up in production")
+            
+            if self.test_queue_id_2:
+                print(f"🧹 Test queue entry 2 {self.test_queue_id_2} would be cleaned up in production")
+            
+            print("🧹 Queue management tests completed")
         except Exception as e:
             print(f"⚠️  Error in cleanup: {str(e)}")
     
