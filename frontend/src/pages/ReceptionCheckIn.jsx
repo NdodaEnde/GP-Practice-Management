@@ -61,9 +61,14 @@ const ReceptionCheckIn = () => {
   };
 
   const fetchPatientById = async (patientId) => {
+    console.log('📞 Fetching patient by ID:', patientId);
     try {
       const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
-      const response = await axios.get(`${backendUrl}/api/patients/${patientId}`);
+      const url = `${backendUrl}/api/patients/${patientId}`;
+      console.log('📞 API URL:', url);
+      
+      const response = await axios.get(url);
+      console.log('✅ Patient fetched successfully:', response.data);
       
       if (response.data) {
         setSelectedPatient(response.data);
@@ -76,7 +81,7 @@ const ReceptionCheckIn = () => {
         });
       }
     } catch (error) {
-      console.error('Error fetching patient:', error);
+      console.error('❌ Error fetching patient:', error);
       toast({
         title: "Error",
         description: "Could not load patient details",
