@@ -76,8 +76,21 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
   const responseData = patientData?.data?.data || patientData?.data || {};
   const extractedData = responseData.extractions || {};
   const demographics = extractedData.demographics || {};
-  const chronicSummary = extractedData.chronic_summary || {};
+  const rawChronicSummary = extractedData.chronic_summary || {};
   const vitals = extractedData.vitals || {};
+  
+  // Normalize chronic_summary data structure
+  // LandingAI returns: conditions_mentioned, medications_mentioned
+  // We need: chronic_conditions, current_medications
+  const chronicSummary = {
+    ...rawChronicSummary,
+    chronic_conditions: rawChronicSummary.conditions_mentioned || 
+                        rawChronicSummary.chronic_conditions || 
+                        [],
+    current_medications: rawChronicSummary.medications_mentioned || 
+                         rawChronicSummary.current_medications || 
+                         []
+  };
   const clinicalNotes = extractedData.clinical_notes || {};
   
   const processingTime = responseData.processing_time;
