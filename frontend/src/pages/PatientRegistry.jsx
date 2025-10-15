@@ -12,13 +12,11 @@ import { useToast } from '@/hooks/use-toast';
 import axios from 'axios';
 
 const PatientRegistry = () => {
+  const navigate = useNavigate();
   const [patients, setPatients] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [checkInDialogOpen, setCheckInDialogOpen] = useState(false);
-  const [newlyCreatedPatient, setNewlyCreatedPatient] = useState(null);
-  const [isCheckingIn, setIsCheckingIn] = useState(false);
   const { toast } = useToast();
 
   const [formData, setFormData] = useState({
