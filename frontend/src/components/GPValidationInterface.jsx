@@ -24,6 +24,8 @@ import {
   Save,
   X,
   AlertTriangle,
+  AlertCircle,
+  Check,
   Plus,
   Trash2
 } from 'lucide-react';
