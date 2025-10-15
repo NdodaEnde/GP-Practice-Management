@@ -781,23 +781,7 @@ class QueueManagementTester:
             if not status_update_success: failed_tests.append("Status Updates")
             print(f"❌ Failed components: {', '.join(failed_tests)}")
         
-        return critical_success 
-                                    f"Match confirmation failed: {result.get('status')}")
-                        return False, result
-                else:
-                    missing_fields = [f for f in expected_fields if f not in result]
-                    self.log_test("Patient Match Confirmation", False, 
-                                f"Missing fields in response: {missing_fields}")
-                    return False, result
-            else:
-                error_msg = f"API returned status {response.status_code}"
-                try:
-                    error_detail = response.json()
-                    error_msg += f": {error_detail}"
-                except:
-                    error_msg += f": {response.text}"
-                
-                self.log_test("Patient Match Confirmation", False, error_msg)
+        return critical_success
                 return False, None
                 
         except Exception as e:
