@@ -109,6 +109,9 @@ const WorkstationDashboard = () => {
         { params: { station: selectedStation } }
       );
 
+      // Fetch patient details including recent vitals
+      await fetchPatientDetails(nextPatient.patient_id);
+
       toast({
         title: "Patient Called",
         description: `${nextPatient.patient_name} - Queue #${nextPatient.queue_number}`,
