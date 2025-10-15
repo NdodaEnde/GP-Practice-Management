@@ -404,8 +404,11 @@ class GPDocumentTester:
                 }
             }
             
+            # Use actual document ID if available
+            document_id = self.test_document_id or "test-doc-mock-123"
+            
             payload = {
-                "document_id": self.test_document_id or "test-doc-123",
+                "document_id": document_id,
                 "patient_id": self.test_patient_id,
                 "parsed_data": parsed_data,
                 "modifications": []
