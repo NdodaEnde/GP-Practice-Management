@@ -683,7 +683,9 @@ class QueueManagementTester:
     
     # Additional old GP methods removed for queue management focus
     
-    def test_patient_match_confirmation(self):
+    # Old GP test methods removed - focusing on queue management
+    
+    def run_complete_queue_management_test(self):
         """Test patient match confirmation and encounter creation"""
         try:
             if not self.test_patient_id:
