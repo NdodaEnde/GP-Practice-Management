@@ -325,13 +325,24 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
     if (!chunk.grounding || !pdfContainerRef.current || !pageRef.current) return;
     
     const g = chunk.grounding;
-    const containerHeight = pdfContainerRef.current.clientHeight;
-    const pageHeight = pageRef.current.clientHeight;
+    const container = pdfContainerRef.current;
+    const containerHeight = container.clientHeight;
+    const singlePageHeight = pageRef.current.clientHeight;
     
-    const regionCenterY = (g.box.top + (g.box.bottom - g.box.top) / 2) * pageHeight;
-    const scrollTop = regionCenterY - containerHeight / 2;
+    // For continuous scrolling, calculate position based on page number
+    const pageNumber = g.page; // 0-indexed
+    const marginBetweenPages = 16; // mb-4 = 16px in Tailwind
     
-    pdfContainerRef.current.scrollTo({
+    // Calculate total scroll offset to reach this page
+    const scrollToPage = (singlePageHeight + marginBetweenPages) * pageNumber;
+    
+    // Add offset within the page for the specific box
+    const regionCenterY = (g.box.top + (g.box.bottom - g.box.top) / 2) * singlePageHeight;
+    
+    // Center the region in the viewport
+    const scrollTop = scrollToPage + regionCenterY - containerHeight / 2;
+    
+    container.scrollTo({
       top: Math.max(0, scrollTop),
       behavior: 'smooth'
     });
