@@ -686,13 +686,10 @@ class QueueManagementTester:
     # Old GP test methods removed - focusing on queue management
     
     def run_complete_queue_management_test(self):
-        """Test patient match confirmation and encounter creation"""
-        try:
-            if not self.test_patient_id:
-                self.log_test("Patient Match Confirmation", False, "No test patient available")
-                return False, None
-            
-            # Mock parsed data from document
+        """Run the complete Queue Management System Phase 2 test"""
+        print("\n" + "="*80)
+        print("QUEUE MANAGEMENT SYSTEM PHASE 2 - COMPLETE WORKFLOW TEST")
+        print("="*80)
             parsed_data = {
                 "demographics": {
                     "first_name": "John",
