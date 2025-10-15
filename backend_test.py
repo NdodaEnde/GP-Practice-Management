@@ -1151,10 +1151,10 @@ class QueueManagementTester:
             self.log_test("Document Archive", False, f"Request failed: {str(e)}")
             return False, None
     
-    def run_complete_gp_workflow_test(self):
-        """Run the complete GP Document-to-EHR Integration workflow test"""
+    def run_complete_queue_management_test(self):
+        """Run the complete Queue Management System Phase 2 test"""
         print("\n" + "="*80)
-        print("GP DOCUMENT-TO-EHR INTEGRATION - COMPLETE WORKFLOW TEST")
+        print("QUEUE MANAGEMENT SYSTEM PHASE 2 - COMPLETE WORKFLOW TEST")
         print("="*80)
         
         # Step 1: Test backend connectivity
@@ -1163,43 +1163,52 @@ class QueueManagementTester:
             return False
         
         # Step 2: Test MongoDB connectivity
-        mongo_ok, doc_count = self.test_mongodb_connection()
+        mongo_ok, queue_count = self.test_mongodb_connection()
         if not mongo_ok:
-            print("\n⚠️  MongoDB not accessible - GP document storage may not work")
+            print("\n⚠️  MongoDB not accessible - Queue storage may not work")
         
-        # Step 3: Test microservice connectivity
-        print("\n🔗 Testing LandingAI microservice connectivity...")
-        microservice_ok = self.test_microservice_connection()
-        if not microservice_ok:
-            print("\n⚠️  Microservice not accessible - document processing may use fallback")
+        # Step 3: Create test patients
+        print("\n👤 Creating test patients...")
+        patients_created = self.create_test_patients()
+        if not patients_created:
+            print("\n❌ Cannot proceed - Failed to create test patients")
+            return False
         
-        # Step 4: Create test patient for matching tests
-        print("\n👤 Creating test patient...")
-        patient_created, patient_result = self.create_test_patient()
+        # Step 4: Test Scenario 1 - Check-in Flow
+        print("\n📝 Testing Scenario 1: Check-in Flow...")
+        print("  Testing existing patient check-in...")
+        checkin_existing_success, _ = self.test_queue_check_in_existing_patient()
         
-        # Step 5: Test GP document upload and processing
-        print("\n📄 Testing GP document upload and processing...")
-        upload_success, upload_result = self.test_gp_document_upload()
+        print("  Testing new patient check-in...")
+        checkin_new_success, _ = self.test_queue_check_in_new_patient()
         
-        # Step 6: Test patient matching workflow
-        print("\n🔍 Testing patient matching workflow...")
-        matching_success, matching_result = self.test_patient_matching()
+        # Step 5: Test Scenario 2 - Queue Display
+        print("\n📊 Testing Scenario 2: Queue Display...")
+        print("  Testing current queue display...")
+        queue_display_success, _ = self.test_queue_current_display()
         
-        # Step 7: Test patient match confirmation
-        print("\n✅ Testing patient match confirmation...")
-        confirmation_success, confirmation_result = self.test_patient_match_confirmation()
+        print("  Testing queue statistics...")
+        queue_stats_success, _ = self.test_queue_stats()
         
-        # Step 8: Test new patient creation
-        print("\n👥 Testing new patient creation...")
-        new_patient_success, new_patient_result = self.test_new_patient_creation()
+        # Step 6: Test Scenario 3 - Workstation Dashboard Integration
+        print("\n🖥️  Testing Scenario 3: Workstation Dashboard Integration...")
+        print("  Testing call next patient...")
+        call_next_success, _ = self.test_workstation_call_next()
         
-        # Step 9: Test validation data save
-        print("\n💾 Testing validation data save...")
-        validation_success, validation_result = self.test_validation_data_save()
+        print("  Testing patient details with vitals...")
+        patient_details_success, _ = self.test_patient_details_with_vitals()
         
-        # Step 10: Test document archive
-        print("\n📚 Testing document archive...")
-        archive_success, archive_result = self.test_document_archive()
+        # Step 7: Test Scenario 4 - Queue Status Updates
+        print("\n🔄 Testing Scenario 4: Queue Status Updates...")
+        status_update_success, _ = self.test_queue_status_updates()
+        
+        # Step 8: Test Scenario 5 - Integration Points
+        print("\n🔗 Testing Scenario 5: Integration Points...")
+        print("  Testing AI Scribe integration endpoints...")
+        ai_scribe_integration_success, _ = self.test_ai_scribe_integration_endpoints()
+        
+        print("  Testing consultation call-next endpoint...")
+        consultation_endpoint_success, _ = self.test_consultation_call_next_endpoint()
         
         # Summary
         print("\n" + "="*80)
@@ -1207,28 +1216,35 @@ class QueueManagementTester:
         print("="*80)
         
         # Determine overall success
-        critical_tests = [upload_success, matching_success, confirmation_success, 
-                         new_patient_success, validation_success]
+        critical_tests = [
+            checkin_existing_success, checkin_new_success,
+            queue_display_success, queue_stats_success,
+            call_next_success, status_update_success
+        ]
         critical_success = all(critical_tests)
         
-        secondary_tests = [archive_success]
+        secondary_tests = [
+            patient_details_success, ai_scribe_integration_success, 
+            consultation_endpoint_success
+        ]
         all_tests_passed = critical_success and all(secondary_tests)
         
         if critical_success:
             if all_tests_passed:
-                print("✅ ALL TESTS PASSED - GP Document-to-EHR Integration workflow is working correctly")
-                print("✅ CRITICAL: All core GP document processing features are functional")
+                print("✅ ALL TESTS PASSED - Queue Management System Phase 2 is working correctly")
+                print("✅ CRITICAL: All core queue management features are functional")
             else:
-                print("✅ CRITICAL TESTS PASSED - Core GP document workflow is working")
-                print("⚠️  Some secondary tests failed but core functionality works")
+                print("✅ CRITICAL TESTS PASSED - Core queue management workflow is working")
+                print("⚠️  Some integration features missing but core functionality works")
         else:
-            print("❌ CRITICAL TESTS FAILED - GP document workflow has issues")
+            print("❌ CRITICAL TESTS FAILED - Queue management system has issues")
             failed_tests = []
-            if not upload_success: failed_tests.append("Document Upload")
-            if not matching_success: failed_tests.append("Patient Matching")
-            if not confirmation_success: failed_tests.append("Match Confirmation")
-            if not new_patient_success: failed_tests.append("New Patient Creation")
-            if not validation_success: failed_tests.append("Validation Save")
+            if not checkin_existing_success: failed_tests.append("Existing Patient Check-in")
+            if not checkin_new_success: failed_tests.append("New Patient Check-in")
+            if not queue_display_success: failed_tests.append("Queue Display")
+            if not queue_stats_success: failed_tests.append("Queue Statistics")
+            if not call_next_success: failed_tests.append("Call Next Patient")
+            if not status_update_success: failed_tests.append("Status Updates")
             print(f"❌ Failed components: {', '.join(failed_tests)}")
         
         return critical_success
