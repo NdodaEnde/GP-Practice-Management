@@ -227,38 +227,157 @@ class QueueManagementTester:
             self.log_test("Queue Check-in (Existing)", False, f"Request failed: {str(e)}")
             return False, None
     
-    def create_test_patient(self):
-        """Create a test patient for matching tests"""
+    def test_queue_check_in_new_patient(self):
+        """Test Scenario 2: New patient registration + check-in"""
         try:
-            patient_data = {
-                "first_name": "John",
-                "last_name": "Smith", 
-                "dob": "1980-05-15",
-                "id_number": "8005155555083",
-                "contact_number": "+27123456789",
-                "email": "john.smith@example.com",
-                "address": "123 Main Street, Cape Town",
-                "medical_aid": "Discovery Health"
+            if not self.test_patient_id_2:
+                self.log_test("Queue Check-in (New Patient)", False, "No second test patient available")
+                return False, None
+            
+            # Test check-in with new patient
+            check_in_data = {
+                "patient_id": self.test_patient_id_2,
+                "reason_for_visit": "Chest pain and shortness of breath",
+                "priority": "urgent"
             }
             
             response = requests.post(
-                f"{self.backend_url}/patients",
-                json=patient_data,
+                f"{self.backend_url}/queue/check-in",
+                json=check_in_data,
                 headers={'Content-Type': 'application/json'},
                 timeout=30
             )
             
             if response.status_code == 200:
                 result = response.json()
-                self.test_patient_id = result['id']
-                self.log_test("Create Test Patient", True, f"Created test patient: {self.test_patient_id}")
-                return True, result
+                if result.get('status') == 'success':
+                    self.test_queue_id_2 = result['queue_id']
+                    self.log_test("Queue Check-in (New Patient)", True, 
+                                f"Successfully checked in new patient. Queue #{result['queue_number']}")
+                    return True, result
+                else:
+                    self.log_test("Queue Check-in (New Patient)", False, 
+                                f"Check-in failed: {result.get('status')}")
+                    return False, result
             else:
-                self.log_test("Create Test Patient", False, f"Failed to create patient: {response.status_code}")
+                self.log_test("Queue Check-in (New Patient)", False, 
+                            f"API returned status {response.status_code}")
                 return False, None
                 
         except Exception as e:
-            self.log_test("Create Test Patient", False, f"Error creating test patient: {str(e)}")
+            self.log_test("Queue Check-in (New Patient)", False, f"Request failed: {str(e)}")
+            return False, None
+    
+    def test_queue_current_display(self):
+        """Test Scenario 2: Queue display functionality"""
+        try:
+            # Test getting current queue
+            response = requests.get(
+                f"{self.backend_url}/queue/current",
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                expected_fields = ['status', 'date', 'queue', 'count']
+                
+                if all(field in result for field in expected_fields):
+                    if result['status'] == 'success':
+                        queue_count = result['count']
+                        queue_entries = result['queue']
+                        
+                        self.log_test("Queue Current Display", True, 
+                                    f"Successfully retrieved current queue with {queue_count} entries")
+                        
+                        # Verify queue entries have proper structure
+                        if queue_entries and len(queue_entries) > 0:
+                            first_entry = queue_entries[0]
+                            entry_fields = ['id', 'queue_number', 'patient_name', 'reason_for_visit', 'status']
+                            present_fields = [f for f in entry_fields if f in first_entry]
+                            
+                            if len(present_fields) >= 4:
+                                self.log_test("Queue Entry Structure", True, 
+                                            f"Queue entries have proper structure ({len(present_fields)}/{len(entry_fields)} fields)")
+                                
+                                # Check if entries are sorted by queue_number
+                                if len(queue_entries) > 1:
+                                    sorted_correctly = all(
+                                        queue_entries[i]['queue_number'] <= queue_entries[i+1]['queue_number']
+                                        for i in range(len(queue_entries)-1)
+                                    )
+                                    if sorted_correctly:
+                                        self.log_test("Queue Sorting", True, "Queue entries properly sorted by queue_number")
+                                    else:
+                                        self.log_test("Queue Sorting", False, "Queue entries not properly sorted")
+                            else:
+                                self.log_test("Queue Entry Structure", False, 
+                                            f"Queue entries missing fields ({len(present_fields)}/{len(entry_fields)})")
+                        
+                        return True, result
+                    else:
+                        self.log_test("Queue Current Display", False, 
+                                    f"Queue display failed: {result.get('status')}")
+                        return False, result
+                else:
+                    missing_fields = [f for f in expected_fields if f not in result]
+                    self.log_test("Queue Current Display", False, 
+                                f"Missing fields in response: {missing_fields}")
+                    return False, result
+            else:
+                self.log_test("Queue Current Display", False, 
+                            f"API returned status {response.status_code}")
+                return False, None
+                
+        except Exception as e:
+            self.log_test("Queue Current Display", False, f"Request failed: {str(e)}")
+            return False, None
+    
+    def test_queue_stats(self):
+        """Test Scenario 2: Queue statistics"""
+        try:
+            response = requests.get(
+                f"{self.backend_url}/queue/stats",
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                expected_fields = ['status', 'date', 'stats']
+                
+                if all(field in result for field in expected_fields):
+                    if result['status'] == 'success':
+                        stats = result['stats']
+                        stat_fields = ['total_checked_in', 'waiting', 'in_progress', 'completed']
+                        
+                        if all(field in stats for field in stat_fields):
+                            waiting_count = stats['waiting']
+                            in_progress_count = stats['in_progress']
+                            completed_count = stats['completed']
+                            
+                            self.log_test("Queue Stats", True, 
+                                        f"Stats: {waiting_count} waiting, {in_progress_count} in progress, {completed_count} completed")
+                            return True, result
+                        else:
+                            missing_stat_fields = [f for f in stat_fields if f not in stats]
+                            self.log_test("Queue Stats", False, 
+                                        f"Missing stat fields: {missing_stat_fields}")
+                            return False, result
+                    else:
+                        self.log_test("Queue Stats", False, 
+                                    f"Stats request failed: {result.get('status')}")
+                        return False, result
+                else:
+                    missing_fields = [f for f in expected_fields if f not in result]
+                    self.log_test("Queue Stats", False, 
+                                f"Missing fields in response: {missing_fields}")
+                    return False, result
+            else:
+                self.log_test("Queue Stats", False, 
+                            f"API returned status {response.status_code}")
+                return False, None
+                
+        except Exception as e:
+            self.log_test("Queue Stats", False, f"Request failed: {str(e)}")
             return False, None
     
     def test_gp_document_upload(self):
