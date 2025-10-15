@@ -845,19 +845,6 @@ def main():
 if __name__ == "__main__":
     exit_code = main()
     sys.exit(exit_code)
-    
-    def test_validation_data_save(self):
-        """Test saving validated document data"""
-        try:
-            # Mock validated data with modifications
-            validated_data = {
-                "demographics": {
-                    "first_name": "John",
-                    "last_name": "Smith",
-                    "dob": "1980-05-15",
-                    "id_number": "8005155555083"
-                },
-                "clinical_notes": {
                     "chief_complaint": "Routine checkup - VALIDATED",
                     "diagnosis": "Hypertension - confirmed"
                 }
