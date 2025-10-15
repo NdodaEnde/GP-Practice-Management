@@ -300,8 +300,11 @@ class GPDocumentTester:
                 "id_number": "8005155555083"
             }
             
+            # Use actual document ID if available, otherwise use a mock ID for testing
+            document_id = self.test_document_id or "test-doc-mock-123"
+            
             payload = {
-                "document_id": self.test_document_id or "test-doc-123",
+                "document_id": document_id,
                 "demographics": demographics
             }
             
