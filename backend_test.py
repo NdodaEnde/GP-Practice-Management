@@ -29,15 +29,16 @@ MONGO_URL = "mongodb://localhost:27017"
 DATABASE_NAME = "surgiscan_documents"
 MICROSERVICE_URL = "http://localhost:5001"
 
-class GPDocumentTester:
+class QueueManagementTester:
     def __init__(self):
         self.backend_url = BACKEND_URL
-        self.microservice_url = MICROSERVICE_URL
         self.mongo_client = MongoClient(MONGO_URL)
-        self.db = self.mongo_client[DATABASE_NAME]
+        self.db = self.mongo_client["surgiscan_db"]  # Use the main database
         self.test_results = []
         self.test_patient_id = None
-        self.test_document_id = None
+        self.test_patient_id_2 = None
+        self.test_queue_id = None
+        self.test_queue_id_2 = None
         self.test_encounter_id = None
         
     def log_test(self, test_name, success, message, details=None):
