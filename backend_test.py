@@ -155,83 +155,77 @@ class QueueManagementTester:
             self.log_test("Create Test Patients", False, f"Error creating test patients: {str(e)}")
             return False
     
-    def create_test_pdf_document(self):
-        """Create a test PDF document for GP document processing"""
+    def test_queue_check_in_existing_patient(self):
+        """Test Scenario 1: Check-in flow with existing patient"""
         try:
-            # Create a simple PDF-like content (base64 encoded)
-            # This simulates a medical document with patient information
-            test_pdf_content = b"""
-            %PDF-1.4
-            1 0 obj
-            <<
-            /Type /Catalog
-            /Pages 2 0 R
-            >>
-            endobj
+            if not self.test_patient_id:
+                self.log_test("Queue Check-in (Existing)", False, "No test patient available")
+                return False, None
             
-            2 0 obj
-            <<
-            /Type /Pages
-            /Kids [3 0 R]
-            /Count 1
-            >>
-            endobj
+            # Test check-in with chief complaint
+            check_in_data = {
+                "patient_id": self.test_patient_id,
+                "reason_for_visit": "Routine annual physical examination",
+                "priority": "normal"
+            }
             
-            3 0 obj
-            <<
-            /Type /Page
-            /Parent 2 0 R
-            /MediaBox [0 0 612 792]
-            /Contents 4 0 R
-            >>
-            endobj
+            response = requests.post(
+                f"{self.backend_url}/queue/check-in",
+                json=check_in_data,
+                headers={'Content-Type': 'application/json'},
+                timeout=30
+            )
             
-            4 0 obj
-            <<
-            /Length 200
-            >>
-            stream
-            BT
-            /F1 12 Tf
-            100 700 Td
-            (MEDICAL RECORD) Tj
-            0 -20 Td
-            (Patient: John Smith) Tj
-            0 -20 Td
-            (DOB: 1980-05-15) Tj
-            0 -20 Td
-            (ID: 8005155555083) Tj
-            0 -20 Td
-            (Diagnosis: Hypertension) Tj
-            0 -20 Td
-            (Medication: Lisinopril 10mg daily) Tj
-            ET
-            endstream
-            endobj
-            
-            xref
-            0 5
-            0000000000 65535 f 
-            0000000009 00000 n 
-            0000000058 00000 n 
-            0000000115 00000 n 
-            0000000206 00000 n 
-            trailer
-            <<
-            /Size 5
-            /Root 1 0 R
-            >>
-            startxref
-            456
-            %%EOF
-            """
-            
-            self.log_test("Create Test PDF", True, f"Created {len(test_pdf_content)} byte PDF document")
-            return test_pdf_content, "test_medical_record.pdf"
-            
+            if response.status_code == 200:
+                result = response.json()
+                expected_fields = ['status', 'queue_id', 'queue_number', 'patient_name']
+                
+                if all(field in result for field in expected_fields):
+                    if result['status'] == 'success':
+                        self.test_queue_id = result['queue_id']
+                        queue_number = result['queue_number']
+                        patient_name = result['patient_name']
+                        
+                        self.log_test("Queue Check-in (Existing)", True, 
+                                    f"Successfully checked in patient. Queue #{queue_number}, Name: {patient_name}")
+                        
+                        # Verify queue entry was created in MongoDB
+                        queue_entry = self.db.queue_entries.find_one({'id': self.test_queue_id})
+                        if queue_entry:
+                            if queue_entry.get('reason_for_visit') == check_in_data['reason_for_visit']:
+                                self.log_test("Queue Entry Verification", True, 
+                                            "Queue entry created in MongoDB with correct chief complaint")
+                            else:
+                                self.log_test("Queue Entry Verification", False, 
+                                            "Chief complaint not saved correctly in MongoDB")
+                        else:
+                            self.log_test("Queue Entry Verification", False, 
+                                        "Queue entry not found in MongoDB")
+                        
+                        return True, result
+                    else:
+                        self.log_test("Queue Check-in (Existing)", False, 
+                                    f"Check-in failed: {result.get('status')}")
+                        return False, result
+                else:
+                    missing_fields = [f for f in expected_fields if f not in result]
+                    self.log_test("Queue Check-in (Existing)", False, 
+                                f"Missing fields in response: {missing_fields}")
+                    return False, result
+            else:
+                error_msg = f"API returned status {response.status_code}"
+                try:
+                    error_detail = response.json()
+                    error_msg += f": {error_detail}"
+                except:
+                    error_msg += f": {response.text}"
+                
+                self.log_test("Queue Check-in (Existing)", False, error_msg)
+                return False, None
+                
         except Exception as e:
-            self.log_test("Create Test PDF", False, f"Error creating test PDF: {str(e)}")
-            return None, None
+            self.log_test("Queue Check-in (Existing)", False, f"Request failed: {str(e)}")
+            return False, None
     
     def create_test_patient(self):
         """Create a test patient for matching tests"""
