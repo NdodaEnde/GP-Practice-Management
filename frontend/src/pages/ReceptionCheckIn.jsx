@@ -119,6 +119,7 @@ const ReceptionCheckIn = () => {
       setPriority('normal');
       setSearchQuery('');
       setSearchResults([]);
+      setHasSearched(false);
       
       // Refresh stats
       fetchQueueStats();
