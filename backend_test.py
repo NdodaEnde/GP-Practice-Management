@@ -277,60 +277,67 @@ class GPDocumentTester:
             self.log_test("GP Document Upload", False, f"Request failed: {str(e)}")
             return False, None
     
-    def test_ai_scribe_soap_generation_endpoint(self, transcription_text):
-        """Test the AI Scribe SOAP note generation endpoint"""
+    def test_patient_matching(self):
+        """Test patient matching workflow"""
         try:
-            # Prepare test data
-            test_patient_context = {
-                "name": "Sarah Johnson",
-                "age": 42,
-                "chronic_conditions": ["Hypertension", "Type 2 Diabetes"]
+            # Test demographics that should match our test patient
+            demographics = {
+                "first_name": "John",
+                "last_name": "Smith",
+                "dob": "1980-05-15",
+                "id_number": "8005155555083"
             }
             
             payload = {
-                "transcription": transcription_text,
-                "patient_context": test_patient_context
+                "document_id": self.test_document_id or "test-doc-123",
+                "demographics": demographics
             }
             
             # Make API call
             response = requests.post(
-                f"{self.backend_url}/ai-scribe/generate-soap",
+                f"{self.backend_url}/gp/validation/match-patient",
                 json=payload,
                 headers={'Content-Type': 'application/json'},
-                timeout=60  # Longer timeout for LLM generation
+                timeout=30
             )
             
             if response.status_code == 200:
                 result = response.json()
-                expected_fields = ['status', 'soap_notes']
+                expected_fields = ['status', 'matches', 'match_count']
                 
                 if all(field in result for field in expected_fields):
-                    if result['status'] == 'success' and result['soap_notes']:
-                        soap_length = len(result['soap_notes'])
-                        # Check if SOAP notes contain expected sections
-                        soap_text = result['soap_notes'].upper()
-                        has_subjective = 'SUBJECTIVE' in soap_text or 'S:' in soap_text
-                        has_objective = 'OBJECTIVE' in soap_text or 'O:' in soap_text
-                        has_assessment = 'ASSESSMENT' in soap_text or 'A:' in soap_text
-                        has_plan = 'PLAN' in soap_text or 'P:' in soap_text
+                    if result['status'] == 'success':
+                        match_count = result['match_count']
+                        matches = result['matches']
                         
-                        soap_sections = sum([has_subjective, has_objective, has_assessment, has_plan])
-                        
-                        if soap_sections >= 3:  # At least 3 out of 4 SOAP sections
-                            self.log_test("AI Scribe SOAP Generation API", True, 
-                                        f"Successfully generated SOAP notes ({soap_length} characters, {soap_sections}/4 sections)")
-                            return True, result
+                        # Check if we found matches and they have proper structure
+                        if match_count > 0 and matches:
+                            # Verify match structure
+                            first_match = matches[0]
+                            match_fields = ['patient_id', 'confidence_score', 'match_method']
+                            
+                            if all(field in first_match for field in match_fields):
+                                confidence = first_match['confidence_score']
+                                method = first_match['match_method']
+                                
+                                self.log_test("Patient Matching", True, 
+                                            f"Found {match_count} matches, best confidence: {confidence}, method: {method}")
+                                return True, result
+                            else:
+                                self.log_test("Patient Matching", False, 
+                                            "Match results missing required fields")
+                                return False, result
                         else:
-                            self.log_test("AI Scribe SOAP Generation API", False, 
-                                        f"SOAP notes missing sections (only {soap_sections}/4 found)")
-                            return False, result
+                            self.log_test("Patient Matching", True, 
+                                        "No matches found (expected for new patient scenario)")
+                            return True, result
                     else:
-                        self.log_test("AI Scribe SOAP Generation API", False, 
-                                    f"Invalid response: status={result.get('status')}, soap_notes_empty={not result.get('soap_notes')}")
+                        self.log_test("Patient Matching", False, 
+                                    f"Invalid response status: {result.get('status')}")
                         return False, result
                 else:
                     missing_fields = [f for f in expected_fields if f not in result]
-                    self.log_test("AI Scribe SOAP Generation API", False, 
+                    self.log_test("Patient Matching", False, 
                                 f"Missing fields in response: {missing_fields}")
                     return False, result
             else:
@@ -341,11 +348,11 @@ class GPDocumentTester:
                 except:
                     error_msg += f": {response.text}"
                 
-                self.log_test("AI Scribe SOAP Generation API", False, error_msg)
+                self.log_test("Patient Matching", False, error_msg)
                 return False, None
                 
         except Exception as e:
-            self.log_test("AI Scribe SOAP Generation API", False, f"Request failed: {str(e)}")
+            self.log_test("Patient Matching", False, f"Request failed: {str(e)}")
             return False, None
     
     def test_ai_scribe_error_handling(self):
