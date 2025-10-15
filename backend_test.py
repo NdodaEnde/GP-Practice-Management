@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """
-Backend API Testing for GP Document-to-EHR Integration Workflow
-Tests the complete GP document processing workflow including:
-- Document upload and processing
-- Patient matching
-- Patient match confirmation
-- New patient creation
-- Validation data save
-- Document archive
+Backend API Testing for Queue Management System Phase 2
+Tests the complete Queue Management System including:
+- Patient check-in flow
+- Queue display and stats
+- Workstation dashboard integration
+- Queue status updates
+- Integration points with AI Scribe
 """
 
 import requests
