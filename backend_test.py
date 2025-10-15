@@ -732,10 +732,18 @@ class GPDocumentTester:
         return critical_success
     
     def cleanup_test_data(self):
-        """Clean up test data (optional)"""
+        """Clean up test data"""
         try:
-            # AI Scribe tests don't create persistent data, so minimal cleanup needed
-            print("🧹 AI Scribe tests completed - no persistent data to clean up")
+            # Clean up test patient if created
+            if self.test_patient_id:
+                try:
+                    # Note: In a real scenario, we might want to keep test data for debugging
+                    # For now, just log that cleanup would happen here
+                    print(f"🧹 Test patient {self.test_patient_id} would be cleaned up in production")
+                except Exception as e:
+                    print(f"⚠️  Error cleaning up test patient: {str(e)}")
+            
+            print("🧹 GP document tests completed")
         except Exception as e:
             print(f"⚠️  Error in cleanup: {str(e)}")
     
@@ -748,16 +756,16 @@ class GPDocumentTester:
 
 def main():
     """Main test execution"""
-    tester = AIScribeTester()
+    tester = GPDocumentTester()
     
     try:
         # Run the complete workflow test
-        success = tester.run_complete_ai_scribe_workflow_test()
+        success = tester.run_complete_gp_workflow_test()
         
         # Print detailed results
-        print("\n" + "="*60)
+        print("\n" + "="*80)
         print("DETAILED TEST RESULTS")
-        print("="*60)
+        print("="*80)
         
         for result in tester.test_results:
             status = "✅" if result['success'] else "❌"
