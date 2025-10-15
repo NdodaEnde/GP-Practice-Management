@@ -77,7 +77,7 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
   const extractedData = responseData.extractions || {};
   const demographics = extractedData.demographics || {};
   const rawChronicSummary = extractedData.chronic_summary || {};
-  const vitals = extractedData.vitals || {};
+  const rawVitals = extractedData.vitals || {};
   
   // Normalize chronic_summary data structure
   // LandingAI returns: conditions_mentioned, medications_mentioned
@@ -89,6 +89,16 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
                         [],
     current_medications: rawChronicSummary.medications_mentioned || 
                          rawChronicSummary.current_medications || 
+                         []
+  };
+  
+  // Normalize vitals data structure
+  // LandingAI returns: vital_entries
+  // We need: vital_signs_records
+  const vitals = {
+    ...rawVitals,
+    vital_signs_records: rawVitals.vital_entries || 
+                         rawVitals.vital_signs_records || 
                          []
   };
   const clinicalNotes = extractedData.clinical_notes || {};
