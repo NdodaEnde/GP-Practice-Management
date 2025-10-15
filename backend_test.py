@@ -812,19 +812,39 @@ class QueueManagementTester:
             pass
 
 def main():
-                error_msg = f"API returned status {response.status_code}"
-                try:
-                    error_detail = response.json()
-                    error_msg += f": {error_detail}"
-                except:
-                    error_msg += f": {response.text}"
-                
-                self.log_test("New Patient Creation", False, error_msg)
-                return False, None
-                
-        except Exception as e:
-            self.log_test("New Patient Creation", False, f"Request failed: {str(e)}")
-            return False, None
+    """Main test execution"""
+    tester = QueueManagementTester()
+    
+    try:
+        # Run the complete workflow test
+        success = tester.run_complete_queue_management_test()
+        
+        # Print detailed results
+        print("\n" + "="*80)
+        print("DETAILED TEST RESULTS")
+        print("="*80)
+        
+        for result in tester.test_results:
+            status = "✅" if result['success'] else "❌"
+            print(f"{status} {result['test']}: {result['message']}")
+        
+        # Cleanup
+        tester.cleanup_test_data()
+        
+        return 0 if success else 1
+        
+    except KeyboardInterrupt:
+        print("\n⚠️  Test interrupted by user")
+        return 1
+    except Exception as e:
+        print(f"\n💥 Unexpected error: {str(e)}")
+        return 1
+    finally:
+        tester.close_connections()
+
+if __name__ == "__main__":
+    exit_code = main()
+    sys.exit(exit_code)
     
     def test_validation_data_save(self):
         """Test saving validated document data"""
