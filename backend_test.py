@@ -784,20 +784,25 @@ class QueueManagementTester:
         return critical_success
     
     def cleanup_test_data(self):
-        """Test creating new patient from document"""
+        """Clean up test data"""
         try:
-            # Demographics for a new patient (different from test patient)
-            demographics = {
-                "first_name": "Jane",
-                "last_name": "Doe",
-                "dob": "1985-03-20",
-                "id_number": "8503205555084",
-                "contact_number": "+27987654321",
-                "email": "jane.doe@example.com"
-            }
+            # Clean up test patients if created
+            if self.test_patient_id:
+                print(f"🧹 Test patient 1 {self.test_patient_id} would be cleaned up in production")
             
-            # Mock parsed data
-            parsed_data = {
+            if self.test_patient_id_2:
+                print(f"🧹 Test patient 2 {self.test_patient_id_2} would be cleaned up in production")
+            
+            # Clean up queue entries if created
+            if self.test_queue_id:
+                print(f"🧹 Test queue entry {self.test_queue_id} would be cleaned up in production")
+            
+            if self.test_queue_id_2:
+                print(f"🧹 Test queue entry 2 {self.test_queue_id_2} would be cleaned up in production")
+            
+            print("🧹 Queue management tests completed")
+        except Exception as e:
+            print(f"⚠️  Error in cleanup: {str(e)}")
                 "demographics": demographics,
                 "vitals": {
                     "vital_signs_records": [{
