@@ -37,6 +37,15 @@ const ReceptionCheckIn = () => {
     return () => clearInterval(interval);
   }, []);
 
+  // Auto-select patient from URL parameter (after registration)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const patientId = params.get('patientId');
+    if (patientId) {
+      fetchPatientById(patientId);
+    }
+  }, []);
+
   const fetchQueueStats = async () => {
     try {
       const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
