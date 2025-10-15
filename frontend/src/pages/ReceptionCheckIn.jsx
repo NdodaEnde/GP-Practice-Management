@@ -41,8 +41,12 @@ const ReceptionCheckIn = () => {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const patientId = params.get('patientId');
+    console.log('🔍 ReceptionCheckIn mounted - patientId from URL:', patientId);
     if (patientId) {
+      console.log('✅ patientId found, fetching patient...');
       fetchPatientById(patientId);
+    } else {
+      console.log('❌ No patientId in URL');
     }
   }, []);
 
