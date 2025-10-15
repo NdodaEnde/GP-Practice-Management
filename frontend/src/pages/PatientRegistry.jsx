@@ -30,11 +30,6 @@ const PatientRegistry = () => {
     medical_aid: ''
   });
 
-  const [checkInData, setCheckInData] = useState({
-    reason_for_visit: '',
-    priority: 'normal'
-  });
-
   useEffect(() => {
     loadPatients();
   }, []);
