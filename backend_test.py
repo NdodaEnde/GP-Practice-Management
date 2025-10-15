@@ -845,19 +845,6 @@ def main():
 if __name__ == "__main__":
     exit_code = main()
     sys.exit(exit_code)
-                    "chief_complaint": "Routine checkup - VALIDATED",
-                    "diagnosis": "Hypertension - confirmed"
-                }
-            }
-            
-            modifications = [
-                {
-                    "field": "clinical_notes.chief_complaint",
-                    "original_value": "Routine checkup",
-                    "new_value": "Routine checkup - VALIDATED",
-                    "modification_type": "correction"
-                }
-            ]
             
             # Use the actual test document ID if available
             document_id = self.test_document_id
