@@ -213,27 +213,16 @@ const ReceptionCheckIn = () => {
                     <Input
                       placeholder="Search by name, ID number, or phone..."
                       value={searchQuery}
-                      onChange={(e) => {
-                        setSearchQuery(e.target.value);
-                        // Reset search state when user modifies query
-                        if (hasSearched) {
-                          setHasSearched(false);
-                          setSearchResults([]);
-                        }
-                      }}
-                      onKeyDown={(e) => e.key === 'Enter' && searchPatients()}
+                      onChange={(e) => setSearchQuery(e.target.value)}
                       className="pl-10"
                     />
                   </div>
-                  <Button onClick={searchPatients} disabled={isSearching}>
-                    {isSearching ? 'Searching...' : 'Search'}
-                  </Button>
                   <Button variant="outline" onClick={() => navigate('/patients')}>
                     <UserPlus className="w-4 h-4 mr-2" />
                     New Patient
                   </Button>
                 </div>
-
+            
                 {/* Search Results */}
                 {searchResults.length > 0 && (
                   <div className="space-y-2 max-h-64 overflow-y-auto">
@@ -266,8 +255,17 @@ const ReceptionCheckIn = () => {
                     ))}
                   </div>
                 )}
-
-                {hasSearched && searchResults.length === 0 && !isSearching && (
+            
+                {/* Searching indicator */}
+                {isSearching && (
+                  <div className="text-center py-6 text-gray-500">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-teal-600 mx-auto mb-2"></div>
+                    <p>Searching patients...</p>
+                  </div>
+                )}
+            
+                {/* No Results */}
+                {hasSearched && !isSearching && searchQuery.trim().length >= 2 && searchResults.length === 0 && (
                   <div className="text-center py-8 text-gray-500">
                     <AlertCircle className="w-12 h-12 mx-auto mb-2 text-gray-400" />
                     <p>No patients found. Try a different search or register a new patient.</p>
