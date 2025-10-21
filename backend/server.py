@@ -1992,6 +1992,37 @@ async def create_new_patient_from_document(create_request: CreateNewPatientReque
         parsed_data = create_request.parsed_data
         
         logger.info(f"Creating new patient from document {document_id}")
+        logger.info(f"Received demographics: {demographics}")
+        
+        # Normalize demographics data - try multiple field name variations
+        # Extract name from various possible fields
+        first_name = 'Unknown'
+        last_name = 'Unknown'
+        
+        # Try to get first_name and last_name directly
+        if demographics.get('first_name'):
+            first_name = demographics.get('first_name')
+        if demographics.get('last_name'):
+            last_name = demographics.get('last_name')
+        
+        # If not found, try patient_name or name field
+        if first_name == 'Unknown' and (demographics.get('patient_name') or demographics.get('name')):
+            full_name = demographics.get('patient_name') or demographics.get('name', '')
+            name_parts = full_name.strip().split()
+            if len(name_parts) >= 2:
+                first_name = name_parts[0]
+                last_name = ' '.join(name_parts[1:])
+            elif len(name_parts) == 1:
+                first_name = name_parts[0]
+                last_name = ''
+        
+        # Extract other fields with fallbacks
+        dob = demographics.get('dob') or demographics.get('date_of_birth') or demographics.get('birth_date') or '1900-01-01'
+        id_number = demographics.get('id_number') or demographics.get('patient_id') or demographics.get('sa_id_number') or demographics.get('id') or 'Unknown'
+        contact_number = demographics.get('contact_number') or demographics.get('phone') or demographics.get('telephone') or demographics.get('mobile')
+        email = demographics.get('email') or demographics.get('email_address')
+        address = demographics.get('address') or demographics.get('residential_address')
+        medical_aid = demographics.get('medical_aid') or demographics.get('medical_scheme')
         
         # Create new patient in Supabase
         patient_id = str(uuid.uuid4())
@@ -2000,16 +2031,18 @@ async def create_new_patient_from_document(create_request: CreateNewPatientReque
             'id': patient_id,
             'tenant_id': DEMO_TENANT_ID,
             'workspace_id': DEMO_WORKSPACE_ID,
-            'first_name': demographics.get('first_name') or demographics.get('patient_name', 'Unknown').split()[0],
-            'last_name': demographics.get('last_name') or ' '.join(demographics.get('patient_name', 'Unknown').split()[1:]) or 'Unknown',
-            'dob': demographics.get('dob') or demographics.get('date_of_birth') or '1900-01-01',
-            'id_number': demographics.get('id_number') or demographics.get('patient_id') or demographics.get('sa_id_number') or 'Unknown',
-            'contact_number': demographics.get('contact_number') or demographics.get('phone'),
-            'email': demographics.get('email'),
-            'address': demographics.get('address'),
-            'medical_aid': demographics.get('medical_aid'),
+            'first_name': first_name,
+            'last_name': last_name,
+            'dob': dob,
+            'id_number': id_number,
+            'contact_number': contact_number,
+            'email': email,
+            'address': address,
+            'medical_aid': medical_aid,
             'created_at': datetime.now(timezone.utc).isoformat()
         }
+        
+        logger.info(f"Normalized patient data: {patient_data}")
         
         supabase.table('patients').insert(patient_data).execute()
         
