@@ -825,6 +825,37 @@ async def update_encounter(encounter_id: str, gp_notes: Optional[str] = None, st
 
 # ==================== Document Processing ====================
 
+
+@api_router.get("/patients/{patient_id}/conditions")
+async def get_patient_conditions(patient_id: str):
+    """Get all conditions for a patient"""
+    try:
+        result = supabase.table('patient_conditions')\
+            .select('*')\
+            .eq('patient_id', patient_id)\
+            .order('diagnosed_date', desc=True)\
+            .execute()
+        return {'status': 'success', 'conditions': result.data}
+    except Exception as e:
+        logger.error(f"Error getting patient conditions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/patients/{patient_id}/medications")
+async def get_patient_medications(patient_id: str):
+    """Get all medications for a patient"""
+    try:
+        # Fetch from MongoDB
+        medications_cursor = db.patient_medications.find(
+            {'patient_id': patient_id},
+            {'_id': 0}
+        ).sort('created_at', -1)
+        
+        medications = await medications_cursor.to_list(length=100)
+        return {'status': 'success', 'medications': medications}
+    except Exception as e:
+        logger.error(f"Error getting patient medications: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @api_router.post("/documents/upload-standalone")
 async def upload_standalone_document(
     file: UploadFile = File(...),
