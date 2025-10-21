@@ -2005,6 +2005,12 @@ async def create_new_patient_from_document(create_request: CreateNewPatientReque
         if demographics.get('last_name'):
             last_name = demographics.get('last_name')
         
+        # Try first_names and surname (common in South African documents)
+        if first_name == 'Unknown' and demographics.get('first_names'):
+            first_name = demographics.get('first_names')
+        if last_name == 'Unknown' and demographics.get('surname'):
+            last_name = demographics.get('surname')
+        
         # If not found, try patient_name or name field
         if first_name == 'Unknown' and (demographics.get('patient_name') or demographics.get('name')):
             full_name = demographics.get('patient_name') or demographics.get('name', '')
