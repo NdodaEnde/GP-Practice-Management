@@ -65,7 +65,7 @@ const PatientMatchDialog = ({
                     <div>
                       <span className="text-gray-600">Name:</span>
                       <p className="font-medium">
-                        {extractedData.first_name} {extractedData.last_name}
+                        {extractedData.first_name || extractedData.first_names || ''} {extractedData.last_name || extractedData.surname || ''}
                       </p>
                     </div>
                     <div>
@@ -74,7 +74,7 @@ const PatientMatchDialog = ({
                     </div>
                     <div>
                       <span className="text-gray-600">Date of Birth:</span>
-                      <p className="font-medium">{extractedData.dob || 'Not available'}</p>
+                      <p className="font-medium">{extractedData.dob || extractedData.date_of_birth || 'Not available'}</p>
                     </div>
                     <div>
                       <span className="text-gray-600">Contact:</span>
