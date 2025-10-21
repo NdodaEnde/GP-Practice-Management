@@ -172,7 +172,7 @@ const PatientMatchDialog = ({
                   <div>
                     <span className="text-gray-600">Name:</span>
                     <span className="ml-2 font-medium">
-                      {extractedData.first_name} {extractedData.last_name}
+                      {extractedData.first_name || extractedData.first_names || ''} {extractedData.last_name || extractedData.surname || ''}
                     </span>
                   </div>
                   <div>
