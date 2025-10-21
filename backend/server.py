@@ -2024,6 +2024,19 @@ async def create_new_patient_from_document(create_request: CreateNewPatientReque
         
         # Extract other fields with fallbacks
         dob = demographics.get('dob') or demographics.get('date_of_birth') or demographics.get('birth_date') or '1900-01-01'
+        
+        # Normalize date format (handle formats like 1991.02:03 or 1991.02.03)
+        if dob and dob != '1900-01-01':
+            # Replace periods and colons with dashes
+            dob = dob.replace('.', '-').replace(':', '-')
+            # Ensure proper formatting
+            try:
+                from datetime import datetime
+                parsed_date = datetime.strptime(dob, '%Y-%m-%d')
+                dob = parsed_date.strftime('%Y-%m-%d')
+            except:
+                # If parsing fails, keep the normalized version
+                pass
         id_number = demographics.get('id_number') or demographics.get('patient_id') or demographics.get('sa_id_number') or demographics.get('id') or 'Unknown'
         contact_number = demographics.get('contact_number') or demographics.get('phone') or demographics.get('telephone') or demographics.get('mobile')
         email = demographics.get('email') or demographics.get('email_address')
