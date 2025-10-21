@@ -421,14 +421,14 @@ async def create_encounter_from_document(patient_id: str, parsed_data: Dict[str,
                 'oxygen_saturation': first_record.get('oxygen_saturation')
             }
         
-        # Prepare GP notes from clinical notes and chronic summary
+        # Prepare GP notes from clinical notes
         gp_notes_parts = []
         if clinical_notes:
-            gp_notes_parts.append(f"Clinical Notes: {json.dumps(clinical_notes)}")
-        if chronic_summary.get('chronic_conditions'):
-            gp_notes_parts.append(f"Chronic Conditions: {json.dumps(chronic_summary['chronic_conditions'])}")
-        if chronic_summary.get('current_medications'):
-            gp_notes_parts.append(f"Current Medications: {json.dumps(chronic_summary['current_medications'])}")
+            if isinstance(clinical_notes, dict):
+                for key, value in clinical_notes.items():
+                    gp_notes_parts.append(f"{key}: {value}")
+            else:
+                gp_notes_parts.append(str(clinical_notes))
         
         gp_notes = '\n\n'.join(gp_notes_parts) if gp_notes_parts else 'Imported from scanned document'
         
@@ -449,6 +449,63 @@ async def create_encounter_from_document(patient_id: str, parsed_data: Dict[str,
         }
         
         supabase.table('encounters').insert(encounter_data).execute()
+        
+        # Save chronic conditions as patient_conditions
+        conditions = chronic_summary.get('chronic_conditions', [])
+        if conditions:
+            for condition in conditions:
+                if isinstance(condition, dict):
+                    condition_name = condition.get('condition') or condition.get('name') or str(condition)
+                else:
+                    condition_name = str(condition)
+                
+                # Check if condition already exists
+                existing = supabase.table('patient_conditions')\
+                    .select('*')\
+                    .eq('patient_id', patient_id)\
+                    .ilike('condition_name', f'%{condition_name}%')\
+                    .execute()
+                
+                if not existing.data:
+                    condition_data = {
+                        'id': str(uuid.uuid4()),
+                        'patient_id': patient_id,
+                        'condition_name': condition_name,
+                        'diagnosed_date': encounter_date.split('T')[0] if 'T' in encounter_date else encounter_date,
+                        'status': 'active',
+                        'notes': f'Imported from historical document',
+                        'created_at': datetime.now(timezone.utc).isoformat()
+                    }
+                    supabase.table('patient_conditions').insert(condition_data).execute()
+                    logger.info(f"Created condition: {condition_name} for patient {patient_id}")
+        
+        # Save current medications
+        medications = chronic_summary.get('current_medications', [])
+        if medications:
+            for medication in medications:
+                if isinstance(medication, dict):
+                    med_name = medication.get('medication') or medication.get('name') or str(medication)
+                    med_dosage = medication.get('dosage', '')
+                    med_frequency = medication.get('frequency', '')
+                else:
+                    med_name = str(medication)
+                    med_dosage = ''
+                    med_frequency = ''
+                
+                # Store in MongoDB for now (until we have a medications table)
+                await db.patient_medications.insert_one({
+                    'id': str(uuid.uuid4()),
+                    'patient_id': patient_id,
+                    'medication_name': med_name,
+                    'dosage': med_dosage,
+                    'frequency': med_frequency,
+                    'start_date': encounter_date.split('T')[0] if 'T' in encounter_date else encounter_date,
+                    'status': 'active',
+                    'prescribed_by': 'Historical Record',
+                    'notes': 'Imported from scanned document',
+                    'created_at': datetime.now(timezone.utc).isoformat()
+                })
+                logger.info(f"Created medication: {med_name} for patient {patient_id}")
         
         # Store reference to original document in MongoDB
         await db.document_refs.insert_one({
