@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import GPValidationInterface from '@/components/GPValidationInterface';
 import { useToast } from '@/hooks/use-toast';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { FileText, Sparkles, ArrowLeft } from 'lucide-react';
 import axios from 'axios';
 
 const DocumentValidation = () => {
@@ -12,6 +15,8 @@ const DocumentValidation = () => {
   const [patientData, setPatientData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [documentStatus, setDocumentStatus] = useState(null);
+  const [extracting, setExtracting] = useState(false);
 
   const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
 
