@@ -15,6 +15,8 @@ const PatientEHR = () => {
   const [patient, setPatient] = useState(null);
   const [encounters, setEncounters] = useState([]);
   const [documents, setDocuments] = useState([]);
+  const [conditions, setConditions] = useState([]);
+  const [medications, setMedications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
 
