@@ -9,6 +9,7 @@ import PatientPrescriptions from './pages/PatientPrescriptions';
 import ValidationInterface from './pages/ValidationInterface';
 import DocumentDigitization from './pages/DocumentDigitization';
 import GPPatientDigitization from './pages/GPPatientDigitization';
+import DigitisedDocuments from './pages/DigitisedDocuments';
 import DocumentArchive from './pages/DocumentArchive';
 import ReceptionCheckIn from './pages/ReceptionCheckIn';
 import QueueDisplay from './pages/QueueDisplay';
