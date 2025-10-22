@@ -16,8 +16,11 @@ const formatDateForDisplay = (dateStr) => {
   if (!dateStr) return 'Not available';
   
   try {
+    const dateString = String(dateStr);
+    
     // Handle various input formats: 1991.02:03, 1991.02.03, 1991-02-03, etc.
-    let cleanDate = dateStr.toString().replace(/[.:]/g, '-');
+    // Replace periods and colons with hyphens for consistent parsing
+    let cleanDate = dateString.replace(/[.:]/g, '-');
     
     // Parse the date
     const parts = cleanDate.split('-');
@@ -31,10 +34,10 @@ const formatDateForDisplay = (dateStr) => {
         month = parts[1].padStart(2, '0');
         day = parts[2].padStart(2, '0');
       } else {
-        // DD-MM-YYYY format (already in desired format)
+        // DD-MM-YYYY or DD-MM-YY format
         day = parts[0].padStart(2, '0');
         month = parts[1].padStart(2, '0');
-        year = parts[2];
+        year = parts[2].length === 2 ? '20' + parts[2] : parts[2];
       }
       
       // Return in DD/MM/YYYY format
@@ -42,9 +45,10 @@ const formatDateForDisplay = (dateStr) => {
     }
     
     // If we can't parse it, return original
-    return dateStr;
+    return dateString;
   } catch (e) {
-    return dateStr;
+    console.error('Date format error:', e);
+    return String(dateStr);
   }
 };
 
