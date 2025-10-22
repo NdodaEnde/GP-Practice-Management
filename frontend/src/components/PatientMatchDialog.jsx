@@ -11,6 +11,32 @@ import {
   X
 } from 'lucide-react';
 
+// Utility function to format date for display
+const formatDateForDisplay = (dateStr) => {
+  if (!dateStr) return 'Not available';
+  
+  try {
+    // Handle various input formats: 1991.02:03, 1991.02.03, 1991-02-03, etc.
+    let cleanDate = dateStr.toString().replace(/[.:]/g, '-');
+    
+    // Parse the date
+    const parts = cleanDate.split('-');
+    if (parts.length === 3) {
+      const year = parts[0];
+      const month = parts[1].padStart(2, '0');
+      const day = parts[2].padStart(2, '0');
+      
+      // Return in DD/MM/YYYY format
+      return `${day}/${month}/${year}`;
+    }
+    
+    // If we can't parse it, return original
+    return dateStr;
+  } catch (e) {
+    return dateStr;
+  }
+};
+
 const PatientMatchDialog = ({ 
   isOpen, 
   onClose, 
