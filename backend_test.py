@@ -389,108 +389,263 @@ class PatientCreationTester:
             self.log_test("Get Parsed Document", False, f"Request failed: {str(e)}")
             return False, None
     
-    def test_data_structure_validation(self):
-        """Validate that extracted data structure matches GPValidationInterface expectations"""
+    def test_get_parsed_document_for_patient_creation(self):
+        """Test getting parsed document data specifically for patient creation"""
         try:
-            if not self.parsed_document_data:
-                self.log_test("Data Structure Validation", False, "No parsed document data available")
+            # First, get the mongo_id from the parsed document
+            parsed_doc = self.db.parsed_documents.find_one({'document_id': self.test_document_id})
+            if not parsed_doc:
+                self.log_test("Get Parsed Document for Patient Creation", False, 
+                            f"No parsed document found for document ID {self.test_document_id}")
                 return False, None
             
-            data = self.parsed_document_data
+            mongo_id = str(parsed_doc['_id'])
+            self.test_mongo_id = mongo_id
             
-            # Test Demographics Tab Requirements
-            demographics = data.get('demographics', {})
-            if demographics and isinstance(demographics, dict):
-                # Check for common demographic fields
-                demo_fields = ['patient_name', 'first_name', 'last_name', 'dob', 'age', 'gender', 'id_number']
-                found_fields = [field for field in demo_fields if field in demographics]
-                
-                if found_fields:
-                    self.log_test("Demographics Tab Validation", True, 
-                                f"Demographics contains {len(found_fields)} fields: {found_fields}")
-                else:
-                    self.log_test("Demographics Tab Validation", False, 
-                                f"Demographics exists but contains no standard fields. Keys: {list(demographics.keys())}")
-            else:
-                self.log_test("Demographics Tab Validation", False, 
-                            "Demographics section missing or not a dictionary - causes 'No demographic data extracted'")
+            # Test retrieving parsed document data
+            response = requests.get(
+                f"{self.backend_url}/gp/parsed-document/{mongo_id}",
+                timeout=30
+            )
             
-            # Test Conditions Tab Requirements
-            chronic_summary = data.get('chronic_summary', {})
-            if chronic_summary and isinstance(chronic_summary, dict):
-                conditions = chronic_summary.get('chronic_conditions', [])
-                medications = chronic_summary.get('current_medications', []) or chronic_summary.get('likely_current_medications', [])
-                
-                if conditions or medications:
-                    self.log_test("Conditions Tab Validation", True, 
-                                f"Found {len(conditions)} conditions and {len(medications)} medications")
-                else:
-                    self.log_test("Conditions Tab Validation", False, 
-                                "No chronic conditions or medications found")
-            else:
-                self.log_test("Conditions Tab Validation", False, 
-                            "Chronic summary section missing or invalid")
-            
-            # Test Vitals Tab Requirements
-            vitals = data.get('vitals', {})
-            if vitals and isinstance(vitals, dict):
-                vital_records = vitals.get('vital_signs_records', [])
-                if vital_records:
-                    first_record = vital_records[0] if vital_records else {}
-                    vital_fields = ['blood_pressure', 'heart_rate', 'temperature', 'weight', 'height']
-                    found_vitals = [field for field in vital_fields if field in first_record]
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('status') == 'success':
+                    data = result['data']
+                    self.parsed_document_data = data
                     
-                    if found_vitals:
-                        self.log_test("Vitals Tab Validation", True, 
-                                    f"Found {len(found_vitals)} vital signs: {found_vitals}")
+                    # Verify expected extracted data from review request
+                    demographics = data.get('demographics', {})
+                    
+                    # Check for contact information
+                    cell_number = demographics.get('cell_number')
+                    if cell_number == "071 4519723":
+                        self.log_test("Contact Data Verification", True, 
+                                    f"Contact number found: {cell_number}")
                     else:
-                        self.log_test("Vitals Tab Validation", False, 
-                                    f"Vital records exist but no standard fields found. Keys: {list(first_record.keys())}")
+                        self.log_test("Contact Data Verification", False, 
+                                    f"Expected contact '071 4519723', found: {cell_number}")
+                    
+                    # Check for address information
+                    home_address_street = demographics.get('home_address_street')
+                    home_address_code = demographics.get('home_address_code')
+                    if home_address_street == "6271 Jorga Street Phahama" and home_address_code == "9322":
+                        self.log_test("Address Data Verification", True, 
+                                    f"Address found: {home_address_street}, {home_address_code}")
+                    else:
+                        self.log_test("Address Data Verification", False, 
+                                    f"Expected address '6271 Jorga Street Phahama, 9322', found: {home_address_street}, {home_address_code}")
+                    
+                    # Check for medical aid information
+                    medical_aid_name = demographics.get('medical_aid_name')
+                    if medical_aid_name == "TANZANITE Gems.":
+                        self.log_test("Medical Aid Data Verification", True, 
+                                    f"Medical aid found: {medical_aid_name}")
+                    else:
+                        self.log_test("Medical Aid Data Verification", False, 
+                                    f"Expected medical aid 'TANZANITE Gems.', found: {medical_aid_name}")
+                    
+                    # Check for vitals information
+                    vitals = data.get('vitals', {})
+                    vital_entries = vitals.get('vital_entries', [])
+                    if vital_entries:
+                        latest_vitals = vital_entries[0]  # First entry should be latest
+                        bp_systolic = latest_vitals.get('bp_systolic')
+                        bp_diastolic = latest_vitals.get('bp_diastolic')
+                        pulse = latest_vitals.get('pulse')
+                        
+                        if bp_systolic == 147 and bp_diastolic == 98 and pulse == 96:
+                            self.log_test("Vitals Data Verification", True, 
+                                        f"Latest vitals found: BP {bp_systolic}/{bp_diastolic}, Pulse {pulse}")
+                        else:
+                            self.log_test("Vitals Data Verification", False, 
+                                        f"Expected vitals BP 147/98, Pulse 96, found: BP {bp_systolic}/{bp_diastolic}, Pulse {pulse}")
+                    else:
+                        self.log_test("Vitals Data Verification", False, "No vital entries found")
+                    
+                    self.log_test("Get Parsed Document for Patient Creation", True, 
+                                "Successfully retrieved parsed document with expected data structure")
+                    return True, result
                 else:
-                    self.log_test("Vitals Tab Validation", False, 
-                                "No vital signs records found")
+                    self.log_test("Get Parsed Document for Patient Creation", False, 
+                                f"Failed to retrieve parsed document: {result.get('status')}")
+                    return False, result
             else:
-                self.log_test("Vitals Tab Validation", False, 
-                            "Vitals section missing or invalid")
-            
-            # Test Clinical Notes Tab Requirements
-            clinical_notes = data.get('clinical_notes', {})
-            if clinical_notes:
-                if isinstance(clinical_notes, dict):
-                    notes_content = str(clinical_notes)
-                elif isinstance(clinical_notes, str):
-                    notes_content = clinical_notes
-                else:
-                    notes_content = str(clinical_notes)
-                
-                if len(notes_content.strip()) > 10:  # Has meaningful content
-                    self.log_test("Clinical Notes Tab Validation", True, 
-                                f"Clinical notes available ({len(notes_content)} characters)")
-                else:
-                    self.log_test("Clinical Notes Tab Validation", False, 
-                                "Clinical notes too short or empty")
-            else:
-                self.log_test("Clinical Notes Tab Validation", False, 
-                            "Clinical notes section missing")
-            
-            # Overall validation
-            valid_sections = 0
-            if demographics: valid_sections += 1
-            if chronic_summary: valid_sections += 1
-            if vitals: valid_sections += 1
-            if clinical_notes: valid_sections += 1
-            
-            if valid_sections >= 3:
-                self.log_test("Overall Data Structure", True, 
-                            f"Data structure valid for GPValidationInterface ({valid_sections}/4 sections)")
-                return True, data
-            else:
-                self.log_test("Overall Data Structure", False, 
-                            f"Insufficient data sections for GPValidationInterface ({valid_sections}/4 sections)")
-                return False, data
+                self.log_test("Get Parsed Document for Patient Creation", False, 
+                            f"API returned status {response.status_code}")
+                return False, None
                 
         except Exception as e:
-            self.log_test("Data Structure Validation", False, f"Validation failed: {str(e)}")
+            self.log_test("Get Parsed Document for Patient Creation", False, f"Request failed: {str(e)}")
+            return False, None
+    
+    def test_create_new_patient_with_complete_data(self):
+        """Test POST /api/gp/validation/create-new-patient with complete data mapping"""
+        try:
+            if not self.parsed_document_data:
+                self.log_test("Create New Patient", False, "No parsed document data available")
+                return False, None
+            
+            demographics = self.parsed_document_data.get('demographics', {})
+            
+            # Prepare request payload
+            request_data = {
+                "document_id": self.test_document_id,
+                "demographics": demographics,
+                "parsed_data": self.parsed_document_data,
+                "modifications": []
+            }
+            
+            # Test patient creation
+            response = requests.post(
+                f"{self.backend_url}/gp/validation/create-new-patient",
+                json=request_data,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('status') == 'success':
+                    self.created_patient_id = result.get('patient_id')
+                    self.created_encounter_id = result.get('encounter_id')
+                    
+                    self.log_test("Create New Patient", True, 
+                                f"Successfully created patient {self.created_patient_id} and encounter {self.created_encounter_id}")
+                    return True, result
+                else:
+                    self.log_test("Create New Patient", False, 
+                                f"Patient creation failed: {result.get('message', 'Unknown error')}")
+                    return False, result
+            else:
+                error_msg = f"API returned status {response.status_code}"
+                try:
+                    error_detail = response.json()
+                    error_msg += f": {error_detail}"
+                except:
+                    error_msg += f": {response.text}"
+                
+                self.log_test("Create New Patient", False, error_msg)
+                return False, None
+                
+        except Exception as e:
+            self.log_test("Create New Patient", False, f"Request failed: {str(e)}")
+            return False, None
+    
+    def test_verify_patient_ehr_data(self):
+        """Test GET /api/patients/{patient_id} to verify all fields are properly saved"""
+        try:
+            if not self.created_patient_id:
+                self.log_test("Verify Patient EHR Data", False, "No created patient ID available")
+                return False, None
+            
+            # Get patient EHR data
+            response = requests.get(
+                f"{self.backend_url}/patients/{self.created_patient_id}",
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                patient_data = response.json()
+                
+                # Verify contact number
+                contact_number = patient_data.get('contact_number')
+                if contact_number == "071 4519723":
+                    self.log_test("Patient Contact Verification", True, 
+                                f"Contact number correctly saved: {contact_number}")
+                else:
+                    self.log_test("Patient Contact Verification", False, 
+                                f"Expected contact '071 4519723', found: {contact_number}")
+                
+                # Verify address (should be combined from components)
+                address = patient_data.get('address')
+                expected_address_parts = ["6271 Jorga Street Phahama", "9322"]
+                if address and all(part in address for part in expected_address_parts):
+                    self.log_test("Patient Address Verification", True, 
+                                f"Address correctly saved: {address}")
+                else:
+                    self.log_test("Patient Address Verification", False, 
+                                f"Expected address containing '6271 Jorga Street Phahama' and '9322', found: {address}")
+                
+                # Verify medical aid
+                medical_aid = patient_data.get('medical_aid')
+                if medical_aid == "TANZANITE Gems.":
+                    self.log_test("Patient Medical Aid Verification", True, 
+                                f"Medical aid correctly saved: {medical_aid}")
+                else:
+                    self.log_test("Patient Medical Aid Verification", False, 
+                                f"Expected medical aid 'TANZANITE Gems.', found: {medical_aid}")
+                
+                self.log_test("Verify Patient EHR Data", True, 
+                            "Patient EHR data retrieved successfully")
+                return True, patient_data
+            else:
+                self.log_test("Verify Patient EHR Data", False, 
+                            f"Failed to get patient data: {response.status_code}")
+                return False, None
+                
+        except Exception as e:
+            self.log_test("Verify Patient EHR Data", False, f"Request failed: {str(e)}")
+            return False, None
+    
+    def test_verify_encounter_vitals(self):
+        """Test encounter creation and vitals integration"""
+        try:
+            if not self.created_encounter_id:
+                self.log_test("Verify Encounter Vitals", False, "No created encounter ID available")
+                return False, None
+            
+            # Get encounter data
+            response = requests.get(
+                f"{self.backend_url}/encounters/{self.created_encounter_id}",
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                encounter_data = response.json()
+                vitals_json = encounter_data.get('vitals_json')
+                
+                if vitals_json:
+                    # Check blood pressure
+                    blood_pressure = vitals_json.get('blood_pressure')
+                    expected_bp = ["147/98", "BP 147/98"]
+                    if blood_pressure and any(bp in str(blood_pressure) for bp in expected_bp):
+                        self.log_test("Encounter Blood Pressure Verification", True, 
+                                    f"Blood pressure correctly saved: {blood_pressure}")
+                    else:
+                        self.log_test("Encounter Blood Pressure Verification", False, 
+                                    f"Expected blood pressure '147/98', found: {blood_pressure}")
+                    
+                    # Check heart rate
+                    heart_rate = vitals_json.get('heart_rate')
+                    if heart_rate == 96 or str(heart_rate) == "96":
+                        self.log_test("Encounter Heart Rate Verification", True, 
+                                    f"Heart rate correctly saved: {heart_rate}")
+                    else:
+                        self.log_test("Encounter Heart Rate Verification", False, 
+                                    f"Expected heart rate 96, found: {heart_rate}")
+                    
+                    # Check for other vitals
+                    weight = vitals_json.get('weight')
+                    temperature = vitals_json.get('temperature')
+                    
+                    vitals_count = sum(1 for v in [blood_pressure, heart_rate, weight, temperature] if v is not None)
+                    self.log_test("Encounter Vitals Integration", True, 
+                                f"Encounter created with {vitals_count} vital signs")
+                    
+                else:
+                    self.log_test("Encounter Vitals Integration", False, 
+                                "No vitals_json found in encounter")
+                
+                self.log_test("Verify Encounter Vitals", True, 
+                            "Encounter vitals verification completed")
+                return True, encounter_data
+            else:
+                self.log_test("Verify Encounter Vitals", False, 
+                            f"Failed to get encounter data: {response.status_code}")
+                return False, None
+                
+        except Exception as e:
+            self.log_test("Verify Encounter Vitals", False, f"Request failed: {str(e)}")
             return False, None
     
     
