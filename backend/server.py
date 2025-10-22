@@ -2603,9 +2603,13 @@ async def get_parsed_document_from_mongo(mongo_id: str):
         if '_id' in parsed_doc:
             parsed_doc['_id'] = str(parsed_doc['_id'])
         
+        # Prioritize structured_extraction if it exists (from Extract API)
+        # Otherwise use extracted_data (from initial Parse+Extract microservice call)
+        data = parsed_doc.get('structured_extraction') or parsed_doc.get('extracted_data', {})
+        
         return {
             'status': 'success',
-            'data': parsed_doc.get('extracted_data', {}),
+            'data': data,
             'microservice_response': parsed_doc.get('microservice_response', {})
         }
     except HTTPException:
