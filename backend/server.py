@@ -2189,6 +2189,215 @@ async def create_new_patient_from_document(create_request: CreateNewPatientReque
         logger.error(f"Error creating new patient: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# ==================== Digitised Documents Endpoints (Phase 1.7) ====================
+
+@api_router.get("/gp/documents")
+async def list_digitised_documents(
+    status: Optional[str] = None,
+    patient_id: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    search: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0
+):
+    """
+    List all digitised documents with optional filters
+    Supports pagination and multiple filter criteria
+    """
+    try:
+        logger.info(f"Fetching digitised documents with filters: status={status}, patient_id={patient_id}")
+        
+        # Build query
+        query = supabase.table('digitised_documents').select('*')
+        
+        # Apply filters
+        if status:
+            query = query.eq('status', status)
+        if patient_id:
+            query = query.eq('patient_id', patient_id)
+        if date_from:
+            query = query.gte('upload_date', date_from)
+        if date_to:
+            query = query.lte('upload_date', date_to)
+        if search:
+            query = query.ilike('filename', f'%{search}%')
+        
+        # Apply workspace filter
+        query = query.eq('workspace_id', DEMO_WORKSPACE_ID)
+        
+        # Order by upload date descending
+        query = query.order('upload_date', desc=True)
+        
+        # Apply pagination
+        query = query.range(offset, offset + limit - 1)
+        
+        result = query.execute()
+        
+        # Enrich with patient names if patient_id exists
+        documents = []
+        for doc in result.data:
+            doc_copy = doc.copy()
+            if doc.get('patient_id'):
+                try:
+                    patient_res = supabase.table('patients').select('first_name, last_name').eq('id', doc['patient_id']).execute()
+                    if patient_res.data:
+                        patient = patient_res.data[0]
+                        doc_copy['patient_name'] = f"{patient['first_name']} {patient['last_name']}"
+                except:
+                    doc_copy['patient_name'] = None
+            documents.append(doc_copy)
+        
+        return {
+            'status': 'success',
+            'documents': documents,
+            'total': len(documents),
+            'offset': offset,
+            'limit': limit
+        }
+    except Exception as e:
+        logger.error(f"Error listing digitised documents: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/gp/documents/{document_id}")
+async def get_digitised_document(document_id: str):
+    """Get details of a specific digitised document"""
+    try:
+        result = supabase.table('digitised_documents')\
+            .select('*')\
+            .eq('id', document_id)\
+            .execute()
+        
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        document = result.data[0]
+        
+        # Enrich with patient name if linked
+        if document.get('patient_id'):
+            try:
+                patient_res = supabase.table('patients').select('first_name, last_name').eq('id', document['patient_id']).execute()
+                if patient_res.data:
+                    patient = patient_res.data[0]
+                    document['patient_name'] = f"{patient['first_name']} {patient['last_name']}"
+            except:
+                document['patient_name'] = None
+        
+        return {
+            'status': 'success',
+            'document': document
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching document: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.put("/gp/documents/{document_id}/status")
+async def update_document_status(document_id: str, update: DocumentStatusUpdate):
+    """Update the status of a digitised document"""
+    try:
+        logger.info(f"Updating document {document_id} status to {update.status}")
+        
+        update_data = {
+            'status': update.status,
+            'updated_at': datetime.now(timezone.utc).isoformat()
+        }
+        
+        if update.error_message:
+            update_data['error_message'] = update.error_message
+        
+        result = supabase.table('digitised_documents')\
+            .update(update_data)\
+            .eq('id', document_id)\
+            .execute()
+        
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        return {
+            'status': 'success',
+            'message': f'Document status updated to {update.status}',
+            'document': result.data[0]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating document status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.delete("/gp/documents/{document_id}")
+async def delete_digitised_document(document_id: str):
+    """Delete a digitised document and its associated files"""
+    try:
+        # Get document details
+        doc_result = supabase.table('digitised_documents')\
+            .select('*')\
+            .eq('id', document_id)\
+            .execute()
+        
+        if not doc_result.data:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        document = doc_result.data[0]
+        
+        # Delete physical file if exists
+        if document.get('file_path'):
+            file_path = Path(document['file_path'])
+            if file_path.exists():
+                file_path.unlink()
+                logger.info(f"Deleted file: {file_path}")
+        
+        # Delete from database
+        supabase.table('digitised_documents').delete().eq('id', document_id).execute()
+        
+        return {
+            'status': 'success',
+            'message': 'Document deleted successfully'
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting document: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/gp/documents/bulk-extract")
+async def bulk_extract_documents(document_ids: List[str]):
+    """Trigger extraction for multiple documents"""
+    try:
+        logger.info(f"Bulk extraction requested for {len(document_ids)} documents")
+        
+        results = []
+        for doc_id in document_ids:
+            try:
+                # Update status to 'extracting'
+                supabase.table('digitised_documents')\
+                    .update({'status': 'extracting', 'updated_at': datetime.now(timezone.utc).isoformat()})\
+                    .eq('id', doc_id)\
+                    .execute()
+                
+                results.append({
+                    'document_id': doc_id,
+                    'status': 'queued'
+                })
+            except Exception as e:
+                results.append({
+                    'document_id': doc_id,
+                    'status': 'error',
+                    'error': str(e)
+                })
+        
+        return {
+            'status': 'success',
+            'message': f'Extraction queued for {len(document_ids)} documents',
+            'results': results
+        }
+    except Exception as e:
+        logger.error(f"Error in bulk extraction: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @api_router.get("/documents/patient/{patient_id}")
 async def get_patient_documents(patient_id: str):
     """Get all documents for a specific patient"""
