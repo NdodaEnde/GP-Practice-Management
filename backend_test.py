@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
-Backend API Testing for Queue Management System Phase 2
-Tests the complete Queue Management System including:
-- Patient check-in flow
-- Queue display and stats
-- Workstation dashboard integration
-- Queue status updates
-- Integration points with AI Scribe
+Backend API Testing for Document Extract Button (Phase 1.7)
+Tests the Document Extract Button functionality including:
+- List digitised documents
+- Extract structured data from parsed documents
+- Retrieve parsed document data with structured extraction
+- Verify data structure for GPValidationInterface
 """
 
 import requests
