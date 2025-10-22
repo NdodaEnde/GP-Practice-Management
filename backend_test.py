@@ -69,21 +69,21 @@ class DocumentExtractTester:
             return False
     
     def test_mongodb_connection(self):
-        """Test MongoDB connection"""
+        """Test MongoDB connection and check for parsed documents"""
         try:
             # Test connection
             self.mongo_client.admin.command('ping')
             
-            # Check if queue_entries collection exists
+            # Check if parsed_documents collection exists
             collections = self.db.list_collection_names()
-            has_queue_collection = 'queue_entries' in collections
+            has_parsed_collection = 'parsed_documents' in collections
             
-            if has_queue_collection:
-                queue_count = self.db.queue_entries.count_documents({})
-                self.log_test("MongoDB Connection", True, f"Connected. Found {queue_count} queue entries")
-                return True, queue_count
+            if has_parsed_collection:
+                parsed_count = self.db.parsed_documents.count_documents({})
+                self.log_test("MongoDB Connection", True, f"Connected. Found {parsed_count} parsed documents")
+                return True, parsed_count
             else:
-                self.log_test("MongoDB Connection", True, "Connected but no queue_entries collection found")
+                self.log_test("MongoDB Connection", True, "Connected but no parsed_documents collection found")
                 return True, 0
                 
         except Exception as e:
