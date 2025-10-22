@@ -480,32 +480,71 @@ async def create_encounter_from_document(patient_id: str, parsed_data: Dict[str,
                     logger.info(f"Created condition: {condition_name} for patient {patient_id}")
         
         # Save current medications
-        medications = chronic_summary.get('current_medications', [])
+        medications = chronic_summary.get('current_medications', []) or chronic_summary.get('likely_current_medications', [])
         if medications:
             for medication in medications:
                 if isinstance(medication, dict):
-                    med_name = medication.get('medication') or medication.get('name') or str(medication)
-                    med_dosage = medication.get('dosage', '')
+                    # Handle different field name variations from microservice
+                    med_name = (
+                        medication.get('medication_name') or 
+                        medication.get('medication') or 
+                        medication.get('name') or 
+                        'Unknown Medication'
+                    )
+                    
+                    # Extract dosage information
+                    med_dosage = (
+                        medication.get('dosage_info') or 
+                        medication.get('dosage') or 
+                        medication.get('dose') or 
+                        ''
+                    )
+                    
+                    # Extract frequency
                     med_frequency = medication.get('frequency', '')
+                    
+                    # Extract the mentioned date (when medication was prescribed)
+                    med_date = (
+                        medication.get('mentioned_date') or 
+                        medication.get('prescribed_date') or 
+                        medication.get('start_date') or
+                        encounter_date
+                    )
+                    
+                    # Normalize date format
+                    if 'T' in str(med_date):
+                        med_date = med_date.split('T')[0]
+                    
+                    # Extract context/notes
+                    med_notes = medication.get('context', 'Imported from scanned document')
+                    if medication.get('legibility'):
+                        med_notes += f" (Legibility: {medication.get('legibility')})"
+                    
                 else:
                     med_name = str(medication)
                     med_dosage = ''
                     med_frequency = ''
+                    med_date = encounter_date.split('T')[0] if 'T' in encounter_date else encounter_date
+                    med_notes = 'Imported from scanned document'
                 
-                # Store in MongoDB for now (until we have a medications table)
+                # Skip if medication name is empty or just brackets
+                if not med_name or med_name in ['Unknown Medication', '{}', '[]']:
+                    continue
+                
+                # Store in MongoDB
                 await db.patient_medications.insert_one({
                     'id': str(uuid.uuid4()),
                     'patient_id': patient_id,
                     'medication_name': med_name,
                     'dosage': med_dosage,
                     'frequency': med_frequency,
-                    'start_date': encounter_date.split('T')[0] if 'T' in encounter_date else encounter_date,
+                    'start_date': med_date,
                     'status': 'active',
                     'prescribed_by': 'Historical Record',
-                    'notes': 'Imported from scanned document',
+                    'notes': med_notes,
                     'created_at': datetime.now(timezone.utc).isoformat()
                 })
-                logger.info(f"Created medication: {med_name} for patient {patient_id}")
+                logger.info(f"Created medication: {med_name} (Date: {med_date}) for patient {patient_id}")
         
         # Store reference to original document in MongoDB
         await db.document_refs.insert_one({
