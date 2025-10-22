@@ -100,7 +100,7 @@ const PatientMatchDialog = ({
                     </div>
                     <div>
                       <span className="text-gray-600">Date of Birth:</span>
-                      <p className="font-medium">{extractedData.dob || extractedData.date_of_birth || 'Not available'}</p>
+                      <p className="font-medium">{formatDateForDisplay(extractedData.dob || extractedData.date_of_birth)}</p>
                     </div>
                     <div>
                       <span className="text-gray-600">Contact:</span>
