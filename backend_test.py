@@ -808,52 +808,32 @@ class DocumentExtractTester:
             return False
         
         # Step 2: Test MongoDB connectivity
-        mongo_ok, queue_count = self.test_mongodb_connection()
+        mongo_ok, parsed_count = self.test_mongodb_connection()
         if not mongo_ok:
-            print("\n⚠️  MongoDB not accessible - Queue storage may not work")
+            print("\n⚠️  MongoDB not accessible - Document storage may not work")
         
-        # Step 3: Create test patients
-        print("\n👤 Creating test patients...")
-        patients_created = self.create_test_patients()
-        if not patients_created:
-            print("\n❌ Cannot proceed - Failed to create test patients")
+        # Step 3: Find test document
+        print("\n📄 Finding test document...")
+        document_found = self.find_test_document()
+        if not document_found:
+            print("\n❌ Cannot proceed - No suitable documents found for testing")
             return False
         
-        # Step 4: Test Scenario 1 - Check-in Flow
-        print("\n📝 Testing Scenario 1: Check-in Flow...")
-        print("  Testing existing patient check-in...")
-        checkin_existing_success, _ = self.test_queue_check_in_existing_patient()
+        # Step 4: Test Scenario 1 - List Documents
+        print("\n📋 Testing Scenario 1: List Digitised Documents...")
+        list_docs_success, _ = self.test_list_digitised_documents()
         
-        print("  Testing new patient check-in...")
-        checkin_new_success, _ = self.test_queue_check_in_new_patient()
+        # Step 5: Test Scenario 2 - Extract Document Data
+        print("\n🔍 Testing Scenario 2: Extract Document Data...")
+        extract_success, _ = self.test_extract_document_data()
         
-        # Step 5: Test Scenario 2 - Queue Display
-        print("\n📊 Testing Scenario 2: Queue Display...")
-        print("  Testing current queue display...")
-        queue_display_success, _ = self.test_queue_current_display()
+        # Step 6: Test Scenario 3 - Retrieve Parsed Document
+        print("\n📖 Testing Scenario 3: Retrieve Parsed Document...")
+        retrieve_success, _ = self.test_get_parsed_document()
         
-        print("  Testing queue statistics...")
-        queue_stats_success, _ = self.test_queue_stats()
-        
-        # Step 6: Test Scenario 3 - Workstation Dashboard Integration
-        print("\n🖥️  Testing Scenario 3: Workstation Dashboard Integration...")
-        print("  Testing call next patient...")
-        call_next_success, _ = self.test_workstation_call_next()
-        
-        print("  Testing patient details with vitals...")
-        patient_details_success, _ = self.test_patient_details_with_vitals()
-        
-        # Step 7: Test Scenario 4 - Queue Status Updates
-        print("\n🔄 Testing Scenario 4: Queue Status Updates...")
-        status_update_success, _ = self.test_queue_status_updates()
-        
-        # Step 8: Test Scenario 5 - Integration Points
-        print("\n🔗 Testing Scenario 5: Integration Points...")
-        print("  Testing AI Scribe integration endpoints...")
-        ai_scribe_integration_success, _ = self.test_ai_scribe_integration_endpoints()
-        
-        print("  Testing consultation call-next endpoint...")
-        consultation_endpoint_success, _ = self.test_consultation_call_next_endpoint()
+        # Step 7: Test Scenario 4 - Data Structure Validation
+        print("\n✅ Testing Scenario 4: Data Structure Validation...")
+        validation_success, _ = self.test_data_structure_validation()
         
         # Summary
         print("\n" + "="*80)
