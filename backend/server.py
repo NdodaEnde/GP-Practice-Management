@@ -2422,12 +2422,19 @@ async def extract_document_data(document_id: str):
         # client = LandingAIADE(apikey=os.getenv('LANDING_AI_API_KEY'))
         # result = client.extract(schema=your_schema, markdown=markdown_text)
         
+        # The microservice response has extractions nested in data
+        # extracted_data = result.data = { ..., extractions: { demographics, chronic_summary, vitals, clinical_notes } }
+        extractions = extracted_data.get('extractions', {})
+        
+        logger.info(f"Extracted data structure: {list(extracted_data.keys())}")
+        logger.info(f"Extractions: {list(extractions.keys())}")
+        
         # For now, we'll structure the existing data
         structured_extraction = {
-            'demographics': extracted_data.get('demographics', {}),
-            'chronic_summary': extracted_data.get('chronic_summary', {}),
-            'vitals': extracted_data.get('vitals', {}),
-            'clinical_notes': extracted_data.get('clinical_notes', {}),
+            'demographics': extractions.get('demographics', extracted_data.get('demographics', {})),
+            'chronic_summary': extractions.get('chronic_summary', extracted_data.get('chronic_summary', {})),
+            'vitals': extractions.get('vitals', extracted_data.get('vitals', {})),
+            'clinical_notes': extractions.get('clinical_notes', extracted_data.get('clinical_notes', {})),
             'extracted_at': datetime.now(timezone.utc).isoformat()
         }
         
