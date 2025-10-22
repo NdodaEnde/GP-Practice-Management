@@ -723,14 +723,17 @@ class PatientCreationTester:
     def cleanup_test_data(self):
         """Clean up test data"""
         try:
-            # Note: We don't clean up documents as they are existing data
+            # Note: We don't clean up the test patient as it's created for verification
+            if self.created_patient_id:
+                print(f"🧹 Test patient {self.created_patient_id} created for testing (not cleaned up)")
+            
+            if self.created_encounter_id:
+                print(f"🧹 Test encounter {self.created_encounter_id} created for testing (not cleaned up)")
+            
             if self.test_document_id:
                 print(f"🧹 Test document {self.test_document_id} used for testing (not cleaned up)")
             
-            if self.test_mongo_id:
-                print(f"🧹 Test mongo document {self.test_mongo_id} used for testing (not cleaned up)")
-            
-            print("🧹 Document extraction tests completed")
+            print("🧹 Patient creation tests completed")
         except Exception as e:
             print(f"⚠️  Error in cleanup: {str(e)}")
     
