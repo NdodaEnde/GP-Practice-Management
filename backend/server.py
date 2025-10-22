@@ -2417,6 +2417,14 @@ async def get_digitised_document(document_id: str):
                 document['patient_name'] = None
         
         return {
+            'status': 'success',
+            'document': document
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching document: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/gp/parsed-document/{mongo_id}")
 async def get_parsed_document_from_mongo(mongo_id: str):
