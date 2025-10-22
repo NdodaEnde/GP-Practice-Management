@@ -33,7 +33,7 @@ const DocumentValidation = () => {
         throw new Error('Document has not been parsed yet');
       }
       
-      // Get parsed data from microservice
+      // Get parsed data from MongoDB (our internal storage)
       const parsedResponse = await axios.get(`${backendUrl}/api/gp/parsed-document/${document.parsed_doc_id}`);
       
       console.log('Parsed data:', parsedResponse.data);
