@@ -1799,7 +1799,7 @@ async def proxy_gp_upload(
             'id': document_id,
             'workspace_id': DEMO_WORKSPACE_ID,
             'filename': file.filename,
-            'file_path': str(file_path),
+            'file_path': storage_path,  # Supabase Storage path or local fallback
             'file_size': file_size,
             'status': 'uploaded',
             'created_at': datetime.now(timezone.utc).isoformat(),
