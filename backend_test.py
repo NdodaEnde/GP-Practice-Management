@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Backend API Testing for Document Extract Button (Phase 1.7)
-Tests the Document Extract Button functionality including:
-- List digitised documents
-- Extract structured data from parsed documents
-- Retrieve parsed document data with structured extraction
-- Verify data structure for GPValidationInterface
+Backend API Testing for GP Document Processing and Patient Creation
+Tests the complete GP document workflow including:
+- Document extraction and parsing
+- Patient creation with complete data mapping
+- Encounter creation with vitals integration
+- Patient EHR data verification
 """
 
 import requests
