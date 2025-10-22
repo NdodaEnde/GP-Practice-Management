@@ -193,7 +193,7 @@ class DocumentExtractTester:
             self.log_test("List Digitised Documents", False, f"Request failed: {str(e)}")
             return False, None
     
-    def test_queue_check_in_new_patient(self):
+    def test_extract_document_data(self):
         """Test Scenario 2: New patient registration + check-in"""
         try:
             if not self.test_patient_id_2:
