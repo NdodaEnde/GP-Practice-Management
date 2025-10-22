@@ -388,51 +388,107 @@ class DocumentExtractTester:
             return False, None
     
     def test_data_structure_validation(self):
-        """Test Scenario 2: Queue statistics"""
+        """Validate that extracted data structure matches GPValidationInterface expectations"""
         try:
-            response = requests.get(
-                f"{self.backend_url}/queue/stats",
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                expected_fields = ['status', 'date', 'stats']
-                
-                if all(field in result for field in expected_fields):
-                    if result['status'] == 'success':
-                        stats = result['stats']
-                        stat_fields = ['total_checked_in', 'waiting', 'in_progress', 'completed']
-                        
-                        if all(field in stats for field in stat_fields):
-                            waiting_count = stats['waiting']
-                            in_progress_count = stats['in_progress']
-                            completed_count = stats['completed']
-                            
-                            self.log_test("Queue Stats", True, 
-                                        f"Stats: {waiting_count} waiting, {in_progress_count} in progress, {completed_count} completed")
-                            return True, result
-                        else:
-                            missing_stat_fields = [f for f in stat_fields if f not in stats]
-                            self.log_test("Queue Stats", False, 
-                                        f"Missing stat fields: {missing_stat_fields}")
-                            return False, result
-                    else:
-                        self.log_test("Queue Stats", False, 
-                                    f"Stats request failed: {result.get('status')}")
-                        return False, result
-                else:
-                    missing_fields = [f for f in expected_fields if f not in result]
-                    self.log_test("Queue Stats", False, 
-                                f"Missing fields in response: {missing_fields}")
-                    return False, result
-            else:
-                self.log_test("Queue Stats", False, 
-                            f"API returned status {response.status_code}")
+            if not self.parsed_document_data:
+                self.log_test("Data Structure Validation", False, "No parsed document data available")
                 return False, None
+            
+            data = self.parsed_document_data
+            
+            # Test Demographics Tab Requirements
+            demographics = data.get('demographics', {})
+            if demographics and isinstance(demographics, dict):
+                # Check for common demographic fields
+                demo_fields = ['patient_name', 'first_name', 'last_name', 'dob', 'age', 'gender', 'id_number']
+                found_fields = [field for field in demo_fields if field in demographics]
+                
+                if found_fields:
+                    self.log_test("Demographics Tab Validation", True, 
+                                f"Demographics contains {len(found_fields)} fields: {found_fields}")
+                else:
+                    self.log_test("Demographics Tab Validation", False, 
+                                f"Demographics exists but contains no standard fields. Keys: {list(demographics.keys())}")
+            else:
+                self.log_test("Demographics Tab Validation", False, 
+                            "Demographics section missing or not a dictionary - causes 'No demographic data extracted'")
+            
+            # Test Conditions Tab Requirements
+            chronic_summary = data.get('chronic_summary', {})
+            if chronic_summary and isinstance(chronic_summary, dict):
+                conditions = chronic_summary.get('chronic_conditions', [])
+                medications = chronic_summary.get('current_medications', []) or chronic_summary.get('likely_current_medications', [])
+                
+                if conditions or medications:
+                    self.log_test("Conditions Tab Validation", True, 
+                                f"Found {len(conditions)} conditions and {len(medications)} medications")
+                else:
+                    self.log_test("Conditions Tab Validation", False, 
+                                "No chronic conditions or medications found")
+            else:
+                self.log_test("Conditions Tab Validation", False, 
+                            "Chronic summary section missing or invalid")
+            
+            # Test Vitals Tab Requirements
+            vitals = data.get('vitals', {})
+            if vitals and isinstance(vitals, dict):
+                vital_records = vitals.get('vital_signs_records', [])
+                if vital_records:
+                    first_record = vital_records[0] if vital_records else {}
+                    vital_fields = ['blood_pressure', 'heart_rate', 'temperature', 'weight', 'height']
+                    found_vitals = [field for field in vital_fields if field in first_record]
+                    
+                    if found_vitals:
+                        self.log_test("Vitals Tab Validation", True, 
+                                    f"Found {len(found_vitals)} vital signs: {found_vitals}")
+                    else:
+                        self.log_test("Vitals Tab Validation", False, 
+                                    f"Vital records exist but no standard fields found. Keys: {list(first_record.keys())}")
+                else:
+                    self.log_test("Vitals Tab Validation", False, 
+                                "No vital signs records found")
+            else:
+                self.log_test("Vitals Tab Validation", False, 
+                            "Vitals section missing or invalid")
+            
+            # Test Clinical Notes Tab Requirements
+            clinical_notes = data.get('clinical_notes', {})
+            if clinical_notes:
+                if isinstance(clinical_notes, dict):
+                    notes_content = str(clinical_notes)
+                elif isinstance(clinical_notes, str):
+                    notes_content = clinical_notes
+                else:
+                    notes_content = str(clinical_notes)
+                
+                if len(notes_content.strip()) > 10:  # Has meaningful content
+                    self.log_test("Clinical Notes Tab Validation", True, 
+                                f"Clinical notes available ({len(notes_content)} characters)")
+                else:
+                    self.log_test("Clinical Notes Tab Validation", False, 
+                                "Clinical notes too short or empty")
+            else:
+                self.log_test("Clinical Notes Tab Validation", False, 
+                            "Clinical notes section missing")
+            
+            # Overall validation
+            valid_sections = 0
+            if demographics: valid_sections += 1
+            if chronic_summary: valid_sections += 1
+            if vitals: valid_sections += 1
+            if clinical_notes: valid_sections += 1
+            
+            if valid_sections >= 3:
+                self.log_test("Overall Data Structure", True, 
+                            f"Data structure valid for GPValidationInterface ({valid_sections}/4 sections)")
+                return True, data
+            else:
+                self.log_test("Overall Data Structure", False, 
+                            f"Insufficient data sections for GPValidationInterface ({valid_sections}/4 sections)")
+                return False, data
                 
         except Exception as e:
-            self.log_test("Queue Stats", False, f"Request failed: {str(e)}")
+            self.log_test("Data Structure Validation", False, f"Validation failed: {str(e)}")
             return False, None
     
     def test_workstation_call_next(self):
