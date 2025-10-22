@@ -387,7 +387,7 @@ class DocumentExtractTester:
             self.log_test("Get Parsed Document", False, f"Request failed: {str(e)}")
             return False, None
     
-    def test_queue_stats(self):
+    def test_data_structure_validation(self):
         """Test Scenario 2: Queue statistics"""
         try:
             response = requests.get(
