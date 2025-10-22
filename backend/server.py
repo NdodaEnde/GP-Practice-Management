@@ -1758,10 +1758,48 @@ async def proxy_gp_upload(
     patient_id: Optional[str] = Form(None),
     processing_mode: str = Form("smart")
 ):
-    """Proxy GP patient file upload to microservice"""
+    """
+    Upload GP patient file with Phase 1.7 integration
+    Creates digitised_documents record and tracks status through workflow
+    """
+    document_id = str(uuid.uuid4())
+    
     try:
         # Read file content
         file_content = await file.read()
+        
+        # Save file locally
+        storage_dir = Path("storage/gp_documents/original")
+        storage_dir.mkdir(parents=True, exist_ok=True)
+        file_path = storage_dir / f"gp_doc_{document_id}_{file.filename}"
+        
+        with open(file_path, "wb") as f:
+            f.write(file_content)
+        
+        file_size = len(file_content)
+        
+        logger.info(f"File saved locally: {file_path} ({file_size} bytes)")
+        
+        # Create digitised_documents record with status "uploaded"
+        digitised_doc_data = {
+            'id': document_id,
+            'workspace_id': DEMO_WORKSPACE_ID,
+            'filename': file.filename,
+            'file_path': str(file_path),
+            'file_size': file_size,
+            'status': 'uploaded',
+            'created_at': datetime.now(timezone.utc).isoformat(),
+            'updated_at': datetime.now(timezone.utc).isoformat()
+        }
+        
+        supabase.table('digitised_documents').insert(digitised_doc_data).execute()
+        logger.info(f"Created digitised_documents record: {document_id}")
+        
+        # Update status to "parsing"
+        supabase.table('digitised_documents')\
+            .update({'status': 'parsing', 'updated_at': datetime.now(timezone.utc).isoformat()})\
+            .eq('id', document_id)\
+            .execute()
         
         # Prepare multipart form data for microservice
         files = {'file': (file.filename, file_content, file.content_type)}
@@ -1772,7 +1810,7 @@ async def proxy_gp_upload(
         if patient_id:
             data['patient_id'] = patient_id
         
-        # Forward to microservice
+        # Forward to microservice for parsing and extraction
         async with httpx.AsyncClient(timeout=180.0) as client:
             response = await client.post(
                 f"{MICROSERVICE_URL}/api/v1/gp/upload-patient-file",
@@ -1780,12 +1818,52 @@ async def proxy_gp_upload(
                 data=data
             )
             response.raise_for_status()
-            return response.json()
+            result = response.json()
+        
+        # Update status to "parsed" and store parsed_doc_id
+        if result.get('success'):
+            parsed_doc_id = result.get('data', {}).get('parsed_doc_id')
+            update_data = {
+                'status': 'parsed',
+                'parsed_doc_id': parsed_doc_id,
+                'updated_at': datetime.now(timezone.utc).isoformat()
+            }
+            
+            supabase.table('digitised_documents')\
+                .update(update_data)\
+                .eq('id', document_id)\
+                .execute()
+            
+            logger.info(f"Document {document_id} parsed successfully")
+        
+        # Add document_id to response
+        result['document_id'] = document_id
+        return result
             
     except httpx.HTTPError as e:
+        # Update status to "error"
+        supabase.table('digitised_documents')\
+            .update({
+                'status': 'error',
+                'error_message': f"Microservice error: {str(e)}",
+                'updated_at': datetime.now(timezone.utc).isoformat()
+            })\
+            .eq('id', document_id)\
+            .execute()
+        
         logger.error(f"Microservice error: {e}")
         raise HTTPException(status_code=500, detail=f"Microservice error: {str(e)}")
     except Exception as e:
+        # Update status to "error"
+        supabase.table('digitised_documents')\
+            .update({
+                'status': 'error',
+                'error_message': str(e),
+                'updated_at': datetime.now(timezone.utc).isoformat()
+            })\
+            .eq('id', document_id)\
+            .execute()
+        
         logger.error(f"GP upload proxy error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
