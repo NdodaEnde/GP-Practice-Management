@@ -539,44 +539,73 @@ const PatientEHR = () => {
               {/* Active Medications */}
               <div className="mb-8">
                 <h3 className="text-lg font-semibold text-slate-800 mb-4">Active Medications</h3>
-                <div className="space-y-3">
+                <div className="space-y-6">
                   {medications.filter(m => m.status === 'active').length > 0 ? (
-                    medications.filter(m => m.status === 'active').map((med, idx) => (
-                      <div key={idx} className="p-5 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Badge className="bg-emerald-500">Active</Badge>
-                              <h4 className="text-lg font-bold text-slate-800">{med.medication_name}</h4>
-                            </div>
-                            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-                              <div>
-                                <span className="text-slate-600">Dosage:</span>
-                                <span className="ml-2 font-semibold text-slate-800">{med.dosage || 'Not specified'}</span>
-                              </div>
-                              <div>
-                                <span className="text-slate-600">Frequency:</span>
-                                <span className="ml-2 font-semibold text-slate-800">{med.frequency || 'Not specified'}</span>
-                              </div>
-                              <div>
-                                <span className="text-slate-600">Start Date:</span>
-                                <span className="ml-2 font-semibold text-slate-800">{med.start_date || 'Not specified'}</span>
-                              </div>
-                              <div>
-                                <span className="text-slate-600">Prescribed by:</span>
-                                <span className="ml-2 font-semibold text-slate-800">{med.prescribed_by || 'Historical Record'}</span>
-                              </div>
-                            </div>
-                            {med.notes && (
-                              <div className="mt-2 text-sm text-slate-600">
-                                <span className="font-semibold">Notes:</span> {med.notes}
-                              </div>
-                            )}
+                    (() => {
+                      // Group medications by date
+                      const groupedByDate = medications
+                        .filter(m => m.status === 'active')
+                        .reduce((groups, med) => {
+                          const date = med.start_date || 'Unknown Date';
+                          if (!groups[date]) groups[date] = [];
+                          groups[date].push(med);
+                          return groups;
+                        }, {});
+                      
+                      // Sort dates descending
+                      const sortedDates = Object.keys(groupedByDate).sort((a, b) => {
+                        if (a === 'Unknown Date') return 1;
+                        if (b === 'Unknown Date') return -1;
+                        return new Date(b) - new Date(a);
+                      });
+                      
+                      return sortedDates.map((date) => (
+                        <div key={date} className="border-l-4 border-emerald-500 pl-4">
+                          <div className="flex items-center gap-2 mb-3">
+                            <Calendar className="w-4 h-4 text-emerald-600" />
+                            <h4 className="font-bold text-slate-700">
+                              {date !== 'Unknown Date' 
+                                ? new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+                                : 'Unknown Date'}
+                            </h4>
+                            <Badge className="bg-emerald-100 text-emerald-700">
+                              {groupedByDate[date].length} medication{groupedByDate[date].length > 1 ? 's' : ''}
+                            </Badge>
                           </div>
-                          <Pill className="w-8 h-8 text-emerald-600" />
+                          <div className="space-y-2">
+                            {groupedByDate[date].map((med, idx) => (
+                              <div key={idx} className="p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200">
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1">
+                                    <h5 className="font-bold text-slate-800 mb-2">{med.medication_name}</h5>
+                                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                                      {med.dosage && (
+                                        <div>
+                                          <span className="text-slate-600">Dosage:</span>
+                                          <span className="ml-2 font-semibold text-slate-800">{med.dosage}</span>
+                                        </div>
+                                      )}
+                                      {med.frequency && (
+                                        <div>
+                                          <span className="text-slate-600">Frequency:</span>
+                                          <span className="ml-2 font-semibold text-slate-800">{med.frequency}</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                    {med.notes && med.notes !== 'Imported from scanned document' && (
+                                      <div className="mt-2 text-xs text-slate-600 italic">
+                                        {med.notes}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <Pill className="w-6 h-6 text-emerald-600" />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    ))
+                      ));
+                    })()
                   ) : (
                     <p className="text-slate-500 italic">No active medications on record</p>
                   )}
