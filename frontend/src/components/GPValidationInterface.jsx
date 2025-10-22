@@ -837,34 +837,40 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
                 <CardContent className="space-y-4">
                   {Object.keys(editedDemographics).length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {Object.entries(editedDemographics).map(([key, value]) => (
-                        <div key={key} className="flex flex-col">
-                          <Label htmlFor={`demo-${key}`} className="text-sm font-medium text-gray-600 capitalize mb-2">
-                            {key.replace(/_/g, ' ')}
-                          </Label>
-                          <Input
-                            id={`demo-${key}`}
-                            value={typeof value === 'object' ? JSON.stringify(value) : value || ''}
-                            onChange={(e) => {
-                              const originalValue = demographics[key];
-                              const newValue = e.target.value;
-                              if (originalValue !== newValue) {
-                                trackModification(key, originalValue, newValue, 'demographics');
-                              }
-                              setEditedDemographics(prev => ({
-                                ...prev,
-                                [key]: newValue
-                              }));
-                            }}
-                            className="border-gray-300 focus:border-teal-500"
-                          />
-                          {demographics[key] !== editedDemographics[key] && (
-                            <span className="text-xs text-amber-600 mt-1 flex items-center gap-1">
-                              <Edit className="w-3 h-3" /> Modified
-                            </span>
-                          )}
-                        </div>
-                      ))}
+                      {Object.entries(editedDemographics).map(([key, value]) => {
+                        // Determine input type based on field name
+                        const inputType = (key === 'dob' || key === 'date_of_birth') ? 'date' : 'text';
+                        
+                        return (
+                          <div key={key} className="flex flex-col">
+                            <Label htmlFor={`demo-${key}`} className="text-sm font-medium text-gray-600 capitalize mb-2">
+                              {key.replace(/_/g, ' ')}
+                            </Label>
+                            <Input
+                              id={`demo-${key}`}
+                              type={inputType}
+                              value={typeof value === 'object' ? JSON.stringify(value) : value || ''}
+                              onChange={(e) => {
+                                const originalValue = demographics[key];
+                                const newValue = e.target.value;
+                                if (originalValue !== newValue) {
+                                  trackModification(key, originalValue, newValue, 'demographics');
+                                }
+                                setEditedDemographics(prev => ({
+                                  ...prev,
+                                  [key]: newValue
+                                }));
+                              }}
+                              className="border-gray-300 focus:border-teal-500"
+                            />
+                            {demographics[key] !== editedDemographics[key] && (
+                              <span className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                                <Edit className="w-3 h-3" /> Modified
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   ) : (
                     <p className="text-gray-500">No demographic data extracted</p>
