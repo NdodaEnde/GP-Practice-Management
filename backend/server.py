@@ -268,6 +268,43 @@ class ReferralResponse(BaseModel):
     status: str
     created_at: str
 
+
+# ==================== Digitised Documents Models (Phase 1.7) ====================
+
+class DigitisedDocumentResponse(BaseModel):
+    id: str
+    workspace_id: str
+    filename: str
+    file_path: str
+    file_size: Optional[int] = None
+    pages_count: Optional[int] = None
+    upload_date: str
+    status: str  # uploaded, parsing, parsed, extracting, extracted, validated, approved, error
+    patient_id: Optional[str] = None
+    patient_name: Optional[str] = None  # Computed field
+    encounter_id: Optional[str] = None
+    parsed_doc_id: Optional[str] = None
+    extracted_data_id: Optional[str] = None
+    uploaded_by: Optional[str] = None
+    validated_by: Optional[str] = None
+    validated_at: Optional[str] = None
+    approved_at: Optional[str] = None
+    error_message: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+class DocumentStatusUpdate(BaseModel):
+    status: str
+    error_message: Optional[str] = None
+
+class DocumentListFilters(BaseModel):
+    status: Optional[str] = None
+    patient_id: Optional[str] = None
+    date_from: Optional[str] = None
+    date_to: Optional[str] = None
+    search: Optional[str] = None
+
+
 # ==================== Helper Functions ====================
 
 async def init_demo_tenant():
