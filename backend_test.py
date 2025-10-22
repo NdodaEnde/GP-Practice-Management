@@ -796,10 +796,10 @@ class DocumentExtractTester:
     
     # Old GP test methods removed - focusing on queue management
     
-    def run_complete_queue_management_test(self):
-        """Run the complete Queue Management System Phase 2 test"""
+    def run_complete_document_extract_test(self):
+        """Run the complete Document Extract Button test"""
         print("\n" + "="*80)
-        print("QUEUE MANAGEMENT SYSTEM PHASE 2 - COMPLETE WORKFLOW TEST")
+        print("DOCUMENT EXTRACT BUTTON PHASE 1.7 - COMPLETE WORKFLOW TEST")
         print("="*80)
         
         # Step 1: Test backend connectivity
