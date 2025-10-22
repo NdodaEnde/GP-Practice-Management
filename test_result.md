@@ -103,9 +103,10 @@
 #====================================================================================================
 
 user_problem_statement: |
-  Phase 2: Complete Queue Management System with integration to AI Scribe consultation workflow.
-  Enhance Workstation Dashboard to show chief complaint, vitals, and provide direct navigation to
-  AI Scribe and Patient EHR. Auto-update queue status when consultation is completed.
+  Phase 1.7: Document Architecture Refactor - Implement "Extract" button in Document Validation interface.
+  Documents are stored in Digitised Documents archive with "parsed" status. When user clicks "Extract",
+  the system should extract structured data (Demographics, Conditions, Vitals, Clinical Notes) and
+  display them in editable validation tabs, similar to the existing GPValidationInterface.
 
 backend:
   - task: "GP Document Upload & Processing"
