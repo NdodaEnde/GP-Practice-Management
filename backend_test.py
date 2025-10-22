@@ -743,11 +743,11 @@ class PatientCreationTester:
 
 def main():
     """Main test execution"""
-    tester = DocumentExtractTester()
+    tester = PatientCreationTester()
     
     try:
         # Run the complete workflow test
-        success = tester.run_complete_document_extract_test()
+        success = tester.run_patient_creation_complete_data_mapping_test()
         
         # Print detailed results
         print("\n" + "="*80)
