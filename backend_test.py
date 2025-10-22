@@ -90,66 +90,39 @@ class DocumentExtractTester:
             self.log_test("MongoDB Connection", False, f"MongoDB connection failed: {str(e)}")
             return False, 0
     
-    def create_test_patients(self):
-        """Create test patients for queue testing"""
+    def find_test_document(self):
+        """Find a suitable document for testing extraction"""
         try:
-            # Patient 1 - existing patient for check-in
-            patient_data_1 = {
-                "first_name": "Sarah",
-                "last_name": "Johnson", 
-                "dob": "1985-07-22",
-                "id_number": "8507225555084",
-                "contact_number": "+27123456789",
-                "email": "sarah.johnson@example.com",
-                "address": "456 Oak Street, Cape Town",
-                "medical_aid": "Discovery Health"
-            }
-            
-            response = requests.post(
-                f"{self.backend_url}/patients",
-                json=patient_data_1,
-                headers={'Content-Type': 'application/json'},
+            # Look for documents with status 'parsed' or 'extracted'
+            response = requests.get(
+                f"{self.backend_url}/gp/documents",
+                params={"limit": 10},
                 timeout=30
             )
             
             if response.status_code == 200:
                 result = response.json()
-                self.test_patient_id = result['id']
-                self.log_test("Create Test Patient 1", True, f"Created test patient 1: {self.test_patient_id}")
+                documents = result.get('documents', [])
+                
+                # Find a document with status 'parsed' or 'extracted'
+                suitable_docs = [doc for doc in documents if doc.get('status') in ['parsed', 'extracted']]
+                
+                if suitable_docs:
+                    test_doc = suitable_docs[0]
+                    self.test_document_id = test_doc['id']
+                    self.log_test("Find Test Document", True, 
+                                f"Found suitable document: {self.test_document_id} (status: {test_doc['status']})")
+                    return True
+                else:
+                    self.log_test("Find Test Document", False, 
+                                f"No suitable documents found. Available statuses: {[doc.get('status') for doc in documents]}")
+                    return False
             else:
-                self.log_test("Create Test Patient 1", False, f"Failed to create patient 1: {response.status_code}")
-                return False
-            
-            # Patient 2 - for new patient registration + check-in
-            patient_data_2 = {
-                "first_name": "Michael",
-                "last_name": "Brown", 
-                "dob": "1978-11-15",
-                "id_number": "7811155555085",
-                "contact_number": "+27987654321",
-                "email": "michael.brown@example.com",
-                "address": "789 Pine Avenue, Johannesburg",
-                "medical_aid": "Momentum Health"
-            }
-            
-            response = requests.post(
-                f"{self.backend_url}/patients",
-                json=patient_data_2,
-                headers={'Content-Type': 'application/json'},
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                self.test_patient_id_2 = result['id']
-                self.log_test("Create Test Patient 2", True, f"Created test patient 2: {self.test_patient_id_2}")
-                return True
-            else:
-                self.log_test("Create Test Patient 2", False, f"Failed to create patient 2: {response.status_code}")
+                self.log_test("Find Test Document", False, f"Failed to list documents: {response.status_code}")
                 return False
                 
         except Exception as e:
-            self.log_test("Create Test Patients", False, f"Error creating test patients: {str(e)}")
+            self.log_test("Find Test Document", False, f"Error finding test document: {str(e)}")
             return False
     
     def test_queue_check_in_existing_patient(self):
