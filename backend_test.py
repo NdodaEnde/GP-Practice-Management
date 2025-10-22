@@ -294,67 +294,97 @@ class DocumentExtractTester:
             return False, None
     
     def test_get_parsed_document(self):
-        """Test Scenario 2: Queue display functionality"""
+        """Test GET /api/gp/parsed-document/{mongo_id} - Retrieve parsed data"""
         try:
-            # Test getting current queue
+            if not self.test_document_id:
+                self.log_test("Get Parsed Document", False, "No test document available")
+                return False, None
+            
+            # First, get the mongo_id from the parsed document
+            parsed_doc = self.db.parsed_documents.find_one({'document_id': self.test_document_id})
+            if not parsed_doc:
+                self.log_test("Get Parsed Document", False, "No parsed document found in MongoDB")
+                return False, None
+            
+            mongo_id = str(parsed_doc['_id'])
+            self.test_mongo_id = mongo_id
+            
+            # Test retrieving parsed document data
             response = requests.get(
-                f"{self.backend_url}/queue/current",
+                f"{self.backend_url}/gp/parsed-document/{mongo_id}",
                 timeout=30
             )
             
             if response.status_code == 200:
                 result = response.json()
-                expected_fields = ['status', 'date', 'queue', 'count']
+                expected_fields = ['status', 'data']
                 
                 if all(field in result for field in expected_fields):
                     if result['status'] == 'success':
-                        queue_count = result['count']
-                        queue_entries = result['queue']
+                        data = result['data']
                         
-                        self.log_test("Queue Current Display", True, 
-                                    f"Successfully retrieved current queue with {queue_count} entries")
+                        self.log_test("Get Parsed Document", True, 
+                                    f"Successfully retrieved parsed document data")
                         
-                        # Verify queue entries have proper structure
-                        if queue_entries and len(queue_entries) > 0:
-                            first_entry = queue_entries[0]
-                            entry_fields = ['id', 'queue_number', 'patient_name', 'reason_for_visit', 'status']
-                            present_fields = [f for f in entry_fields if f in first_entry]
-                            
-                            if len(present_fields) >= 4:
-                                self.log_test("Queue Entry Structure", True, 
-                                            f"Queue entries have proper structure ({len(present_fields)}/{len(entry_fields)} fields)")
-                                
-                                # Check if entries are sorted by queue_number
-                                if len(queue_entries) > 1:
-                                    sorted_correctly = all(
-                                        queue_entries[i]['queue_number'] <= queue_entries[i+1]['queue_number']
-                                        for i in range(len(queue_entries)-1)
-                                    )
-                                    if sorted_correctly:
-                                        self.log_test("Queue Sorting", True, "Queue entries properly sorted by queue_number")
-                                    else:
-                                        self.log_test("Queue Sorting", False, "Queue entries not properly sorted")
+                        # Verify data prioritization (structured_extraction over extracted_data)
+                        if parsed_doc.get('structured_extraction'):
+                            # Should return structured_extraction
+                            structured_data = parsed_doc['structured_extraction']
+                            if data == structured_data:
+                                self.log_test("Data Prioritization", True, 
+                                            "Correctly prioritizes structured_extraction over extracted_data")
                             else:
-                                self.log_test("Queue Entry Structure", False, 
-                                            f"Queue entries missing fields ({len(present_fields)}/{len(entry_fields)})")
+                                self.log_test("Data Prioritization", False, 
+                                            "Not returning structured_extraction data as expected")
                         
+                        # Verify data structure for GPValidationInterface
+                        expected_sections = ['demographics', 'chronic_summary', 'vitals', 'clinical_notes']
+                        present_sections = [section for section in expected_sections if section in data]
+                        
+                        if len(present_sections) >= 3:
+                            self.log_test("GPValidationInterface Compatibility", True, 
+                                        f"Data structure compatible with GPValidationInterface: {present_sections}")
+                            
+                            # Detailed check of demographics (main issue)
+                            demographics = data.get('demographics', {})
+                            if demographics:
+                                demo_fields = list(demographics.keys())
+                                self.log_test("Demographics Data Path", True, 
+                                            f"Demographics accessible at correct path: {demo_fields}")
+                                
+                                # Log the actual structure for debugging
+                                print(f"DEBUG - Demographics structure: {demographics}")
+                            else:
+                                self.log_test("Demographics Data Path", False, 
+                                            "Demographics data not found at expected path - this causes frontend 'No demographic data extracted' error")
+                        else:
+                            self.log_test("GPValidationInterface Compatibility", False, 
+                                        f"Data structure missing required sections. Found: {present_sections}")
+                        
+                        self.parsed_document_data = data
                         return True, result
                     else:
-                        self.log_test("Queue Current Display", False, 
-                                    f"Queue display failed: {result.get('status')}")
+                        self.log_test("Get Parsed Document", False, 
+                                    f"Failed to retrieve parsed document: {result.get('status')}")
                         return False, result
                 else:
                     missing_fields = [f for f in expected_fields if f not in result]
-                    self.log_test("Queue Current Display", False, 
+                    self.log_test("Get Parsed Document", False, 
                                 f"Missing fields in response: {missing_fields}")
                     return False, result
             else:
-                self.log_test("Queue Current Display", False, 
-                            f"API returned status {response.status_code}")
+                error_msg = f"API returned status {response.status_code}"
+                try:
+                    error_detail = response.json()
+                    error_msg += f": {error_detail}"
+                except:
+                    error_msg += f": {response.text}"
+                
+                self.log_test("Get Parsed Document", False, error_msg)
                 return False, None
                 
         except Exception as e:
-            self.log_test("Queue Current Display", False, f"Request failed: {str(e)}")
+            self.log_test("Get Parsed Document", False, f"Request failed: {str(e)}")
             return False, None
     
     def test_queue_stats(self):
