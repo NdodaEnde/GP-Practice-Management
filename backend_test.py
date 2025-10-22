@@ -125,7 +125,7 @@ class DocumentExtractTester:
             self.log_test("Find Test Document", False, f"Error finding test document: {str(e)}")
             return False
     
-    def test_queue_check_in_existing_patient(self):
+    def test_list_digitised_documents(self):
         """Test Scenario 1: Check-in flow with existing patient"""
         try:
             if not self.test_patient_id:
