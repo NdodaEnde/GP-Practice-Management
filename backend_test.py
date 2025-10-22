@@ -126,60 +126,56 @@ class DocumentExtractTester:
             return False
     
     def test_list_digitised_documents(self):
-        """Test Scenario 1: Check-in flow with existing patient"""
+        """Test GET /api/gp/documents - List digitised documents"""
         try:
-            if not self.test_patient_id:
-                self.log_test("Queue Check-in (Existing)", False, "No test patient available")
-                return False, None
-            
-            # Test check-in with chief complaint
-            check_in_data = {
-                "patient_id": self.test_patient_id,
-                "reason_for_visit": "Routine annual physical examination",
-                "priority": "normal"
-            }
-            
-            response = requests.post(
-                f"{self.backend_url}/queue/check-in",
-                json=check_in_data,
-                headers={'Content-Type': 'application/json'},
+            # Test listing all documents
+            response = requests.get(
+                f"{self.backend_url}/gp/documents",
                 timeout=30
             )
             
             if response.status_code == 200:
                 result = response.json()
-                expected_fields = ['status', 'queue_id', 'queue_number', 'patient_name']
+                expected_fields = ['status', 'documents', 'total']
                 
                 if all(field in result for field in expected_fields):
                     if result['status'] == 'success':
-                        self.test_queue_id = result['queue_id']
-                        queue_number = result['queue_number']
-                        patient_name = result['patient_name']
+                        documents = result['documents']
+                        total = result['total']
                         
-                        self.log_test("Queue Check-in (Existing)", True, 
-                                    f"Successfully checked in patient. Queue #{queue_number}, Name: {patient_name}")
+                        self.log_test("List Digitised Documents", True, 
+                                    f"Successfully retrieved {total} documents")
                         
-                        # Verify queue entry was created in MongoDB
-                        queue_entry = self.db.queue_entries.find_one({'id': self.test_queue_id})
-                        if queue_entry:
-                            if queue_entry.get('reason_for_visit') == check_in_data['reason_for_visit']:
-                                self.log_test("Queue Entry Verification", True, 
-                                            "Queue entry created in MongoDB with correct chief complaint")
+                        # Check document structure
+                        if documents and len(documents) > 0:
+                            first_doc = documents[0]
+                            doc_fields = ['id', 'status', 'filename', 'upload_date']
+                            present_fields = [f for f in doc_fields if f in first_doc]
+                            
+                            if len(present_fields) >= 3:
+                                self.log_test("Document Structure", True, 
+                                            f"Documents have proper structure ({len(present_fields)}/{len(doc_fields)} fields)")
+                                
+                                # Check for parsed/extracted documents
+                                parsed_docs = [doc for doc in documents if doc.get('status') in ['parsed', 'extracted']]
+                                if parsed_docs:
+                                    self.log_test("Parsed Documents Available", True, 
+                                                f"Found {len(parsed_docs)} documents ready for extraction")
+                                else:
+                                    self.log_test("Parsed Documents Available", False, 
+                                                "No documents with 'parsed' or 'extracted' status found")
                             else:
-                                self.log_test("Queue Entry Verification", False, 
-                                            "Chief complaint not saved correctly in MongoDB")
-                        else:
-                            self.log_test("Queue Entry Verification", False, 
-                                        "Queue entry not found in MongoDB")
+                                self.log_test("Document Structure", False, 
+                                            f"Documents missing required fields ({len(present_fields)}/{len(doc_fields)})")
                         
                         return True, result
                     else:
-                        self.log_test("Queue Check-in (Existing)", False, 
-                                    f"Check-in failed: {result.get('status')}")
+                        self.log_test("List Digitised Documents", False, 
+                                    f"Document listing failed: {result.get('status')}")
                         return False, result
                 else:
                     missing_fields = [f for f in expected_fields if f not in result]
-                    self.log_test("Queue Check-in (Existing)", False, 
+                    self.log_test("List Digitised Documents", False, 
                                 f"Missing fields in response: {missing_fields}")
                     return False, result
             else:
@@ -190,11 +186,11 @@ class DocumentExtractTester:
                 except:
                     error_msg += f": {response.text}"
                 
-                self.log_test("Queue Check-in (Existing)", False, error_msg)
+                self.log_test("List Digitised Documents", False, error_msg)
                 return False, None
                 
         except Exception as e:
-            self.log_test("Queue Check-in (Existing)", False, f"Request failed: {str(e)}")
+            self.log_test("List Digitised Documents", False, f"Request failed: {str(e)}")
             return False, None
     
     def test_queue_check_in_new_patient(self):
