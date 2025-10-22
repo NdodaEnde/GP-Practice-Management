@@ -587,26 +587,27 @@ const PatientEHR = () => {
               <div>
                 <h3 className="text-lg font-semibold text-slate-800 mb-4">Discontinued Medications</h3>
                 <div className="space-y-3">
-                  {mockMedications.filter(m => m.status === 'discontinued').map((med, idx) => (
-                    <div key={idx} className="p-5 bg-slate-50 rounded-lg border border-slate-200 opacity-75">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Badge className="bg-slate-400">Discontinued</Badge>
-                            <h4 className="text-lg font-bold text-slate-600">{med.name}</h4>
-                          </div>
-                          <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-                            <div>
-                              <span className="text-slate-500">Dosage:</span>
-                              <span className="ml-2 font-semibold text-slate-600">{med.dosage}</span>
+                  {medications.filter(m => m.status === 'discontinued' || m.status === 'inactive').length > 0 ? (
+                    medications.filter(m => m.status === 'discontinued' || m.status === 'inactive').map((med, idx) => (
+                      <div key={idx} className="p-5 bg-slate-50 rounded-lg border border-slate-200 opacity-75">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Badge className="bg-slate-400">Discontinued</Badge>
+                              <h4 className="text-lg font-bold text-slate-600">{med.medication_name}</h4>
                             </div>
-                            <div>
-                              <span className="text-slate-500">End Date:</span>
-                              <span className="ml-2 font-semibold text-slate-600">{med.endDate}</span>
+                            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                              <div>
+                                <span className="text-slate-500">Dosage:</span>
+                                <span className="ml-2 font-semibold text-slate-600">{med.dosage || 'Not specified'}</span>
+                              </div>
+                              <div>
+                                <span className="text-slate-500">End Date:</span>
+                                <span className="ml-2 font-semibold text-slate-600">{med.end_date || 'Not specified'}</span>
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
                     </div>
                   ))}
                 </div>
