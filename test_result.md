@@ -474,3 +474,35 @@ agent_communication:
       
       BACKEND STATUS: Queue Management System Phase 2 core workflow is fully functional
       NEXT: Main agent should implement missing AI Scribe integration endpoints
+  - agent: "main"
+    message: |
+      PHASE 1.7 - EXTRACT BUTTON IMPLEMENTATION IN PROGRESS:
+      
+      IMPLEMENTED FEATURES:
+      1. Backend Extract Endpoint (/api/gp/documents/{document_id}/extract):
+         - Fetches parsed data from MongoDB
+         - Extracts structured fields from microservice response
+         - Saves structured_extraction to MongoDB
+         - Updates document status to 'extracted'
+      
+      2. Frontend Extract UI:
+         - Shows "Extract Data" button when document status is 'parsed'
+         - Triggers backend extraction on button click
+         - Reloads document data after extraction
+         - Displays GPValidationInterface with tabs
+      
+      3. Updated /api/gp/parsed-document/{mongo_id} endpoint:
+         - Now prioritizes 'structured_extraction' over 'extracted_data'
+         - Returns correct data structure for validation interface
+      
+      CURRENT ISSUE:
+      - Demographics tab showing "No demographic data extracted"
+      - Need to verify data structure in MongoDB parsed_documents
+      - Microservice response has nested extractions: { data: { extractions: { demographics, chronic_summary, vitals, clinical_notes } } }
+      - Need to test backend extract endpoint with correct data path
+      
+      READY FOR TESTING:
+      Please test /api/gp/documents/{document_id}/extract endpoint to verify:
+      1. Correct extraction of demographics, conditions, vitals, notes
+      2. Proper storage in MongoDB structured_extraction field
+      3. Correct retrieval via /api/gp/parsed-document/{mongo_id}
