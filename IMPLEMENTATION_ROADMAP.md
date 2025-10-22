@@ -47,12 +47,23 @@ Transform SurgiScan into a complete GP practice management system with queue man
 - ✅ Backend validation save endpoint with audit logging
 - ⚠️ **BLOCKED**: LandingAI API balance insufficient - cannot process new documents
 
-**Phase 1.6: Document-to-EHR Integration (PARTIALLY COMPLETE)**
-- ✅ Smart patient matching with confirmation workflow (implemented, needs full testing)
-- ✅ Automatic EHR population from validated documents (implemented, needs full testing)
-- ✅ Encounter creation from scanned records (implemented, needs full testing)
-- ✅ Document archive viewer for compliance (implemented, needs full testing)
-- ✅ Access audit trail for legal cases (implemented, needs full testing)
+**Phase 1.6: Document-to-EHR Integration (COMPLETE) ✅**
+- ✅ Smart patient matching with confirmation workflow (ID-based with 98% confidence)
+- ✅ Automatic EHR population from validated documents
+- ✅ Encounter creation from scanned records with vitals_json
+- ✅ Patient conditions saved to patient_conditions table
+- ✅ Medications saved to MongoDB with proper parsing
+- ✅ Demographics field name mapping (first_names/surname support)
+- ✅ Medications grouped by date in UI
+- ✅ Real data integration in PatientEHR
+
+**Phase 1.7: Document Architecture Refactor (IN PROGRESS) 🚀**
+- 🔄 **Parse-Store-Extract Workflow** (NEW ARCHITECTURE)
+- 🔄 Digitised Documents page (document archive/queue)
+- 🔄 Document status tracking (Uploaded → Parsed → Extracted → Validated → Approved)
+- 🔄 Batch upload support
+- 🔄 On-demand extraction with "Extract" button
+- 🔄 Document persistence and audit trail
 
 **Phase 2: Reception & Queue Management (PARTIALLY COMPLETE)**
 - ✅ Patient check-in interface (ReceptionCheckIn.jsx)
