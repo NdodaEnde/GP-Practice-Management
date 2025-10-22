@@ -2266,10 +2266,43 @@ async def create_new_patient_from_document(create_request: CreateNewPatientReque
                 # If parsing fails, keep the normalized version
                 pass
         id_number = demographics.get('id_number') or demographics.get('patient_id') or demographics.get('sa_id_number') or demographics.get('id') or 'Unknown'
-        contact_number = demographics.get('contact_number') or demographics.get('phone') or demographics.get('telephone') or demographics.get('mobile')
+        
+        # Contact number - check multiple field variations
+        contact_number = (
+            demographics.get('contact_number') or 
+            demographics.get('cell_number') or 
+            demographics.get('mobile') or 
+            demographics.get('phone') or 
+            demographics.get('telephone') or 
+            demographics.get('cellphone')
+        )
+        
         email = demographics.get('email') or demographics.get('email_address')
+        
+        # Address - combine multiple address fields if needed
         address = demographics.get('address') or demographics.get('residential_address')
-        medical_aid = demographics.get('medical_aid') or demographics.get('medical_scheme')
+        if not address:
+            # Build address from components
+            address_parts = []
+            if demographics.get('home_address_street'):
+                address_parts.append(demographics.get('home_address_street'))
+            if demographics.get('home_address_suburb'):
+                address_parts.append(demographics.get('home_address_suburb'))
+            if demographics.get('home_address_city'):
+                address_parts.append(demographics.get('home_address_city'))
+            if demographics.get('home_address_code'):
+                address_parts.append(str(demographics.get('home_address_code')))
+            if demographics.get('postal_address') and not address_parts:
+                address_parts.append(demographics.get('postal_address'))
+            address = ', '.join(address_parts) if address_parts else None
+        
+        # Medical aid - check multiple field variations
+        medical_aid = (
+            demographics.get('medical_aid') or 
+            demographics.get('medical_scheme') or 
+            demographics.get('medical_aid_name') or 
+            demographics.get('medical_aid_scheme')
+        )
         
         # Create new patient in Supabase
         patient_id = str(uuid.uuid4())
