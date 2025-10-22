@@ -608,8 +608,11 @@ const PatientEHR = () => {
                             </div>
                           </div>
                         </div>
-                    </div>
-                  ))}
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-slate-500 italic">No discontinued medications</p>
+                  )}
                 </div>
               </div>
             </CardContent>
