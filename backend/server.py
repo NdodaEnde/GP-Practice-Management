@@ -2461,16 +2461,6 @@ async def get_parsed_document_from_mongo(mongo_id: str):
         logger.error(f"Error retrieving parsed document: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
-            'status': 'success',
-            'document': document
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error fetching document: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
 @api_router.put("/gp/documents/{document_id}/status")
 async def update_document_status(document_id: str, update: DocumentStatusUpdate):
     """Update the status of a digitised document"""
