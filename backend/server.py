@@ -1820,12 +1820,30 @@ async def proxy_gp_upload(
             response.raise_for_status()
             result = response.json()
         
-        # Update status to "parsed" and store parsed_doc_id
+        # Store parsed data in MongoDB and update status
         if result.get('success'):
             parsed_doc_id = result.get('data', {}).get('parsed_doc_id')
+            
+            # Store the entire parsed response in MongoDB for retrieval
+            parsed_data_record = {
+                'document_id': document_id,
+                'parsed_doc_id': parsed_doc_id,
+                'microservice_response': result,
+                'extracted_data': result.get('data', {}),
+                'workspace_id': DEMO_WORKSPACE_ID,
+                'created_at': datetime.now(timezone.utc).isoformat()
+            }
+            
+            # Store in MongoDB
+            mongo_result = await db.parsed_documents.insert_one(parsed_data_record)
+            mongo_id = str(mongo_result.inserted_id)
+            
+            logger.info(f"Stored parsed data in MongoDB: {mongo_id}")
+            
+            # Update Supabase with both IDs
             update_data = {
                 'status': 'parsed',
-                'parsed_doc_id': parsed_doc_id,
+                'parsed_doc_id': mongo_id,  # Use MongoDB ID instead
                 'updated_at': datetime.now(timezone.utc).isoformat()
             }
             
@@ -1834,7 +1852,7 @@ async def proxy_gp_upload(
                 .eq('id', document_id)\
                 .execute()
             
-            logger.info(f"Document {document_id} parsed successfully")
+            logger.info(f"Document {document_id} parsed successfully, MongoDB ID: {mongo_id}")
         
         # Add document_id to response
         result['document_id'] = document_id
