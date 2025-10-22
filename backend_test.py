@@ -871,21 +871,14 @@ class DocumentExtractTester:
     def cleanup_test_data(self):
         """Clean up test data"""
         try:
-            # Clean up test patients if created
-            if self.test_patient_id:
-                print(f"🧹 Test patient 1 {self.test_patient_id} would be cleaned up in production")
+            # Note: We don't clean up documents as they are existing data
+            if self.test_document_id:
+                print(f"🧹 Test document {self.test_document_id} used for testing (not cleaned up)")
             
-            if self.test_patient_id_2:
-                print(f"🧹 Test patient 2 {self.test_patient_id_2} would be cleaned up in production")
+            if self.test_mongo_id:
+                print(f"🧹 Test mongo document {self.test_mongo_id} used for testing (not cleaned up)")
             
-            # Clean up queue entries if created
-            if self.test_queue_id:
-                print(f"🧹 Test queue entry {self.test_queue_id} would be cleaned up in production")
-            
-            if self.test_queue_id_2:
-                print(f"🧹 Test queue entry 2 {self.test_queue_id_2} would be cleaned up in production")
-            
-            print("🧹 Queue management tests completed")
+            print("🧹 Document extraction tests completed")
         except Exception as e:
             print(f"⚠️  Error in cleanup: {str(e)}")
     
