@@ -124,7 +124,7 @@ DEMO_WORKSPACE_ID="demo-gp-workspace-001"
 
 ### Frontend Environment Variables (`.env`)
 ```
-REACT_APP_BACKEND_URL=https://aihealth-clinic.preview.emergentagent.com
+REACT_APP_BACKEND_URL=https://docucare-health.preview.emergentagent.com
 ```
 
 ## 🎯 GP Workflow
@@ -216,10 +216,10 @@ GET    /api/analytics/summary       # Dashboard summary stats
 ### Backend API Test
 ```bash
 # Health check
-curl https://aihealth-clinic.preview.emergentagent.com/api/health
+curl https://docucare-health.preview.emergentagent.com/api/health
 
 # After Supabase setup, test patient creation:
-curl -X POST https://aihealth-clinic.preview.emergentagent.com/api/patients \
+curl -X POST https://docucare-health.preview.emergentagent.com/api/patients \
   -H "Content-Type: application/json" \
   -d '{
     "first_name": "John",
@@ -233,7 +233,7 @@ curl -X POST https://aihealth-clinic.preview.emergentagent.com/api/patients \
 ```
 
 ### Frontend
-Visit: https://aihealth-clinic.preview.emergentagent.com
+Visit: https://docucare-health.preview.emergentagent.com
 
 ## 🎨 UI/UX Features
 
@@ -310,13 +310,13 @@ Dashboard provides:
 For issues or questions:
 1. Check `/app/backend/SUPABASE_SETUP_INSTRUCTIONS.md`
 2. Review logs: `tail -f /var/log/supervisor/backend.*.log`
-3. Test API health: `curl https://aihealth-clinic.preview.emergentagent.com/api/health`
+3. Test API health: `curl https://docucare-health.preview.emergentagent.com/api/health`
 
 ## 🎉 Quick Start Summary
 
 1. **Create Supabase tables** (see SUPABASE_SETUP_INSTRUCTIONS.md)
 2. **Restart backend**: `sudo supervisorctl restart backend`
-3. **Open app**: https://aihealth-clinic.preview.emergentagent.com
+3. **Open app**: https://docucare-health.preview.emergentagent.com
 4. **Register first patient**: Click "Register New Patient"
 5. **Create encounter**: Select patient → "New Encounter"
 6. **Upload document**: Add medical document for parsing

@@ -1,13 +1,23 @@
 <analysis>
-The AI engineer's work commenced with debugging the AI Scribe feature, specifically resolving API key authentication issues for Whisper transcription (shifting from Emergent LLM Key to a direct OpenAI key) and later for SOAP note generation. This led to a refactor where transcription used  and SOAP generation initially used , then switched to  directly after a  DNS issue. Next, the Enhanced Prescription Module (Phase 4.2) was built, encompassing database schema, backend endpoints, and frontend components for prescriptions, sick notes, and referrals, integrated into the AI Scribe page and Patient EHR. Crucially, the workflow was extended to auto-extract data from SOAP notes to pre-fill these forms, streamlining doctor's administrative tasks. A significant EHR integration then linked AI Scribe consultations to patient records, creating encounters, logging diagnoses, and associating prescriptions. Finally, the agent returned to Phase 1.6 (Document-to-EHR integration), fixing data mapping for chronic care and vitals from LandingAI extraction, and resolving a PDF bidirectional scrolling bug. The trajectory concluded with addressing a bug in the Queue Management system where the reception search was not functioning, despite the Vitals Station search working correctly.
+The AI engineer's work spanned multiple critical areas: debugging UI/UX, refining core patient workflows, fixing data persistence issues, and initiating a major architectural refactor for document processing. Initially, a subtle UX bug in the Reception Check-In search was resolved by adding a  flag, preventing premature No patients found messages. Subsequently, the new patient registration workflow was streamlined, moving from a fragile state-based dialog to a robust URL-based redirect for immediate check-in. This required significant debugging of React state, router paths, and  hooks.
+
+A major focus then shifted to the Document Digitization and Patient EHR integration. This involved fixing patient demographics not being saved, raw JSON displaying in the EHR, and mock data overriding real patient conditions and medications. The engineer refactored backend endpoints () to correctly parse and save clinical data into structured Supabase tables (conditions) and MongoDB (medications), and updated frontend components (, ) to fetch and display this real data, including medication parsing and grouping.
+
+Finally, a critical architectural refactor was initiated for document processing. The system moved from a synchronous parse-and-extract model prone to timeouts to an asynchronous Parse → Store → Extract workflow. This involved creating a new  page, integrating Supabase Storage for PDF files, and MongoDB for parsed JSON data. Backend endpoints were updated to manage document lifecycle and status. The most recent work focused on debugging persistent 500 errors when retrieving parsed data and PDF documents, eventually resolving duplicate backend endpoints and ensuring correct data flow from Supabase Storage and MongoDB to the frontend.
 </analysis>
 
 <product_requirements>
-SurgiScan is a multi-tenant healthcare SaaS for Occupational Health and GP Practices, emphasizing data isolation with a hybrid Supabase/MongoDB architecture. The GP Practice workflow MVP includes Patient & Encounter Management, Document Digitization (LandingAI microservice), and a Validation Interface with editable tabs (Demographics, Chronic Care, Vitals, Clinical Notes) and bi-directional grounding. Recent refinements focused on storing raw documents in MongoDB and validated structured data in Supabase upon Approve Document. Key implemented features include Patient Matching, automatic EHR population, a Document Archive Viewer, Access Audit Trail, Queue Management System (Reception Check-in, Queue Display, Workstation Dashboard), and Vitals Station. Most recently, the AI Scribe feature (real-time voice transcription and SOAP note generation using OpenAI Whisper and GPT-4o) was completed and integrated. The current focus is on enhancing the Consultation phase to reduce administrative overhead for doctors by automating the extraction of clinical actions from SOAP notes to pre-fill prescription, sick note, and referral forms, and ensuring comprehensive EHR integration, and finally fixing existing bugs.
+SurgiScan is a multi-tenant healthcare SaaS for Occupational Health and GP Practices, requiring strict data isolation. The MVP encompasses Patient & Encounter Management, Document Digitization via a LandingAI microservice, and a Validation Interface for extracted data (Demographics, Chronic Care, Vitals, Clinical Notes) with bi-directional grounding. Raw documents are stored in MongoDB, while validated structured data is moved to Supabase upon approval. Key existing features include Patient Matching, automatic EHR population, a Document Archive Viewer, Access Audit Trail, a Queue Management System (Reception Check-in, Queue Display, Workstation Dashboard), and Vitals Station.
+
+The recent development focused on enhancing the Consultation phase to reduce administrative overhead:
+1.  **AI Scribe Feature**: Real-time voice transcription and AI-driven SOAP note generation (using OpenAI Whisper and GPT-4o) was completed and integrated.
+2.  **Enhanced Prescription Module (Phase 4.2)**: This included new database schemas, backend endpoints, and frontend components for prescriptions, sick notes, and referrals. A key feature was auto-extracting data from SOAP notes to pre-fill these forms, streamlining doctor tasks.
+3.  **Comprehensive EHR Integration**: Linking AI Scribe consultations to patient records, creating encounters, logging diagnoses, and associating prescriptions.
+4.  **Bug Fixes**: Addressing issues like AI Scribe API key authentication, Document-to-EHR data mapping (chronic care, vitals from LandingAI), a PDF bidirectional scrolling bug, and a non-functional patient search in the Queue Management system's Reception Check-in.
 </product_requirements>
 
 <key_technical_concepts>
-- **Backend:** FastAPI, Python-dotenv, Supabase (Postgres), MongoDB, , usage: openai [-h] [-v] [-b API_BASE] [-k API_KEY] [-p PROXY [PROXY ...]]
+-   **Backend**: FastAPI, Python-dotenv, Supabase (Postgres), MongoDB, , usage: openai [-h] [-v] [-b API_BASE] [-k API_KEY] [-p PROXY [PROXY ...]]
               [-o ORGANIZATION] [-t {openai,azure}]
               [--api-version API_VERSION] [--azure-endpoint AZURE_ENDPOINT]
               [--azure-ad-token AZURE_AD_TOKEN] [-V]
@@ -44,10 +54,10 @@ options:
                         https://www.microsoft.com/en-
                         us/security/business/identity-access/microsoft-entra-
                         id
-  -V, --version         show program's version number and exit (for direct OpenAI API calls),  (initially for Emergent LLM, later removed for SOAP gen).
-- **Frontend:** React, React Router DOM, Axios, , Shadcn UI components.
-- **APIs:** OpenAI (Whisper, GPT-4o), LandingAI Vision Agent.
-- **Data Handling:** UUIDs, ISO format for .
+  -V, --version         show program's version number and exit, .
+-   **Frontend**: React, React Router DOM, Axios, , Shadcn UI components.
+-   **APIs**: OpenAI (Whisper, GPT-4o), LandingAI Vision Agent.
+-   **Data Handling**: UUIDs for IDs, ISO format for , hybrid Supabase/MongoDB architecture, URL-based state management for navigation.
 </key_technical_concepts>
 
 <code_architecture>
@@ -57,79 +67,92 @@ The application uses a React frontend, FastAPI backend, and a hybrid Supabase (P
 
 -   **/app/backend/server.py**: Main FastAPI application.
     -   **Importance**: Centralizes API routes, handles data persistence, and orchestrates integrations.
-    -   **Changes**:  and  added. AI Scribe endpoints (, ) refactored to use  directly for both. New models (, , , , , ) and endpoints (, , , , ) for Enhanced Prescription Module and EHR integration.  updated.
--   **/app/backend/.env**: Environment variables.
-    -   **Importance**: Stores API keys, database credentials.
-    -   **Changes**:  added. Corrected newline issue with keys.
--   **/app/backend/init_phase42_db.py (new)**: Script to initialize Supabase tables.
-    -   **Importance**: Programmatically creates database schema.
-    -   **Changes**: Created to execute SQL schema for Phase 4.2.
--   **/app/backend/database/*.sql (new)**: SQL schema and seed data.
-    -   **Importance**: Defines database structure and initial data for Phase 4.2.
-    -   **Changes**:  (tables for prescriptions, templates, sick notes, referrals),  (sample drug data),  (for EHR integration).
+    -   **Changes**:
+        *   Removed  from encounter creation.
+        *   Added endpoints for fetching patient conditions and medications.
+        *   Implemented backend data normalization for demographics (e.g.,  to ,  to , date format conversion).
+        *   Added new Pydantic models (, ) and endpoints (, , , , ) for the new document architecture.
+        *   Updated  to store PDF in Supabase Storage and parsed JSON in MongoDB, and create/update  records in Supabase.
+        *   Updated  to serve PDF from Supabase Storage.
+        *   Fixed syntax and indentation errors.
+        *   Removed duplicate  endpoint (old proxy to microservice).
+        *   Updated  and  endpoints to update  status to approved and link to patient/encounter.
+-   **/app/backend/database/digitised_documents_schema.sql (new)**: SQL schema for the new  table.
+    -   **Importance**: Defines the structure for tracking uploaded documents in Supabase.
+    -   **Changes**: Created with uid=0(root) gid=0(root) groups=0(root), , , , , , , , , , , , , , , , , ,  columns. Later updated to include , , ,  (though S3 specific columns are not yet actively used, planning for future S3 migration).
+-   **/app/frontend/src/pages/ReceptionCheckIn.jsx**: Patient check-in interface.
+    -   **Importance**: Manages patient check-in and search.
+    -   **Changes**:
+        *   Added  state to fix premature No patients found message.
+        *   Modified  and  to manage  state.
+        *   Added  to handle  URL parameter for auto-selection.
+        *   Added  function to load patient details from backend when  is present in the URL.
+-   **/app/frontend/src/pages/PatientRegistry.jsx**: New patient registration.
+    -   **Importance**: Registers new patients.
+    -   **Changes**:
+        *   Removed state-based dialog logic for check-in.
+        *   Implemented URL-based redirect: After successful registration, navigates to .
+        *   Added debug logging for navigation.
+-   **/app/frontend/src/pages/VitalsStation.jsx**: Vitals recording.
+    -   **Importance**: Records patient vitals and updates queue status.
+    -   **Changes**: Modified to automatically find and attach  for patients selected from search results, ensuring queue status updates correctly after saving vitals.
+-   **/app/frontend/src/components/PatientMatchDialog.jsx**: Displays potential patient matches.
+    -   **Importance**: Facilitates matching uploaded documents to existing patients or creating new ones.
+    -   **Changes**: Updated to correctly display patient names by handling  and  field variations in addition to  and .
+-   **/app/frontend/src/pages/PatientEHR.jsx**: Patient Electronic Health Record.
+    -   **Importance**: Displays patient's medical history, including demographics, encounters, conditions, and medications.
+    -   **Changes**:
+        *   Updated to fetch real patient conditions and medications using new backend endpoints, replacing mock data.
+        *   Implemented logic to group medications by date for better display.
+        *   Fixed a JSX syntax error (incomplete ternary operator).
+-   **/app/frontend/src/pages/DigitisedDocuments.jsx (new)**: New page for document archive/queue.
+    -   **Importance**: Central hub for uploaded documents, enabling review and validation workflow.
+    -   **Changes**: Created. Features search, status filtering, date range filtering.
+-   **/app/frontend/src/pages/DocumentValidation.jsx (new)**: New page for validating documents from the archive.
+    -   **Importance**: Provides the interface for viewing PDFs and extracted data, facilitating human validation.
+    -   **Changes**: Created. Configured to fetch PDF from Supabase Storage and parsed JSON from the new MongoDB endpoint.
 -   **/app/frontend/src/App.js**: React router.
     -   **Importance**: Manages application routes.
-    -   **Changes**: Added route for .
--   **/app/frontend/src/components/GPValidationInterface.jsx**: GP document validation.
-    -   **Importance**: Displays PDF and extracted data for human validation.
-    -   **Changes**: Added data normalization for  (mapping  and  to expected structure) and  (mapping  to ). Fixed PDF bidirectional scrolling issue (removed  on  and updated  for multi-page continuous scrolling). Added tab badges for data availability.
--   **/app/frontend/src/pages/AIScribe.jsx**: AI Scribe interface.
-    -   **Importance**: Provides real-time audio transcription and AI-driven SOAP note generation.
-    -   **Changes**: Integrated Prescription, Sick Note, and Referral Builders. Added Auto-Extract Forms functionality to parse SOAP notes and pre-fill builders. Added Save to Encounter button to trigger EHR integration. Normalized extracted data keys from uppercase to lowercase. Updated to trigger queue status update.
--   **/app/frontend/src/components/PrescriptionBuilder.jsx (new)**: Component for creating prescriptions.
-    -   **Importance**: Frontend interface for managing prescriptions.
-    -   **Changes**: Created. Updated  import path.
--   **/app/frontend/src/components/SickNoteBuilder.jsx (new)**: Component for creating sick notes.
-    -   **Importance**: Frontend interface for managing sick notes.
-    -   **Changes**: Created. Updated  import path.
--   **/app/frontend/src/components/ReferralBuilder.jsx (new)**: Component for creating referral letters.
-    -   **Importance**: Frontend interface for managing referrals.
-    -   **Changes**: Created. Updated  import path.
--   **/app/frontend/src/pages/PatientPrescriptions.jsx (new)**: New page.
-    -   **Importance**: Dedicated page to view a patient's prescriptions.
-    -   **Changes**: Created.
--   **/app/frontend/src/pages/PatientEHR.jsx**: Patient Electronic Health Record.
-    -   **Importance**: Displays patient's medical history.
-    -   **Changes**: Added Prescriptions button.
--   **/app/frontend/src/pages/WorkstationDashboard.jsx**: Doctor/nurse queue dashboard.
-    -   **Importance**: Manages patient queue for practitioners.
-    -   **Changes**: Added links to Patient EHR and AI Scribe, displayed vitals. Added auto-refresh polling.
--   **/app/frontend/src/pages/ReceptionCheckIn.jsx**: Patient check-in.
-    -   **Importance**: Interface for patient check-in and queue management.
-    -   **Changes**: Search functionality is being debugged.
+    -   **Changes**: Added routes for  and .
+-   **/app/frontend/src/components/Layout.jsx**: Main application layout.
+    -   **Importance**: Contains global navigation.
+    -   **Changes**: Added a navigation link to the new Digitised Documents page.
 -   **/app/IMPLEMENTATION_ROADMAP.md**: Project roadmap.
     -   **Importance**: Tracks features and priorities.
-    -   **Changes**: Updated to reflect completion of AI Scribe, Enhanced Prescription Module, and EHR integration. Added Tab Badges as a completed item.
--   **/app/COMPLETED_FEATURES.md (new)**: Summary of completed features.
-    -   **Importance**: Provides an overview for stakeholders.
-    -   **Changes**: Created.
--   **/app/INVESTOR_UPDATE_AI_CONSULTATION.md (new)**: Investor update document.
-    -   **Importance**: Communication for investors about AI Consultation feature.
-    -   **Changes**: Created.
+    -   **Changes**: Updated to include detailed plans for Phase 1.7 (Document Architecture Refactor: Parse → Store → Extract) and reflect completed work.
 </code_architecture>
 
 <pending_tasks>
-- Complete Phase 1.6: Access Audit Trail (full testing with processed documents)
-- Fine-tune analytics displays and metrics.
-- Implement human validation for AI Scribe notes (doctor review).
-- Implement the Workstation Dashboard (full testing).
-- Add Empty State Messages and Extraction Summary Banner for UI feedback.
-- Further testing of the EHR integration with various medical records.
+-   Complete Phase 1.6: Access Audit Trail (full testing with processed documents)
+-   Fine-tune analytics displays and metrics.
+-   Implement human validation for AI Scribe notes (doctor review).
+-   Implement the Workstation Dashboard (full testing).
+-   Add Empty State Messages and Extraction Summary Banner for UI feedback.
+-   Further testing of the EHR integration with various medical records.
+-   Implement Extract button in Document Validation interface.
+-   Implement batch upload support for documents.
+-   Implement a background job system (async parse/extract).
 </pending_tasks>
 
 <current_work>
-Immediately before this summary request, the AI engineer was debugging a critical issue in the **Reception Check-in** page. The user reported that the patient search functionality on  was not working for existing patients, while noting that the search on the  page worked perfectly.
+Immediately before this summary request, the AI engineer was implementing **Phase 1.7 - Document Architecture Refactor**, focusing on the **Digitised Documents page** and a more robust document processing workflow (Parse → Store → Extract).
 
-The AI engineer's actions focused on:
-1.  **Examining **: Reviewed the search implementation in  to understand its working logic ().
-2.  **Examining **: Reviewed the search implementation in  to identify discrepancies or issues ().
-3.  **Comparative Analysis**: Noted that The search implementation looks identical! Both use the same endpoint and logic. ().
-4.  **UI Code Review**: Started to check the UI part of  to see how the search is triggered and results are displayed (, ).
+The current state is as follows:
+1.  **Digitised Documents Page ()**: The page is successfully rendering with search, status, and date range filters.
+2.  **Document Upload Flow**:
+    *   PDF files are now uploaded and stored in **Supabase Storage** (in a  bucket).
+    *   The raw JSON parsed data from the microservice is stored in **MongoDB** (in a  collection).
+    *   Metadata about the document (including references to its storage locations) is recorded in a new  table in **Supabase**.
+    *   The  table schema has been finalized in Supabase.
+3.  **Document Validation Flow**:
+    *   A new route  and  component have been created.
+    *   This interface successfully loads and displays the original PDF from Supabase Storage and the parsed data from MongoDB.
+    *   **The specific bug being resolved immediately prior**: The system was encountering  when trying to retrieve parsed document data. This was traced to a **duplicate backend endpoint** in  for . The old endpoint, which proxied to the external microservice, was being hit instead of the newly created endpoint that fetched from our internal MongoDB. The AI engineer successfully commented out the old proxy endpoint (line 1943 in ).
 
-The goal is to understand why the seemingly identical search logic is failing in  but working in  and then apply a fix. The work ended with the AI engineer attempting to find where the search is triggered in the  UI.
+The user has just confirmed that the GP Patient Data Validation on Digitised Documents works well. it shows the pdf and the parsed/extracted data tabs. This signifies that the core document archiving, retrieval, and validation display for parsed documents is now functional, leveraging Supabase Storage for PDFs and MongoDB for parsed data. The next task is to enhance the workflow with an Extract button and refine the approval process.
 </current_work>
 
 <optional_next_step>
-Investigate the UI event handlers and state management in  that trigger the patient search.
+Implement the Extract button feature in the Document Validation interface and refine the document approval workflow.
 </optional_next_step>
 
