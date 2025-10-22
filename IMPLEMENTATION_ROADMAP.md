@@ -216,7 +216,282 @@ Transform SurgiScan into a complete GP practice management system with queue man
 
 ## Implementation Phases
 
-### **PHASE 1.6: Document-to-EHR Integration** ⭐ (Priority 1 - CURRENT)
+### **PHASE 1.7: Document Architecture Refactor - Parse → Store → Extract** ⭐ (Priority 1 - CURRENT)
+
+**Goal:** Transform document processing from blocking single-document workflow to scalable batch-ready architecture that separates parsing from extraction.
+
+**Critical Business Problem Solved:**
+- ✅ Batch uploads of 1000+ historical records (production requirement)
+- ✅ Eliminate 140-160s timeout risk per document
+- ✅ Enable document queue management and selective validation
+- ✅ Document persistence (audit trail for compliance)
+- ✅ Re-extractable data without re-parsing (future-proof)
+
+---
+
+#### 1.7.1 Digitised Documents Page (Document Archive/Queue)
+
+**Purpose:** Central hub for all uploaded documents - the "inbox" for digitization workflow
+
+**Features:**
+- **List View with Status Badges:**
+  - Document thumbnail/preview
+  - Upload date and patient name (if linked)
+  - Status: `Uploaded → Parsing → Parsed → Extracting → Extracted → Validated → Approved`
+  - Quick actions: View, Extract, Delete, Validate
+
+- **Filtering & Search:**
+  - By status (e.g., "Show only Parsed documents")
+  - By date range
+  - By patient name
+  - Unvalidated/pending only
+
+- **Bulk Actions:**
+  - Select multiple documents
+  - "Extract Selected" (controlled batch extraction)
+  - "Delete Selected"
+  - Progress bar for batch operations
+
+- **Document Card Click:**
+  - Opens validation interface
+  - PDF on left (from stored file path)
+  - Overview tab shows parsed JSON
+  - Extract button (if not extracted yet)
+  - Validation tabs (if extracted)
+
+**UI Mockup Flow:**
+```
+┌─────────────────────────────────────────────────┐
+│  📄 Digitised Documents                    [+ Upload] │
+├─────────────────────────────────────────────────┤
+│ Filters: [Status ▼] [Date ▼] [Patient ▼]       │
+│ Search: [_________________] 🔍                  │
+├─────────────────────────────────────────────────┤
+│ ☑ Patient_File_1.pdf    📅 Oct 21  ✅ Parsed   │
+│ ☑ Patient_File_2.pdf    📅 Oct 21  🔄 Extracting│
+│ ☑ Patient_File_3.pdf    📅 Oct 22  ⏳ Uploaded  │
+│ ...                                             │
+├─────────────────────────────────────────────────┤
+│ Selected: 3 documents                           │
+│ [Extract Selected] [Delete Selected]            │
+└─────────────────────────────────────────────────┘
+```
+
+**Database Schema (Supabase):**
+```sql
+CREATE TABLE digitised_documents (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT,
+    filename TEXT,
+    file_path TEXT, -- Original PDF path
+    file_size INTEGER,
+    pages_count INTEGER,
+    upload_date TIMESTAMP,
+    status TEXT, -- uploaded/parsing/parsed/extracting/extracted/validated/approved
+    patient_id TEXT REFERENCES patients(id), -- Linked after validation
+    encounter_id TEXT REFERENCES encounters(id), -- Linked after approval
+    parsed_doc_id TEXT, -- Reference to MongoDB parsed data
+    uploaded_by TEXT,
+    validated_by TEXT,
+    validated_at TIMESTAMP,
+    created_at TIMESTAMP
+);
+
+CREATE INDEX idx_digitised_docs_status ON digitised_documents(status);
+CREATE INDEX idx_digitised_docs_patient ON digitised_documents(patient_id);
+```
+
+**API Endpoints:**
+```
+GET    /api/gp/documents                     # List all documents with filters
+GET    /api/gp/documents/{id}                # Get document details
+POST   /api/gp/documents/upload              # Upload document (triggers parse)
+POST   /api/gp/documents/{id}/extract        # Trigger extraction
+DELETE /api/gp/documents/{id}                # Delete document
+POST   /api/gp/documents/bulk-extract        # Bulk extract selected docs
+```
+
+**Estimated Time:** 2 days
+
+---
+
+#### 1.7.2 Parse-Store-Extract Workflow
+
+**Current Problem:**
+```
+Upload PDF (1s) → Parse + Extract (140-160s) → Validation
+   ↑ Blocking, prone to timeout, can't batch
+```
+
+**New Architecture:**
+```
+Phase 1: PARSE (Fast, Bulk-Friendly)
+  Upload PDF → ADE Parse (5-10s) → Store parsed JSON
+  Status: uploaded → parsing → parsed
+  
+Phase 2: EXTRACT (On-Demand, Reusable)
+  User clicks "Extract" → ADE Extract from parsed JSON (fast)
+  Populates: Demographics, Vitals, Medications, Conditions
+  Status: parsed → extracting → extracted
+  
+Phase 3: VALIDATE (Human Review)
+  User reviews and edits extracted data
+  Status: extracted → validated
+  
+Phase 4: APPROVE (Save to EHR)
+  Create/link patient, create encounter, save conditions/meds
+  Status: validated → approved
+```
+
+**Benefits:**
+- ✅ **10x faster initial upload** (160s → 10s)
+- ✅ **Batch 1000 documents** in < 3 hours (parallelizable)
+- ✅ **No timeout risk** - each phase is short
+- ✅ **Re-extractable** - change schema, re-extract without re-parsing
+- ✅ **User controls when** - validate selectively, not forced immediately
+
+**Storage Strategy:**
+```
+File System:
+  /storage/gp_documents/
+    original/          → Original PDFs (permanent, 40-year retention)
+    thumbnails/        → PDF preview images (for list view)
+    
+MongoDB:
+  parsed_documents   → Parsed JSON from ADE Parse (permanent)
+  extracted_data     → Extracted fields from ADE Extract (can re-extract)
+  
+Supabase:
+  digitised_documents → Metadata and status tracking
+  patients/encounters → Final approved data
+```
+
+**Estimated Time:** 3 days
+
+---
+
+#### 1.7.3 Validation Interface Enhancement
+
+**Current:** Auto-opens validation after upload
+**New:** Opens from Digitised Documents page
+
+**Enhancements:**
+1. **"Extract" Button (Prominent):**
+   - Visible when status = "parsed"
+   - Triggers ADE Extract
+   - Shows progress indicator
+   - Populates all tabs when complete
+
+2. **Status Indicator:**
+   - Top banner showing current status
+   - Progress steps visualization
+   - Last action timestamp
+
+3. **Re-Extract Option:**
+   - If already extracted, allow re-extraction
+   - Useful if extraction schema improves
+   - Warning: "This will replace existing extracted data"
+
+**UI Addition:**
+```
+┌─────────────────────────────────────────────────┐
+│ Status: Parsed ✅  →  [Extract Data] Button     │
+│ Last Parsed: Oct 22, 2025 09:15 AM             │
+└─────────────────────────────────────────────────┘
+```
+
+**Estimated Time:** 1 day
+
+---
+
+#### 1.7.4 Background Job System
+
+**Need:** Async processing for parse/extract operations
+
+**Implementation Options:**
+- **Option A:** Simple Python async tasks (good for MVP)
+- **Option B:** Celery + Redis (production-grade)
+- **Option C:** FastAPI BackgroundTasks (lightweight)
+
+**Recommendation:** Start with FastAPI BackgroundTasks, migrate to Celery if needed
+
+**Features:**
+- Parse queue (multiple docs in parallel)
+- Extract queue (controlled batching)
+- Progress tracking
+- Error handling and retry logic
+- Status updates via polling or WebSocket
+
+**API Design:**
+```python
+@api_router.post("/gp/documents/upload")
+async def upload_document(file: UploadFile, background_tasks: BackgroundTasks):
+    # Save file
+    document_id = save_file(file)
+    
+    # Queue parse job
+    background_tasks.add_task(parse_document, document_id)
+    
+    return {"document_id": document_id, "status": "uploaded"}
+
+@api_router.get("/gp/documents/{id}/status")
+async def get_document_status(id: str):
+    return {"status": "parsing", "progress": 45}
+```
+
+**Estimated Time:** 2 days
+
+---
+
+#### 1.7.5 Batch Upload Support
+
+**UI Feature:**
+- Multi-file upload (drag & drop 100+ files)
+- Upload progress bar
+- Background parsing (doesn't block UI)
+- Notification when batch complete
+
+**Backend:**
+- Process uploads in parallel (configurable worker count)
+- Rate limiting to avoid overwhelming microservice
+- Bulk status updates
+
+**Configuration:**
+```python
+BATCH_UPLOAD_MAX_FILES = 1000
+PARSE_WORKERS = 20  # Parallel parse jobs
+PARSE_RATE_LIMIT = 10  # Requests per second to microservice
+```
+
+**Estimated Time:** 1.5 days
+
+---
+
+**Total Estimated Time for Phase 1.7:** 9.5 days
+
+**Priority Order:**
+1. Digitised Documents page (foundation) - 2 days
+2. Parse-Store workflow - 3 days
+3. Extract button in validation - 1 day
+4. Background jobs - 2 days
+5. Batch upload support - 1.5 days
+
+**Dependencies:**
+- ✅ LandingAI microservice (already integrated)
+- ✅ MongoDB (already in use)
+- ✅ File system storage (already configured)
+- ✅ Validation interface (already built)
+
+**Success Metrics:**
+- ✅ Upload 100 documents in < 20 minutes
+- ✅ No timeout errors
+- ✅ Documents persist in archive
+- ✅ Selective validation workflow works smoothly
+- ✅ Re-extraction without re-parsing verified
+
+---
+
+### **PHASE 1.6: Document-to-EHR Integration** ⭐ (COMPLETED)
 
 **Goal:** Complete the digitization loop by automatically populating EHR with validated document data and providing compliance-ready document archive.
 
