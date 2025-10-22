@@ -148,6 +148,59 @@ const DocumentValidation = () => {
     );
   }
 
+  // Show extraction prompt if document is only parsed, not yet extracted
+  if (documentStatus === 'parsed' && !patientData) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="bg-white border-b p-4">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="sm" onClick={() => navigate('/gp/documents')}>
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back to Documents
+            </Button>
+            <div>
+              <h1 className="text-xl font-bold">Document Ready for Extraction</h1>
+              <p className="text-sm text-gray-600">Click Extract to process structured data fields</p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="flex items-center justify-center" style={{ height: 'calc(100vh - 80px)' }}>
+          <Card className="max-w-md">
+            <CardContent className="pt-6 text-center">
+              <div className="w-16 h-16 bg-teal-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <FileText className="w-8 h-8 text-teal-600" />
+              </div>
+              <h2 className="text-2xl font-bold text-gray-800 mb-2">Document Parsed Successfully</h2>
+              <p className="text-gray-600 mb-6">
+                The document has been parsed and is ready for data extraction. 
+                Click the button below to extract structured fields (Demographics, Conditions, Vitals, Clinical Notes).
+              </p>
+              <Button 
+                onClick={handleExtract}
+                disabled={extracting}
+                className="w-full gap-2 bg-teal-600 hover:bg-teal-700"
+                size="lg"
+              >
+                {extracting ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Extracting...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-5 h-5" />
+                    Extract Data
+                  </>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
   if (!patientData) {
     return null;
   }
