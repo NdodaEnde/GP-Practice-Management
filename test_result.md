@@ -231,15 +231,18 @@ backend:
 
   - task: "Document Extract Button - Backend"
     implemented: true
-    working: false
+    working: true
     file: "/app/backend/server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: false
         agent: "main"
         comment: "IMPLEMENTED: Created /api/gp/documents/{document_id}/extract endpoint to trigger data extraction. Currently pulling data from microservice response 'extracted_data' field. Need to verify the correct data structure and ensure extracted data (demographics, conditions, vitals, notes) is properly returned and saved in structured_extraction field in MongoDB."
+      - working: true
+        agent: "testing"
+        comment: "BACKEND TESTING COMPLETE - ALL ENDPOINTS WORKING: ✅ GET /api/gp/documents successfully lists digitised documents with status 'parsed'/'extracted'. ✅ POST /api/gp/documents/{document_id}/extract successfully extracts structured data with demographics (27 fields including patient_name, dob, id_number), chronic_summary (5 medications), vitals, and clinical_notes. ✅ Properly saves structured_extraction to MongoDB and updates document status to 'extracted'. ✅ GET /api/gp/parsed-document/{mongo_id} correctly prioritizes structured_extraction over extracted_data. ✅ Demographics data path verified - contains comprehensive patient information accessible for GPValidationInterface. The 'No demographic data extracted' issue is RESOLVED - demographics section contains all required fields."
 
 frontend:
   - task: "Document Extract Button - Frontend UI"
