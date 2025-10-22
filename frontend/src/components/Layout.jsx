@@ -11,6 +11,7 @@ const Layout = () => {
     { name: 'Vitals Station', path: '/vitals', icon: HeartPulse },
     { name: 'Digitize Documents', path: '/digitize', icon: FileText },
     { name: 'GP Patient Digitization', path: '/gp-digitize', icon: Stethoscope },
+    { name: 'Digitised Documents', path: '/gp/documents', icon: FileText },
     { name: 'Patients', path: '/patients', icon: Users },
     { name: 'Billing', path: '/billing', icon: DollarSign },
     { name: 'Analytics', path: '/analytics', icon: BarChart3 },
