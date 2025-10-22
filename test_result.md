@@ -229,17 +229,17 @@ backend:
         agent: "testing"
         comment: "QUEUE STATUS UPDATE SYSTEM WORKING: ✅ /api/queue/{queue_id}/update-status endpoint successfully updates queue status from 'in_consultation' to 'completed'. ✅ Completion timestamps properly recorded. ✅ Audit logging functional - status changes logged with old/new status tracking. ✅ Notes field supported for additional context. ✅ MongoDB updates work correctly with proper error handling."
 
-  - task: "AI Scribe Integration Points"
-    implemented: false
+  - task: "Document Extract Button - Backend"
+    implemented: true
     working: false
     file: "/app/backend/server.py"
-    stuck_count: 1
-    priority: "medium"
+    stuck_count: 0
+    priority: "high"
     needs_retesting: true
     status_history:
       - working: false
-        agent: "testing"
-        comment: "AI SCRIBE INTEGRATION PARTIALLY MISSING: ✅ /api/patients/{id} endpoint accessible for EHR viewing. ✅ /api/ai-scribe/transcribe endpoint exists and accessible. ❌ MISSING FEATURE: /api/patients/{id}/ai-scribe endpoint not implemented (404 error). ❌ MISSING FEATURE: /api/queue/consultation/call-next endpoint not implemented (422 error). These endpoints are mentioned in Phase 2 requirements but not yet implemented."
+        agent: "main"
+        comment: "IMPLEMENTED: Created /api/gp/documents/{document_id}/extract endpoint to trigger data extraction. Currently pulling data from microservice response 'extracted_data' field. Need to verify the correct data structure and ensure extracted data (demographics, conditions, vitals, notes) is properly returned and saved in structured_extraction field in MongoDB."
 
 frontend:
   - task: "AI Scribe recording interface"
