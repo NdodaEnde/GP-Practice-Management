@@ -842,34 +842,28 @@ class DocumentExtractTester:
         
         # Determine overall success
         critical_tests = [
-            checkin_existing_success, checkin_new_success,
-            queue_display_success, queue_stats_success,
-            call_next_success, status_update_success
+            list_docs_success, extract_success, retrieve_success
         ]
         critical_success = all(critical_tests)
         
         secondary_tests = [
-            patient_details_success, ai_scribe_integration_success, 
-            consultation_endpoint_success
+            validation_success
         ]
         all_tests_passed = critical_success and all(secondary_tests)
         
         if critical_success:
             if all_tests_passed:
-                print("✅ ALL TESTS PASSED - Queue Management System Phase 2 is working correctly")
-                print("✅ CRITICAL: All core queue management features are functional")
+                print("✅ ALL TESTS PASSED - Document Extract Button functionality is working correctly")
+                print("✅ CRITICAL: All core document extraction features are functional")
             else:
-                print("✅ CRITICAL TESTS PASSED - Core queue management workflow is working")
-                print("⚠️  Some integration features missing but core functionality works")
+                print("✅ CRITICAL TESTS PASSED - Core document extraction workflow is working")
+                print("⚠️  Some data structure issues may affect frontend display")
         else:
-            print("❌ CRITICAL TESTS FAILED - Queue management system has issues")
+            print("❌ CRITICAL TESTS FAILED - Document extraction system has issues")
             failed_tests = []
-            if not checkin_existing_success: failed_tests.append("Existing Patient Check-in")
-            if not checkin_new_success: failed_tests.append("New Patient Check-in")
-            if not queue_display_success: failed_tests.append("Queue Display")
-            if not queue_stats_success: failed_tests.append("Queue Statistics")
-            if not call_next_success: failed_tests.append("Call Next Patient")
-            if not status_update_success: failed_tests.append("Status Updates")
+            if not list_docs_success: failed_tests.append("List Documents")
+            if not extract_success: failed_tests.append("Extract Document Data")
+            if not retrieve_success: failed_tests.append("Retrieve Parsed Document")
             print(f"❌ Failed components: {', '.join(failed_tests)}")
         
         return critical_success
