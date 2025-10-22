@@ -27,12 +27,22 @@ const PatientEHR = () => {
   const loadPatientData = async () => {
     try {
       setLoading(true);
-      const [patientRes, encountersRes] = await Promise.all([
+      const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
+      
+      const [patientRes, encountersRes, conditionsRes, medicationsRes] = await Promise.all([
         patientAPI.get(patientId),
-        encounterAPI.listByPatient(patientId)
+        encounterAPI.listByPatient(patientId),
+        fetch(`${backendUrl}/api/patients/${patientId}/conditions`).then(r => r.json()),
+        fetch(`${backendUrl}/api/patients/${patientId}/medications`).then(r => r.json())
       ]);
+      
       setPatient(patientRes.data);
       setEncounters(encountersRes.data);
+      setConditions(conditionsRes.conditions || []);
+      setMedications(medicationsRes.medications || []);
+      
+      console.log('Loaded conditions:', conditionsRes.conditions);
+      console.log('Loaded medications:', medicationsRes.medications);
       
       // Load documents for all encounters
       if (encountersRes.data.length > 0) {
