@@ -32,6 +32,7 @@ function App() {
             <Route path="digitize" element={<DocumentDigitization />} />
             <Route path="gp-digitize" element={<GPPatientDigitization />} />
             <Route path="gp/documents" element={<DigitisedDocuments />} />
+            <Route path="gp/documents/:documentId/validate" element={<DocumentValidation />} />
             <Route path="patients" element={<PatientRegistry />} />
             <Route path="patients/:patientId" element={<PatientEHR />} />
             <Route path="patients/:patientId/documents" element={<DocumentArchive />} />
