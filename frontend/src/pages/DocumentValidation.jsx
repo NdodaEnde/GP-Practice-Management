@@ -50,7 +50,10 @@ const DocumentValidation = () => {
         // Extract the microservice_response which has the full original structure
         const microserviceData = parsedResponse.data.microservice_response || {};
         
-        // Format data for validation interface
+        // parsedResponse.data.data contains the extracted data from structured_extraction
+        const extractedData = parsedResponse.data.data || {};
+        
+        // Format data for validation interface (wrap in extractions object)
         const formattedData = {
           success: true,
           data: {
@@ -62,12 +65,19 @@ const DocumentValidation = () => {
               parsed_doc_id: document.parsed_doc_id,
               scanned_doc_id: microserviceData.data?.scanned_doc_id,
               validation_session_id: microserviceData.data?.validation_session_id,
-              extracted_data: parsedResponse.data.data || {},
+              extractions: {
+                demographics: extractedData.demographics || {},
+                chronic_summary: extractedData.chronic_summary || {},
+                vitals: extractedData.vitals || {},
+                clinical_notes: extractedData.clinical_notes || {}
+              },
               chunks: microserviceData.data?.chunks || [],
               file_path: document.file_path
             }
           }
         };
+        
+        console.log('Formatted data for GPValidationInterface:', formattedData);
         
         setPatientData(formattedData);
       }
