@@ -156,6 +156,9 @@ backend:
       - working: true
         agent: "testing"
         comment: "NEW PATIENT CREATION FULLY OPERATIONAL: Tested /api/gp/validation/create-new-patient endpoint successfully. ✅ Creates new patients in Supabase with complete demographics (first_name, last_name, dob, id_number, contact_number, email, address, medical_aid). ✅ Automatically creates encounter with extracted clinical data. ✅ Links document to new patient with proper status tracking. ✅ All demographics saved correctly from document extraction. ✅ Audit trail maintained for new patient creation events."
+      - working: true
+        agent: "testing"
+        comment: "COMPLETE DATA MAPPING VERIFICATION SUCCESSFUL: Tested patient creation with document b772f6a3-22c1-48d9-9668-df0f03ee8d4d containing expected extracted data. ✅ CONTACT: cell_number '071 4519723' correctly mapped to patient.contact_number. ✅ ADDRESS: home_address_street '6271 Jorga Street Phahama' and home_address_code '9322' correctly combined into patient.address. ✅ MEDICAL AID: medical_aid_name 'TANZANITE Gems.' correctly saved to patient.medical_aid. ✅ VITALS: Latest vital_entries with bp_systolic=147, bp_diastolic=98, pulse=96 correctly mapped to encounter.vitals_json as blood_pressure='147/98' and heart_rate=96. ✅ Created patient fabb8f81-e984-42a1-8110-3ceeb0e3687f and encounter 0c985a21-bbb7-4a96-85a7-ebb152422130. ✅ Patient EHR displays all fields correctly: contact, address, medical aid, and current vitals. All data mapping enhancements are working perfectly."
 
   - task: "Validation Data Save"
     implemented: true
