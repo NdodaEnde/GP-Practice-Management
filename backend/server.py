@@ -1968,34 +1968,56 @@ async def proxy_gp_statistics():
 
 @api_router.get("/gp/document/{document_id}/view")
 async def get_gp_document_view(document_id: str):
-    """Get GP document for viewing"""
+    """
+    Get GP document for viewing from Supabase Storage
+    Phase 1.7: Uses Supabase Storage (production will use S3)
+    """
     try:
-        # Connect to the microservice database where GP documents are stored
-        microservice_db_name = os.environ.get('DATABASE_NAME', 'surgiscan_documents')
-        microservice_client = AsyncIOMotorClient(os.environ.get('MONGODB_URL', 'mongodb://localhost:27017'))
-        microservice_db = microservice_client[microservice_db_name]
+        # Get document metadata from digitised_documents table
+        doc_result = supabase.table('digitised_documents')\
+            .select('*')\
+            .eq('id', document_id)\
+            .execute()
         
-        # Get document from MongoDB
-        doc = await microservice_db.gp_scanned_documents.find_one({"document_id": document_id})
-        
-        microservice_client.close()
-        
-        if not doc:
+        if not doc_result.data:
             raise HTTPException(status_code=404, detail=f"Document not found: {document_id}")
         
-        # Return the file data with CORS headers
-        from fastapi.responses import Response
-        return Response(
-            content=doc["file_data"],
-            media_type="application/pdf",
-            headers={
-                "Content-Disposition": f'inline; filename="{doc["filename"]}"',
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "GET, OPTIONS",
-                "Access-Control-Allow-Headers": "*",
-                "Cache-Control": "public, max-age=3600"
-            }
-        )
+        doc_metadata = doc_result.data[0]
+        storage_path = doc_metadata['file_path']
+        
+        # Check if it's a Supabase Storage path or local path
+        if storage_path.startswith(DEMO_WORKSPACE_ID):
+            # It's in Supabase Storage - generate signed URL
+            signed_url_response = supabase.storage.from_('medical-records').create_signed_url(
+                path=storage_path,
+                expires_in=3600  # 1 hour
+            )
+            
+            # Redirect to signed URL
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(url=signed_url_response['signedURL'])
+        
+        else:
+            # Fallback: Local file system (for old documents)
+            file_path = Path(storage_path)
+            if not file_path.exists():
+                raise HTTPException(status_code=404, detail="Document file not found")
+            
+            with open(file_path, 'rb') as f:
+                file_content = f.read()
+            
+            from fastapi.responses import Response
+            return Response(
+                content=file_content,
+                media_type="application/pdf",
+                headers={
+                    "Content-Disposition": f'inline; filename="{doc_metadata["filename"]}"',
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "GET, OPTIONS",
+                    "Access-Control-Allow-Headers": "*",
+                    "Cache-Control": "public, max-age=3600"
+                }
+            )
     except HTTPException:
         raise
     except Exception as e:
