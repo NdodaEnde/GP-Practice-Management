@@ -28,7 +28,7 @@ MONGO_URL = "mongodb://localhost:27017"
 DATABASE_NAME = "surgiscan_documents"
 MICROSERVICE_URL = "http://localhost:5001"
 
-class QueueManagementTester:
+class DocumentExtractTester:
     def __init__(self):
         self.backend_url = BACKEND_URL
         self.mongo_client = MongoClient(MONGO_URL)
