@@ -2328,6 +2328,24 @@ async def create_new_patient_from_document(create_request: CreateNewPatientReque
         
         microservice_client.close()
         
+        # Update digitised_documents status to 'approved' and link to patient/encounter
+        try:
+            supabase.table('digitised_documents')\
+                .update({
+                    'status': 'approved',
+                    'patient_id': patient_id,
+                    'encounter_id': encounter_id,
+                    'validated_by': 'user',
+                    'validated_at': datetime.now(timezone.utc).isoformat(),
+                    'approved_at': datetime.now(timezone.utc).isoformat(),
+                    'updated_at': datetime.now(timezone.utc).isoformat()
+                })\
+                .eq('id', document_id)\
+                .execute()
+            logger.info(f"Updated digitised_documents record for {document_id} - status: approved")
+        except Exception as e:
+            logger.warning(f"Could not update digitised_documents for {document_id}: {e}")
+        
         logger.info(f"Created new patient {patient_id} and encounter {encounter_id} from document {document_id}")
         
         return {
