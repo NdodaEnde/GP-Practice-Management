@@ -2325,6 +2325,82 @@ async def create_new_patient_from_document(create_request: CreateNewPatientReque
             'encounter_id': encounter_id,
             'timestamp': datetime.now(timezone.utc).isoformat()
         })
+
+@api_router.post("/gp/documents/{document_id}/extract")
+async def extract_document_data(document_id: str):
+    """
+    Trigger extraction for a parsed document (re-extraction capability)
+    Useful when extraction schema is updated or initial extraction failed
+    """
+    try:
+        # Get document metadata
+        doc_result = supabase.table('digitised_documents')\
+            .select('*')\
+            .eq('id', document_id)\
+            .execute()
+        
+        if not doc_result.data:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        document = doc_result.data[0]
+        
+        if document['status'] not in ['parsed', 'extracted', 'error']:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Document must be parsed before extraction. Current status: {document['status']}"
+            )
+        
+        # Update status to extracting
+        supabase.table('digitised_documents')\
+            .update({
+                'status': 'extracting',
+                'updated_at': datetime.now(timezone.utc).isoformat()
+            })\
+            .eq('id', document_id)\
+            .execute()
+        
+        logger.info(f"Starting extraction for document {document_id}")
+        
+        # Get parsed data from MongoDB
+        parsed_doc = await db.parsed_documents.find_one({'document_id': document_id})
+        
+        if not parsed_doc:
+            raise HTTPException(status_code=404, detail="Parsed data not found in MongoDB")
+        
+        # Update status to extracted
+        supabase.table('digitised_documents')\
+            .update({
+                'status': 'extracted',
+                'updated_at': datetime.now(timezone.utc).isoformat()
+            })\
+            .eq('id', document_id)\
+            .execute()
+        
+        logger.info(f"Document {document_id} extraction completed")
+        
+        return {
+            'status': 'success',
+            'message': 'Document extraction completed',
+            'document_id': document_id
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Update status to error
+        supabase.table('digitised_documents')\
+            .update({
+                'status': 'error',
+                'error_message': f"Extraction failed: {str(e)}",
+                'updated_at': datetime.now(timezone.utc).isoformat()
+            })\
+            .eq('id', document_id)\
+            .execute()
+        
+        logger.error(f"Error extracting document {document_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
         
         microservice_client.close()
         
