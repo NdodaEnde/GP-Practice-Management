@@ -1940,19 +1940,21 @@ async def proxy_gp_chronic_summary(patient_id: str):
         logger.error(f"GP chronic summary proxy error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@api_router.get("/gp/parsed-document/{document_id}")
-async def proxy_gp_parsed_document(document_id: str):
-    """Proxy get parsed document to microservice"""
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(
-                f"{MICROSERVICE_URL}/api/v1/gp/parsed-document/{document_id}"
-            )
-            response.raise_for_status()
-            return response.json()
-    except Exception as e:
-        logger.error(f"GP parsed document proxy error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+# OLD: Proxy to microservice - DEPRECATED in Phase 1.7
+# Now using MongoDB storage instead (see endpoint at line ~2429)
+# @api_router.get("/gp/parsed-document/{document_id}")
+# async def proxy_gp_parsed_document(document_id: str):
+#     """Proxy get parsed document to microservice"""
+#     try:
+#         async with httpx.AsyncClient(timeout=30.0) as client:
+#             response = await client.get(
+#                 f"{MICROSERVICE_URL}/api/v1/gp/parsed-document/{document_id}"
+#             )
+#             response.raise_for_status()
+#             return response.json()
+#     except Exception as e:
+#         logger.error(f"GP parsed document proxy error: {e}")
+#         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/gp/statistics")
 async def proxy_gp_statistics():
