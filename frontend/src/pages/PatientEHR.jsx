@@ -540,37 +540,46 @@ const PatientEHR = () => {
               <div className="mb-8">
                 <h3 className="text-lg font-semibold text-slate-800 mb-4">Active Medications</h3>
                 <div className="space-y-3">
-                  {mockMedications.filter(m => m.status === 'active').map((med, idx) => (
-                    <div key={idx} className="p-5 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Badge className="bg-emerald-500">Active</Badge>
-                            <h4 className="text-lg font-bold text-slate-800">{med.name}</h4>
+                  {medications.filter(m => m.status === 'active').length > 0 ? (
+                    medications.filter(m => m.status === 'active').map((med, idx) => (
+                      <div key={idx} className="p-5 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Badge className="bg-emerald-500">Active</Badge>
+                              <h4 className="text-lg font-bold text-slate-800">{med.medication_name}</h4>
+                            </div>
+                            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                              <div>
+                                <span className="text-slate-600">Dosage:</span>
+                                <span className="ml-2 font-semibold text-slate-800">{med.dosage || 'Not specified'}</span>
+                              </div>
+                              <div>
+                                <span className="text-slate-600">Frequency:</span>
+                                <span className="ml-2 font-semibold text-slate-800">{med.frequency || 'Not specified'}</span>
+                              </div>
+                              <div>
+                                <span className="text-slate-600">Start Date:</span>
+                                <span className="ml-2 font-semibold text-slate-800">{med.start_date || 'Not specified'}</span>
+                              </div>
+                              <div>
+                                <span className="text-slate-600">Prescribed by:</span>
+                                <span className="ml-2 font-semibold text-slate-800">{med.prescribed_by || 'Historical Record'}</span>
+                              </div>
+                            </div>
+                            {med.notes && (
+                              <div className="mt-2 text-sm text-slate-600">
+                                <span className="font-semibold">Notes:</span> {med.notes}
+                              </div>
+                            )}
                           </div>
-                          <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-                            <div>
-                              <span className="text-slate-600">Dosage:</span>
-                              <span className="ml-2 font-semibold text-slate-800">{med.dosage}</span>
-                            </div>
-                            <div>
-                              <span className="text-slate-600">Frequency:</span>
-                              <span className="ml-2 font-semibold text-slate-800">{med.frequency}</span>
-                            </div>
-                            <div>
-                              <span className="text-slate-600">Start Date:</span>
-                              <span className="ml-2 font-semibold text-slate-800">{med.startDate}</span>
-                            </div>
-                            <div>
-                              <span className="text-slate-600">Prescribed by:</span>
-                              <span className="ml-2 font-semibold text-slate-800">{med.prescriber}</span>
-                            </div>
-                          </div>
+                          <Pill className="w-8 h-8 text-emerald-600" />
                         </div>
-                        <Pill className="w-8 h-8 text-emerald-600" />
                       </div>
-                    </div>
-                  ))}
+                    ))
+                  ) : (
+                    <p className="text-slate-500 italic">No active medications on record</p>
+                  )}
                 </div>
               </div>
 
