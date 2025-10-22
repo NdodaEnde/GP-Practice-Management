@@ -36,7 +36,11 @@ const DocumentValidation = () => {
       // Get parsed data from MongoDB (our internal storage)
       const parsedResponse = await axios.get(`${backendUrl}/api/gp/parsed-document/${document.parsed_doc_id}`);
       
-      console.log('Parsed data:', parsedResponse.data);
+      console.log('Document metadata:', document);
+      console.log('Parsed data from MongoDB:', parsedResponse.data);
+      
+      // Extract the microservice_response which has the full original structure
+      const microserviceData = parsedResponse.data.microservice_response || {};
       
       // Format data for validation interface
       const formattedData = {
@@ -48,7 +52,11 @@ const DocumentValidation = () => {
             success: true,
             document_id: documentId,
             parsed_doc_id: document.parsed_doc_id,
-            ...parsedResponse.data
+            scanned_doc_id: microserviceData.data?.scanned_doc_id,
+            validation_session_id: microserviceData.data?.validation_session_id,
+            extracted_data: parsedResponse.data.data || {},
+            chunks: microserviceData.data?.chunks || [],
+            file_path: document.file_path
           }
         }
       };
