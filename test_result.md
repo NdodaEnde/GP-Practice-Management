@@ -509,6 +509,38 @@ agent_communication:
       1. Correct extraction of demographics, conditions, vitals, notes
       2. Proper storage in MongoDB structured_extraction field
       3. Correct retrieval via /api/gp/parsed-document/{mongo_id}
+  - agent: "main"
+    message: |
+      PATIENT CREATION ENHANCEMENTS - COMPLETE DATA MAPPING:
+      
+      ISSUE IDENTIFIED:
+      - Patient EHR overview missing contact info, address, medical aid, and vitals
+      - Fields not being properly mapped during patient creation from extracted document
+      
+      FIXES IMPLEMENTED:
+      1. Updated /api/gp/validation/create-new-patient endpoint:
+         - Added cell_number field variation for contact
+         - Build address from components (home_address_street, home_address_city, home_address_code, postal_address)
+         - Added medical_aid_name field variation
+      
+      2. Updated create_encounter_from_document function:
+         - Handle new vitals structure (vital_entries vs vital_signs_records)
+         - Map bp_systolic/bp_diastolic to blood_pressure field
+         - Map pulse to heart_rate
+         - Map weight_kg, height_cm, temperature correctly
+      
+      EXTRACTED FIELDS AVAILABLE:
+      - Contact: cell_number (071 4519723)
+      - Address components: home_address_street, home_address_city, home_address_code, postal_address
+      - Medical Aid: medical_aid_name (TANZANITE Gems.)
+      - Vitals: 10 vital_entries with BP, pulse, temperature, weight, height
+      
+      READY FOR TESTING:
+      Test create-new-patient endpoint to verify:
+      1. Contact number saved and displayed in EHR
+      2. Full address built from components and displayed
+      3. Medical aid name saved and displayed
+      4. Most recent vitals (BP 147/98, pulse 96) saved to encounter and displayed in Current Vitals
   - agent: "testing"
     message: |
       DOCUMENT EXTRACT BUTTON BACKEND TESTING COMPLETE - ALL CRITICAL FUNCTIONALITY WORKING:
