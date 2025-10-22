@@ -649,10 +649,11 @@ class PatientCreationTester:
             return False, None
     
     
-    def run_complete_document_extract_test(self):
-        """Run the complete Document Extract Button test"""
+    def run_patient_creation_complete_data_mapping_test(self):
+        """Run the complete patient creation with data mapping test"""
         print("\n" + "="*80)
-        print("DOCUMENT EXTRACT BUTTON PHASE 1.7 - COMPLETE WORKFLOW TEST")
+        print("PATIENT CREATION WITH COMPLETE DATA MAPPING TEST")
+        print("Testing document ID: b772f6a3-22c1-48d9-9668-df0f03ee8d4d")
         print("="*80)
         
         # Step 1: Test backend connectivity
@@ -665,28 +666,27 @@ class PatientCreationTester:
         if not mongo_ok:
             print("\n⚠️  MongoDB not accessible - Document storage may not work")
         
-        # Step 3: Find test document
-        print("\n📄 Finding test document...")
-        document_found = self.find_test_document()
-        if not document_found:
-            print("\n❌ Cannot proceed - No suitable documents found for testing")
+        # Step 3: Get parsed document to verify extracted data structure
+        print("\n📄 Step 1: Getting parsed document to verify extracted data structure...")
+        get_parsed_success, _ = self.test_get_parsed_document_for_patient_creation()
+        if not get_parsed_success:
+            print("\n❌ Cannot proceed - Failed to get parsed document data")
             return False
         
-        # Step 4: Test Scenario 1 - List Documents
-        print("\n📋 Testing Scenario 1: List Digitised Documents...")
-        list_docs_success, _ = self.test_list_digitised_documents()
+        # Step 4: Create new patient with complete data mapping
+        print("\n👥 Step 2: Creating new patient with complete data mapping...")
+        create_patient_success, _ = self.test_create_new_patient_with_complete_data()
+        if not create_patient_success:
+            print("\n❌ Patient creation failed")
+            return False
         
-        # Step 5: Test Scenario 2 - Extract Document Data
-        print("\n🔍 Testing Scenario 2: Extract Document Data...")
-        extract_success, _ = self.test_extract_document_data()
+        # Step 5: Verify patient EHR data
+        print("\n📋 Step 3: Verifying patient EHR data...")
+        verify_patient_success, _ = self.test_verify_patient_ehr_data()
         
-        # Step 6: Test Scenario 3 - Retrieve Parsed Document
-        print("\n📖 Testing Scenario 3: Retrieve Parsed Document...")
-        retrieve_success, _ = self.test_get_parsed_document()
-        
-        # Step 7: Test Scenario 4 - Data Structure Validation
-        print("\n✅ Testing Scenario 4: Data Structure Validation...")
-        validation_success, _ = self.test_data_structure_validation()
+        # Step 6: Verify encounter vitals
+        print("\n💓 Step 4: Verifying encounter vitals integration...")
+        verify_vitals_success, _ = self.test_verify_encounter_vitals()
         
         # Summary
         print("\n" + "="*80)
@@ -695,28 +695,27 @@ class PatientCreationTester:
         
         # Determine overall success
         critical_tests = [
-            list_docs_success, extract_success, retrieve_success
+            get_parsed_success, create_patient_success
         ]
         critical_success = all(critical_tests)
         
-        secondary_tests = [
-            validation_success
+        verification_tests = [
+            verify_patient_success, verify_vitals_success
         ]
-        all_tests_passed = critical_success and all(secondary_tests)
+        all_tests_passed = critical_success and all(verification_tests)
         
         if critical_success:
             if all_tests_passed:
-                print("✅ ALL TESTS PASSED - Document Extract Button functionality is working correctly")
-                print("✅ CRITICAL: All core document extraction features are functional")
+                print("✅ ALL TESTS PASSED - Patient creation with complete data mapping is working correctly")
+                print("✅ CRITICAL: Patient created with contact, address, medical aid, and vitals")
             else:
-                print("✅ CRITICAL TESTS PASSED - Core document extraction workflow is working")
-                print("⚠️  Some data structure issues may affect frontend display")
+                print("✅ CRITICAL TESTS PASSED - Patient creation workflow is working")
+                print("⚠️  Some data verification issues found")
         else:
-            print("❌ CRITICAL TESTS FAILED - Document extraction system has issues")
+            print("❌ CRITICAL TESTS FAILED - Patient creation system has issues")
             failed_tests = []
-            if not list_docs_success: failed_tests.append("List Documents")
-            if not extract_success: failed_tests.append("Extract Document Data")
-            if not retrieve_success: failed_tests.append("Retrieve Parsed Document")
+            if not get_parsed_success: failed_tests.append("Get Parsed Document")
+            if not create_patient_success: failed_tests.append("Create Patient")
             print(f"❌ Failed components: {', '.join(failed_tests)}")
         
         return critical_success
