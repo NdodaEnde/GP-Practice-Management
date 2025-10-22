@@ -446,17 +446,41 @@ async def create_encounter_from_document(patient_id: str, parsed_data: Dict[str,
         
         # Prepare vitals
         vitals_json = None
-        if vitals_data and vitals_data.get('vital_signs_records'):
-            # Use the first vital signs record
-            first_record = vitals_data['vital_signs_records'][0] if vitals_data['vital_signs_records'] else {}
-            vitals_json = {
-                'blood_pressure': first_record.get('blood_pressure'),
-                'heart_rate': first_record.get('heart_rate'),
-                'temperature': first_record.get('temperature'),
-                'weight': first_record.get('weight'),
-                'height': first_record.get('height'),
-                'oxygen_saturation': first_record.get('oxygen_saturation')
-            }
+        if vitals_data:
+            # Check for vital_entries (new structure) or vital_signs_records (old structure)
+            vital_records = vitals_data.get('vital_entries') or vitals_data.get('vital_signs_records')
+            
+            if vital_records and len(vital_records) > 0:
+                # Use the most recent vital signs record (first in array)
+                first_record = vital_records[0]
+                
+                # Handle new structure (vital_entries) vs old structure (vital_signs_records)
+                if 'bp_systolic' in first_record:
+                    # New structure with separate systolic/diastolic
+                    bp = None
+                    if first_record.get('bp_systolic') and first_record.get('bp_diastolic'):
+                        bp = f"{first_record.get('bp_systolic')}/{first_record.get('bp_diastolic')}"
+                    elif first_record.get('bp_raw'):
+                        bp = first_record.get('bp_raw')
+                    
+                    vitals_json = {
+                        'blood_pressure': bp,
+                        'heart_rate': first_record.get('pulse') or first_record.get('pulse_raw'),
+                        'temperature': first_record.get('temperature') or first_record.get('temperature_raw'),
+                        'weight': first_record.get('weight_kg') or first_record.get('weight_raw'),
+                        'height': first_record.get('height_cm') or first_record.get('height_raw'),
+                        'oxygen_saturation': first_record.get('oxygen_saturation') or first_record.get('spo2')
+                    }
+                else:
+                    # Old structure
+                    vitals_json = {
+                        'blood_pressure': first_record.get('blood_pressure'),
+                        'heart_rate': first_record.get('heart_rate'),
+                        'temperature': first_record.get('temperature'),
+                        'weight': first_record.get('weight'),
+                        'height': first_record.get('height'),
+                        'oxygen_saturation': first_record.get('oxygen_saturation')
+                    }
         
         # Prepare GP notes from clinical notes
         gp_notes_parts = []
