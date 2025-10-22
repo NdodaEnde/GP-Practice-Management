@@ -10,6 +10,7 @@ import ValidationInterface from './pages/ValidationInterface';
 import DocumentDigitization from './pages/DocumentDigitization';
 import GPPatientDigitization from './pages/GPPatientDigitization';
 import DigitisedDocuments from './pages/DigitisedDocuments';
+import DocumentValidation from './pages/DocumentValidation';
 import DocumentArchive from './pages/DocumentArchive';
 import ReceptionCheckIn from './pages/ReceptionCheckIn';
 import QueueDisplay from './pages/QueueDisplay';
