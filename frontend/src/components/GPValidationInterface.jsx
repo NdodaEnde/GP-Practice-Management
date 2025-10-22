@@ -133,7 +133,18 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
 
   // Initialize edited data with original values
   useEffect(() => {
-    setEditedDemographics(JSON.parse(JSON.stringify(demographics)));
+    // Normalize demographics - ensure dob field exists
+    const normalizedDemographics = JSON.parse(JSON.stringify(demographics));
+    // If date_of_birth exists but not dob, add dob
+    if (normalizedDemographics.date_of_birth && !normalizedDemographics.dob) {
+      normalizedDemographics.dob = normalizedDemographics.date_of_birth;
+    }
+    // If dob exists but not date_of_birth, add date_of_birth
+    if (normalizedDemographics.dob && !normalizedDemographics.date_of_birth) {
+      normalizedDemographics.date_of_birth = normalizedDemographics.dob;
+    }
+    
+    setEditedDemographics(normalizedDemographics);
     setEditedChronicCare(JSON.parse(JSON.stringify(chronicSummary)));
     setEditedVitals(JSON.parse(JSON.stringify(vitals)));
     setEditedClinicalNotes(JSON.parse(JSON.stringify(clinicalNotes)));
