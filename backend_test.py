@@ -28,15 +28,17 @@ MONGO_URL = "mongodb://localhost:27017"
 DATABASE_NAME = "surgiscan_documents"
 MICROSERVICE_URL = "http://localhost:5001"
 
-class DocumentExtractTester:
+class PatientCreationTester:
     def __init__(self):
         self.backend_url = BACKEND_URL
         self.mongo_client = MongoClient(MONGO_URL)
         self.db = self.mongo_client["surgiscan_db"]  # Use the main database
         self.test_results = []
-        self.test_document_id = None
+        self.test_document_id = "b772f6a3-22c1-48d9-9668-df0f03ee8d4d"  # Specific document from review
         self.test_mongo_id = None
         self.parsed_document_data = None
+        self.created_patient_id = None
+        self.created_encounter_id = None
         
     def log_test(self, test_name, success, message, details=None):
         """Log test results"""
