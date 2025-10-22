@@ -2381,6 +2381,43 @@ async def get_digitised_document(document_id: str):
                 document['patient_name'] = None
         
         return {
+
+@api_router.get("/gp/parsed-document/{mongo_id}")
+async def get_parsed_document_from_mongo(mongo_id: str):
+    """
+    Retrieve parsed document data from MongoDB
+    This is our internal storage, not the microservice
+    """
+    try:
+        from bson import ObjectId
+        
+        # Try as ObjectId first, then as string
+        try:
+            query = {'_id': ObjectId(mongo_id)}
+        except:
+            query = {'document_id': mongo_id}
+        
+        parsed_doc = await db.parsed_documents.find_one(query)
+        
+        if not parsed_doc:
+            raise HTTPException(status_code=404, detail="Parsed document not found")
+        
+        # Convert ObjectId to string for JSON serialization
+        if '_id' in parsed_doc:
+            parsed_doc['_id'] = str(parsed_doc['_id'])
+        
+        return {
+            'status': 'success',
+            'data': parsed_doc.get('extracted_data', {}),
+            'microservice_response': parsed_doc.get('microservice_response', {})
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving parsed document: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
             'status': 'success',
             'document': document
         }
