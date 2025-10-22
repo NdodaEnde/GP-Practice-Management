@@ -262,13 +262,9 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Queue Check-in Flow"
-    - "Queue Display and Statistics"
-    - "Workstation Dashboard Integration"
-    - "Queue Status Updates"
-    - "AI Scribe Integration Points"
-  stuck_tasks:
-    - "AI Scribe Integration Points"
+    - "Document Extract Button - Backend"
+    - "Document Extract Button - Frontend UI"
+  stuck_tasks: []
   test_all: false
   test_priority: "high_first"
 
