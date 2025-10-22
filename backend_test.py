@@ -194,44 +194,103 @@ class DocumentExtractTester:
             return False, None
     
     def test_extract_document_data(self):
-        """Test Scenario 2: New patient registration + check-in"""
+        """Test POST /api/gp/documents/{document_id}/extract - Extract structured data"""
         try:
-            if not self.test_patient_id_2:
-                self.log_test("Queue Check-in (New Patient)", False, "No second test patient available")
+            if not self.test_document_id:
+                self.log_test("Extract Document Data", False, "No test document available")
                 return False, None
             
-            # Test check-in with new patient
-            check_in_data = {
-                "patient_id": self.test_patient_id_2,
-                "reason_for_visit": "Chest pain and shortness of breath",
-                "priority": "urgent"
-            }
-            
+            # Test document extraction
             response = requests.post(
-                f"{self.backend_url}/queue/check-in",
-                json=check_in_data,
-                headers={'Content-Type': 'application/json'},
-                timeout=30
+                f"{self.backend_url}/gp/documents/{self.test_document_id}/extract",
+                timeout=60  # Extraction might take longer
             )
             
             if response.status_code == 200:
                 result = response.json()
-                if result.get('status') == 'success':
-                    self.test_queue_id_2 = result['queue_id']
-                    self.log_test("Queue Check-in (New Patient)", True, 
-                                f"Successfully checked in new patient. Queue #{result['queue_number']}")
-                    return True, result
+                expected_fields = ['status', 'message', 'document_id', 'extracted_data']
+                
+                if all(field in result for field in expected_fields):
+                    if result['status'] == 'success':
+                        extracted_data = result['extracted_data']
+                        
+                        self.log_test("Extract Document Data", True, 
+                                    f"Successfully extracted data from document {self.test_document_id}")
+                        
+                        # Verify extracted data structure
+                        expected_sections = ['demographics', 'chronic_summary', 'vitals', 'clinical_notes']
+                        present_sections = [section for section in expected_sections if section in extracted_data]
+                        
+                        if len(present_sections) >= 3:
+                            self.log_test("Extracted Data Structure", True, 
+                                        f"Extracted data contains {len(present_sections)}/{len(expected_sections)} expected sections: {present_sections}")
+                            
+                            # Check demographics specifically (main issue from review)
+                            demographics = extracted_data.get('demographics', {})
+                            if demographics and isinstance(demographics, dict) and len(demographics) > 0:
+                                self.log_test("Demographics Extraction", True, 
+                                            f"Demographics data extracted successfully: {list(demographics.keys())}")
+                            else:
+                                self.log_test("Demographics Extraction", False, 
+                                            "Demographics data is empty or missing - this causes 'No demographic data extracted' error")
+                            
+                            # Check conditions/chronic_summary
+                            chronic_summary = extracted_data.get('chronic_summary', {})
+                            if chronic_summary and isinstance(chronic_summary, dict):
+                                conditions = chronic_summary.get('chronic_conditions', [])
+                                if conditions:
+                                    self.log_test("Conditions Extraction", True, 
+                                                f"Found {len(conditions)} chronic conditions")
+                                else:
+                                    self.log_test("Conditions Extraction", False, 
+                                                "No chronic conditions found in extraction")
+                            
+                            # Check vitals
+                            vitals = extracted_data.get('vitals', {})
+                            if vitals and isinstance(vitals, dict):
+                                vital_records = vitals.get('vital_signs_records', [])
+                                if vital_records:
+                                    self.log_test("Vitals Extraction", True, 
+                                                f"Found {len(vital_records)} vital signs records")
+                                else:
+                                    self.log_test("Vitals Extraction", False, 
+                                                "No vital signs records found")
+                        else:
+                            self.log_test("Extracted Data Structure", False, 
+                                        f"Missing expected sections. Found: {present_sections}, Expected: {expected_sections}")
+                        
+                        # Verify MongoDB update
+                        parsed_doc = self.db.parsed_documents.find_one({'document_id': self.test_document_id})
+                        if parsed_doc and parsed_doc.get('structured_extraction'):
+                            self.log_test("MongoDB Update Verification", True, 
+                                        "Structured extraction saved to MongoDB successfully")
+                        else:
+                            self.log_test("MongoDB Update Verification", False, 
+                                        "Structured extraction not found in MongoDB")
+                        
+                        return True, result
+                    else:
+                        self.log_test("Extract Document Data", False, 
+                                    f"Extraction failed: {result.get('message', 'Unknown error')}")
+                        return False, result
                 else:
-                    self.log_test("Queue Check-in (New Patient)", False, 
-                                f"Check-in failed: {result.get('status')}")
+                    missing_fields = [f for f in expected_fields if f not in result]
+                    self.log_test("Extract Document Data", False, 
+                                f"Missing fields in response: {missing_fields}")
                     return False, result
             else:
-                self.log_test("Queue Check-in (New Patient)", False, 
-                            f"API returned status {response.status_code}")
+                error_msg = f"API returned status {response.status_code}"
+                try:
+                    error_detail = response.json()
+                    error_msg += f": {error_detail}"
+                except:
+                    error_msg += f": {response.text}"
+                
+                self.log_test("Extract Document Data", False, error_msg)
                 return False, None
                 
         except Exception as e:
-            self.log_test("Queue Check-in (New Patient)", False, f"Request failed: {str(e)}")
+            self.log_test("Extract Document Data", False, f"Request failed: {str(e)}")
             return False, None
     
     def test_queue_current_display(self):
