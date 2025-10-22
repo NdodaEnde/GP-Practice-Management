@@ -33,40 +33,44 @@ const DocumentValidation = () => {
       const document = docResponse.data.document;
       
       console.log('Document metadata:', document);
+      setDocumentStatus(document.status);
       
       if (!document.parsed_doc_id) {
         throw new Error('Document has not been parsed yet');
       }
       
-      // Get parsed data from MongoDB (our internal storage)
-      const parsedResponse = await axios.get(`${backendUrl}/api/gp/parsed-document/${document.parsed_doc_id}`);
-      
-      console.log('Document metadata:', document);
-      console.log('Parsed data from MongoDB:', parsedResponse.data);
-      
-      // Extract the microservice_response which has the full original structure
-      const microserviceData = parsedResponse.data.microservice_response || {};
-      
-      // Format data for validation interface
-      const formattedData = {
-        success: true,
-        data: {
+      // Only load full data if document is extracted or approved
+      if (document.status === 'extracted' || document.status === 'approved') {
+        // Get parsed data from MongoDB (our internal storage)
+        const parsedResponse = await axios.get(`${backendUrl}/api/gp/parsed-document/${document.parsed_doc_id}`);
+        
+        console.log('Document metadata:', document);
+        console.log('Parsed data from MongoDB:', parsedResponse.data);
+        
+        // Extract the microservice_response which has the full original structure
+        const microserviceData = parsedResponse.data.microservice_response || {};
+        
+        // Format data for validation interface
+        const formattedData = {
           success: true,
-          message: 'Patient file processed successfully',
           data: {
             success: true,
-            document_id: documentId,
-            parsed_doc_id: document.parsed_doc_id,
-            scanned_doc_id: microserviceData.data?.scanned_doc_id,
-            validation_session_id: microserviceData.data?.validation_session_id,
-            extracted_data: parsedResponse.data.data || {},
-            chunks: microserviceData.data?.chunks || [],
-            file_path: document.file_path
+            message: 'Patient file processed successfully',
+            data: {
+              success: true,
+              document_id: documentId,
+              parsed_doc_id: document.parsed_doc_id,
+              scanned_doc_id: microserviceData.data?.scanned_doc_id,
+              validation_session_id: microserviceData.data?.validation_session_id,
+              extracted_data: parsedResponse.data.data || {},
+              chunks: microserviceData.data?.chunks || [],
+              file_path: document.file_path
+            }
           }
-        }
-      };
-      
-      setPatientData(formattedData);
+        };
+        
+        setPatientData(formattedData);
+      }
       
     } catch (error) {
       console.error('Error loading document:', error);
@@ -78,6 +82,32 @@ const DocumentValidation = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleExtract = async () => {
+    try {
+      setExtracting(true);
+      
+      const response = await axios.post(`${backendUrl}/api/gp/documents/${documentId}/extract`);
+      
+      toast({
+        title: 'Success',
+        description: 'Data extraction completed successfully'
+      });
+      
+      // Reload document data to show extracted fields
+      await loadDocumentData();
+      
+    } catch (error) {
+      console.error('Error extracting document:', error);
+      toast({
+        title: 'Error',
+        description: error.response?.data?.detail || 'Failed to extract document data',
+        variant: 'destructive'
+      });
+    } finally {
+      setExtracting(false);
     }
   };
 
