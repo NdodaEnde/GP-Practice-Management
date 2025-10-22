@@ -22,9 +22,20 @@ const formatDateForDisplay = (dateStr) => {
     // Parse the date
     const parts = cleanDate.split('-');
     if (parts.length === 3) {
-      const year = parts[0];
-      const month = parts[1].padStart(2, '0');
-      const day = parts[2].padStart(2, '0');
+      // Determine if format is YYYY-MM-DD or DD-MM-YYYY based on first part length
+      let year, month, day;
+      
+      if (parts[0].length === 4) {
+        // YYYY-MM-DD format
+        year = parts[0];
+        month = parts[1].padStart(2, '0');
+        day = parts[2].padStart(2, '0');
+      } else {
+        // DD-MM-YYYY format (already in desired format)
+        day = parts[0].padStart(2, '0');
+        month = parts[1].padStart(2, '0');
+        year = parts[2];
+      }
       
       // Return in DD/MM/YYYY format
       return `${day}/${month}/${year}`;
