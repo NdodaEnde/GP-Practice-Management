@@ -1767,18 +1767,32 @@ async def proxy_gp_upload(
     try:
         # Read file content
         file_content = await file.read()
-        
-        # Save file locally
-        storage_dir = Path("storage/gp_documents/original")
-        storage_dir.mkdir(parents=True, exist_ok=True)
-        file_path = storage_dir / f"gp_doc_{document_id}_{file.filename}"
-        
-        with open(file_path, "wb") as f:
-            f.write(file_content)
-        
         file_size = len(file_content)
         
-        logger.info(f"File saved locally: {file_path} ({file_size} bytes)")
+        # Upload to Supabase Storage
+        storage_path = f"{DEMO_WORKSPACE_ID}/{document_id}/{file.filename}"
+        
+        try:
+            supabase.storage.from_('medical-records').upload(
+                path=storage_path,
+                file=file_content,
+                file_options={
+                    'content-type': 'application/pdf',
+                    'cache-control': '3600',
+                    'upsert': 'false'
+                }
+            )
+            logger.info(f"File uploaded to Supabase Storage: {storage_path} ({file_size} bytes)")
+        except Exception as storage_error:
+            logger.error(f"Supabase Storage upload failed: {storage_error}")
+            # Fall back to local storage if Supabase fails
+            storage_dir = Path("storage/gp_documents/original")
+            storage_dir.mkdir(parents=True, exist_ok=True)
+            local_path = storage_dir / f"gp_doc_{document_id}_{file.filename}"
+            with open(local_path, "wb") as f:
+                f.write(file_content)
+            storage_path = str(local_path)
+            logger.info(f"File saved locally as fallback: {local_path}")
         
         # Create digitised_documents record with status "uploaded"
         digitised_doc_data = {
