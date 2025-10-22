@@ -293,7 +293,7 @@ class DocumentExtractTester:
             self.log_test("Extract Document Data", False, f"Request failed: {str(e)}")
             return False, None
     
-    def test_queue_current_display(self):
+    def test_get_parsed_document(self):
         """Test Scenario 2: Queue display functionality"""
         try:
             # Test getting current queue
