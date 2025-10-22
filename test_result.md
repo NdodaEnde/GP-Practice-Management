@@ -242,17 +242,17 @@ backend:
         comment: "IMPLEMENTED: Created /api/gp/documents/{document_id}/extract endpoint to trigger data extraction. Currently pulling data from microservice response 'extracted_data' field. Need to verify the correct data structure and ensure extracted data (demographics, conditions, vitals, notes) is properly returned and saved in structured_extraction field in MongoDB."
 
 frontend:
-  - task: "AI Scribe recording interface"
+  - task: "Document Extract Button - Frontend UI"
     implemented: true
-    working: "NA"
-    file: "/app/frontend/src/pages/AIScribe.jsx"
+    working: false
+    file: "/app/frontend/src/pages/DocumentValidation.jsx"
     stuck_count: 0
     priority: "high"
     needs_retesting: true
     status_history:
-      - working: "NA"
+      - working: false
         agent: "main"
-        comment: "Created AIScribe.jsx page with real-time audio recording, transcription display, and SOAP note generation UI. Includes patient context integration. Added route to App.js and button in PatientEHR.jsx. Backend fix applied, needs end-to-end testing."
+        comment: "IMPLEMENTED: Added Extract button UI in DocumentValidation.jsx. Shows 'Extract Data' button when document status is 'parsed'. After extraction, displays GPValidationInterface with editable tabs. Currently showing 'No demographic data extracted' - needs backend data structure fix to properly load extracted fields into validation tabs."
 
 metadata:
   created_by: "main_agent"
