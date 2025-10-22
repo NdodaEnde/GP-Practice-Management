@@ -131,10 +131,39 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
   console.log('7. File path:', filePath);
   console.log('8. Document ID:', documentId);
 
+  // Utility function to normalize date format
+  const normalizeDateFormat = (dateStr) => {
+    if (!dateStr) return dateStr;
+    try {
+      // Handle various formats: 1991.02:03, 1991.02.03, etc.
+      let cleanDate = dateStr.toString().replace(/[.:]/g, '-');
+      const parts = cleanDate.split('-');
+      if (parts.length === 3) {
+        const year = parts[0];
+        const month = parts[1].padStart(2, '0');
+        const day = parts[2].padStart(2, '0');
+        // Return in YYYY-MM-DD format (ISO standard)
+        return `${year}-${month}-${day}`;
+      }
+      return dateStr;
+    } catch (e) {
+      return dateStr;
+    }
+  };
+
   // Initialize edited data with original values
   useEffect(() => {
-    // Normalize demographics - ensure dob field exists
+    // Normalize demographics - ensure dob field exists and format dates
     const normalizedDemographics = JSON.parse(JSON.stringify(demographics));
+    
+    // Normalize date formats
+    if (normalizedDemographics.date_of_birth) {
+      normalizedDemographics.date_of_birth = normalizeDateFormat(normalizedDemographics.date_of_birth);
+    }
+    if (normalizedDemographics.dob) {
+      normalizedDemographics.dob = normalizeDateFormat(normalizedDemographics.dob);
+    }
+    
     // If date_of_birth exists but not dob, add dob
     if (normalizedDemographics.date_of_birth && !normalizedDemographics.dob) {
       normalizedDemographics.dob = normalizedDemographics.date_of_birth;
