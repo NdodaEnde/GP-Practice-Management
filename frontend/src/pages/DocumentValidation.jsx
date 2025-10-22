@@ -208,7 +208,8 @@ const DocumentValidation = () => {
   return (
     <GPValidationInterface 
       patientData={patientData}
-      onApproved={handleApproved}
+      onBack={() => navigate('/gp/documents')}
+      onValidationComplete={handleApproved}
     />
   );
 };
