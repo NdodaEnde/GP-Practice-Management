@@ -381,9 +381,6 @@ const PatientEHR = () => {
                   <div className="space-y-6">
                     {encounters.length > 0 ? (
                       (() => {
-                        // State to track expanded encounters
-                        const [expandedEncounters, setExpandedEncounters] = React.useState({});
-                        
                         const toggleEncounter = (encounterId) => {
                           setExpandedEncounters(prev => ({
                             ...prev,
