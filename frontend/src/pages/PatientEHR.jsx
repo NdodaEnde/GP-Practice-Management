@@ -377,34 +377,61 @@ const PatientEHR = () => {
                   <CardTitle className="text-lg font-bold text-slate-800">Patient Timeline</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-4">
+                  <div className="space-y-6">
                     {encounters.length > 0 ? (
-                      encounters.map((encounter, idx) => (
-                        <div key={encounter.id} className="relative pl-8 pb-4 border-l-2 border-teal-200">
-                          <div className="absolute left-0 top-0 -translate-x-1/2 w-4 h-4 rounded-full bg-teal-500"></div>
-                          <div className="bg-gradient-to-r from-slate-50 to-blue-50 p-4 rounded-lg">
-                            <div className="flex items-start justify-between mb-2">
-                              <div>
-                                <Badge className="bg-teal-100 text-teal-700 mb-2">Visit</Badge>
-                                <p className="font-semibold text-slate-800">{encounter.chief_complaint || 'General Consultation'}</p>
-                                <p className="text-sm text-slate-600">
-                                  {new Date(encounter.encounter_date).toLocaleDateString('en-US', {
-                                    year: 'numeric',
-                                    month: 'long',
-                                    day: 'numeric'
-                                  })}
-                                </p>
-                              </div>
-                              <Badge className={encounter.status === 'completed' ? 'bg-emerald-500' : 'bg-amber-500'}>
-                                {encounter.status}
-                              </Badge>
+                      (() => {
+                        // Group encounters by date
+                        const groupedEncounters = encounters.reduce((groups, encounter) => {
+                          const date = new Date(encounter.encounter_date).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric'
+                          });
+                          if (!groups[date]) groups[date] = [];
+                          groups[date].push(encounter);
+                          return groups;
+                        }, {});
+
+                        return Object.entries(groupedEncounters).map(([date, encountersForDate]) => (
+                          <div key={date}>
+                            {/* Date Header */}
+                            <div className="flex items-center gap-3 mb-4">
+                              <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wide">{date}</h3>
+                              <div className="flex-1 h-px bg-slate-200"></div>
+                              <Badge variant="outline" className="text-xs">{encountersForDate.length} {encountersForDate.length === 1 ? 'visit' : 'visits'}</Badge>
                             </div>
-                            {encounter.gp_notes && (
-                              <p className="text-sm text-slate-600 mt-2">{encounter.gp_notes}</p>
-                            )}
+                            
+                            {/* Timeline entries for this date */}
+                            <div className="space-y-4">
+                              {encountersForDate.map((encounter, idx) => (
+                                <div key={encounter.id} className="relative pl-8 pb-4 border-l-2 border-teal-200 last:border-l-0">
+                                  <div className="absolute left-0 top-0 -translate-x-1/2 w-4 h-4 rounded-full bg-teal-500"></div>
+                                  <div className="bg-gradient-to-r from-slate-50 to-blue-50 p-4 rounded-lg">
+                                    <div className="flex items-start justify-between mb-2">
+                                      <div>
+                                        <Badge className="bg-teal-100 text-teal-700 mb-2">Visit</Badge>
+                                        <p className="font-semibold text-slate-800">{encounter.chief_complaint || 'General Consultation'}</p>
+                                        <p className="text-xs text-slate-500">
+                                          {new Date(encounter.encounter_date).toLocaleTimeString('en-US', {
+                                            hour: '2-digit',
+                                            minute: '2-digit'
+                                          })}
+                                        </p>
+                                      </div>
+                                      <Badge className={encounter.status === 'completed' ? 'bg-emerald-500' : 'bg-amber-500'}>
+                                        {encounter.status}
+                                      </Badge>
+                                    </div>
+                                    {encounter.gp_notes && (
+                                      <p className="text-sm text-slate-600 mt-2">{encounter.gp_notes}</p>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      ))
+                        ));
+                      })()
                     ) : (
                       <p className="text-slate-400 text-center py-8">No encounters recorded</p>
                     )}
