@@ -380,6 +380,16 @@ const PatientEHR = () => {
                   <div className="space-y-6">
                     {encounters.length > 0 ? (
                       (() => {
+                        // State to track expanded encounters
+                        const [expandedEncounters, setExpandedEncounters] = React.useState({});
+                        
+                        const toggleEncounter = (encounterId) => {
+                          setExpandedEncounters(prev => ({
+                            ...prev,
+                            [encounterId]: !prev[encounterId]
+                          }));
+                        };
+
                         // Group encounters by date
                         const groupedEncounters = encounters.reduce((groups, encounter) => {
                           const date = new Date(encounter.encounter_date).toLocaleDateString('en-US', {
@@ -394,40 +404,90 @@ const PatientEHR = () => {
 
                         return Object.entries(groupedEncounters).map(([date, encountersForDate]) => (
                           <div key={date}>
-                            {/* Date Header */}
-                            <div className="flex items-center gap-3 mb-4">
-                              <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wide">{date}</h3>
-                              <div className="flex-1 h-px bg-slate-200"></div>
-                              <Badge variant="outline" className="text-xs">{encountersForDate.length} {encountersForDate.length === 1 ? 'visit' : 'visits'}</Badge>
+                            {/* Date Header - Compact Style */}
+                            <div className="flex items-center gap-2 mb-3">
+                              <div className="w-2 h-2 rounded-full bg-teal-500"></div>
+                              <h3 className="text-sm font-bold text-slate-700">{date}</h3>
                             </div>
                             
-                            {/* Timeline entries for this date */}
-                            <div className="space-y-4">
-                              {encountersForDate.map((encounter, idx) => (
-                                <div key={encounter.id} className="relative pl-8 pb-4 border-l-2 border-teal-200 last:border-l-0">
-                                  <div className="absolute left-0 top-0 -translate-x-1/2 w-4 h-4 rounded-full bg-teal-500"></div>
-                                  <div className="bg-gradient-to-r from-slate-50 to-blue-50 p-4 rounded-lg">
-                                    <div className="flex items-start justify-between mb-2">
-                                      <div>
-                                        <Badge className="bg-teal-100 text-teal-700 mb-2">Visit</Badge>
-                                        <p className="font-semibold text-slate-800">{encounter.chief_complaint || 'General Consultation'}</p>
-                                        <p className="text-xs text-slate-500">
-                                          {new Date(encounter.encounter_date).toLocaleTimeString('en-US', {
-                                            hour: '2-digit',
-                                            minute: '2-digit'
-                                          })}
-                                        </p>
-                                      </div>
-                                      <Badge className={encounter.status === 'completed' ? 'bg-emerald-500' : 'bg-amber-500'}>
-                                        {encounter.status}
-                                      </Badge>
+                            {/* Timeline entries for this date - Compact */}
+                            <div className="ml-3 pl-4 border-l-2 border-slate-200 space-y-3 pb-4">
+                              {encountersForDate.map((encounter) => {
+                                const isExpanded = expandedEncounters[encounter.id];
+                                
+                                // Extract diagnosis from GP notes
+                                const diagnosis = encounter.gp_notes ? 
+                                  encounter.gp_notes.split('\n')[0].substring(0, 80) + (encounter.gp_notes.length > 80 ? '...' : '') 
+                                  : 'No diagnosis recorded';
+
+                                return (
+                                  <div key={encounter.id} className="space-y-2">
+                                    {/* Compact info */}
+                                    <div className="text-sm">
+                                      <p className="text-slate-600">
+                                        <span className="font-medium text-slate-800">Dr. [Provider Name]</span>
+                                      </p>
+                                      <p className="text-slate-700">
+                                        <span className="font-semibold">Complaint:</span> {encounter.chief_complaint || 'General consultation'}
+                                      </p>
+                                      <p className="text-slate-700">
+                                        <span className="font-semibold">Diagnosis:</span> {diagnosis}
+                                      </p>
                                     </div>
-                                    {encounter.gp_notes && (
-                                      <p className="text-sm text-slate-600 mt-2">{encounter.gp_notes}</p>
+
+                                    {/* Expandable details */}
+                                    {isExpanded && (
+                                      <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-2">
+                                        <div>
+                                          <p className="text-xs font-semibold text-slate-600 mb-1">Time:</p>
+                                          <p className="text-sm text-slate-800">
+                                            {new Date(encounter.encounter_date).toLocaleTimeString('en-US', {
+                                              hour: '2-digit',
+                                              minute: '2-digit'
+                                            })}
+                                          </p>
+                                        </div>
+                                        
+                                        {encounter.vitals_json && (
+                                          <div>
+                                            <p className="text-xs font-semibold text-slate-600 mb-1">Vitals:</p>
+                                            <div className="flex gap-4 text-sm text-slate-700">
+                                              {encounter.vitals_json.blood_pressure && (
+                                                <span><strong>BP:</strong> {encounter.vitals_json.blood_pressure}</span>
+                                              )}
+                                              {encounter.vitals_json.heart_rate && (
+                                                <span><strong>HR:</strong> {encounter.vitals_json.heart_rate} bpm</span>
+                                              )}
+                                              {encounter.vitals_json.weight && (
+                                                <span><strong>WT:</strong> {encounter.vitals_json.weight} kg</span>
+                                              )}
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {encounter.gp_notes && (
+                                          <div>
+                                            <p className="text-xs font-semibold text-slate-600 mb-1">Full Notes:</p>
+                                            <p className="text-sm text-slate-700 whitespace-pre-wrap">{encounter.gp_notes}</p>
+                                          </div>
+                                        )}
+
+                                        <Badge className={encounter.status === 'completed' ? 'bg-emerald-500 text-white' : 'bg-amber-500 text-white'}>
+                                          {encounter.status}
+                                        </Badge>
+                                      </div>
                                     )}
+
+                                    {/* View Details button */}
+                                    <button
+                                      onClick={() => toggleEncounter(encounter.id)}
+                                      className="text-xs text-teal-600 hover:text-teal-700 font-medium flex items-center gap-1"
+                                    >
+                                      {isExpanded ? '▼ Hide Details' : '▶ View Details'}
+                                    </button>
                                   </div>
-                                </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           </div>
                         ));
