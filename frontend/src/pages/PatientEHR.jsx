@@ -544,84 +544,151 @@ const PatientEHR = () => {
               <CardTitle className="text-lg font-bold text-slate-800">Consultation History</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-6">
-                {encounters.length > 0 ? (
-                  (() => {
-                    // Group encounters by date
-                    const groupedEncounters = encounters.reduce((groups, encounter) => {
-                      const date = new Date(encounter.encounter_date).toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric'
-                      });
-                      if (!groups[date]) groups[date] = [];
-                      groups[date].push(encounter);
-                      return groups;
-                    }, {});
+              {encounters.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b-2 border-slate-200">
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">Date</th>
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">Doctor</th>
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">Complaint</th>
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">Diagnosis</th>
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">Status</th>
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {encounters.map((encounter) => {
+                        // Extract Assessment from SOAP notes
+                        const extractAssessment = (notes) => {
+                          if (!notes) return 'No diagnosis recorded';
+                          
+                          const assessmentMatch = notes.match(/\*\*ASSESSMENT:\*\*[:\s]*\n?(.*?)(?=\n\s*\*\*PLAN|\n\s*\*\*P[:\s]|$)/is);
+                          if (assessmentMatch && assessmentMatch[1]) {
+                            let assessment = assessmentMatch[1].trim().replace(/\*\*/g, '').trim();
+                            return assessment.substring(0, 60) + (assessment.length > 60 ? '...' : '');
+                          }
+                          
+                          const assessmentMatch2 = notes.match(/Assessment[:\s]*\n?(.*?)(?=\n\s*Plan[:\s]|\n\s*P[:\s]|$)/is);
+                          if (assessmentMatch2 && assessmentMatch2[1]) {
+                            let assessment = assessmentMatch2[1].trim().replace(/\*\*/g, '').trim();
+                            return assessment.substring(0, 60) + (assessment.length > 60 ? '...' : '');
+                          }
+                          
+                          const lines = notes.split('\n').filter(line => line.trim().length > 0);
+                          if (lines.length > 0) {
+                            let firstLine = lines[0].trim().replace(/\*\*/g, '').replace(/SUBJECTIVE:|OBJECTIVE:|S:|O:/gi, '').trim();
+                            return firstLine.substring(0, 60) + (firstLine.length > 60 ? '...' : '');
+                          }
+                          
+                          return 'No diagnosis recorded';
+                        };
 
-                    return Object.entries(groupedEncounters).map(([date, encountersForDate]) => (
-                      <div key={date} className="space-y-3">
-                        {/* Date Header */}
-                        <div className="flex items-center gap-3">
-                          <div className="flex-shrink-0 w-2 h-2 bg-teal-500 rounded-full"></div>
-                          <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wide">{date}</h3>
-                          <div className="flex-1 h-px bg-slate-200"></div>
-                        </div>
-                        
-                        {/* Encounters for this date */}
-                        <div className="space-y-3 ml-5 border-l-2 border-slate-200 pl-4">
-                          {encountersForDate.map((encounter) => (
-                            <div key={encounter.id} className="p-4 bg-gradient-to-r from-slate-50 to-blue-50 rounded-lg border border-slate-200">
-                              <div className="flex items-center justify-between mb-3">
-                                <div>
-                                  <Badge className="bg-blue-100 text-blue-700 mb-2">General Consultation</Badge>
-                                  <p className="font-semibold text-slate-800">{encounter.chief_complaint || 'General consultation'}</p>
-                                  <p className="text-xs text-slate-500">
-                                    {new Date(encounter.encounter_date).toLocaleTimeString('en-US', {
-                                      hour: '2-digit',
-                                      minute: '2-digit'
+                        const diagnosis = extractAssessment(encounter.gp_notes);
+                        const isExpanded = expandedEncounters[encounter.id];
+
+                        return (
+                          <React.Fragment key={encounter.id}>
+                            <tr className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                              <td className="py-4 px-4">
+                                <div className="flex items-center gap-2 text-slate-600">
+                                  <Calendar className="w-4 h-4" />
+                                  <span className="text-sm">
+                                    {new Date(encounter.encounter_date).toLocaleDateString('en-US', {
+                                      year: 'numeric',
+                                      month: '2-digit',
+                                      day: '2-digit'
                                     })}
-                                  </p>
+                                  </span>
                                 </div>
-                                <Badge className={encounter.status === 'completed' ? 'bg-emerald-500' : 'bg-amber-500'}>
+                              </td>
+                              <td className="py-4 px-4">
+                                <div className="flex items-center gap-2">
+                                  <User className="w-4 h-4 text-slate-400" />
+                                  <span className="text-sm text-slate-700">Dr. [Provider Name]</span>
+                                </div>
+                              </td>
+                              <td className="py-4 px-4">
+                                <span className="text-sm text-slate-700">{encounter.chief_complaint || 'General consultation'}</span>
+                              </td>
+                              <td className="py-4 px-4">
+                                <span className="text-sm text-slate-700">{diagnosis}</span>
+                              </td>
+                              <td className="py-4 px-4">
+                                <Badge className={encounter.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}>
                                   {encounter.status}
                                 </Badge>
-                              </div>
-                              {encounter.gp_notes && (
-                                <div className="mt-3 p-3 bg-white rounded border border-slate-200">
-                                  <p className="text-sm font-semibold text-slate-700 mb-1">Assessment & Plan:</p>
-                                  <p className="text-sm text-slate-600">{encounter.gp_notes}</p>
-                                </div>
-                              )}
-                              {encounter.vitals_json && (
-                                <div className="mt-3 flex gap-4 text-sm">
-                                  {encounter.vitals_json.blood_pressure && (
-                                    <span className="text-slate-600">
-                                      <strong>BP:</strong> {encounter.vitals_json.blood_pressure}
-                                    </span>
-                                  )}
-                                  {encounter.vitals_json.heart_rate && (
-                                    <span className="text-slate-600">
-                                      <strong>HR:</strong> {encounter.vitals_json.heart_rate} bpm
-                                    </span>
-                                  )}
-                                  {encounter.vitals_json.weight && (
-                                    <span className="text-slate-600">
-                                      <strong>WT:</strong> {encounter.vitals_json.weight} kg
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ));
-                  })()
-                ) : (
-                  <p className="text-slate-400 text-center py-8">No visits recorded</p>
-                )}
-              </div>
+                              </td>
+                              <td className="py-4 px-4">
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm"
+                                  onClick={() => {
+                                    setExpandedEncounters(prev => ({
+                                      ...prev,
+                                      [encounter.id]: !prev[encounter.id]
+                                    }));
+                                  }}
+                                  className="text-teal-600 hover:text-teal-700 hover:bg-teal-50"
+                                >
+                                  <FileText className="w-4 h-4 mr-1" />
+                                  View Details
+                                </Button>
+                              </td>
+                            </tr>
+                            {/* Expandable Details Row */}
+                            {isExpanded && (
+                              <tr className="bg-slate-50 border-b border-slate-100">
+                                <td colSpan="6" className="py-4 px-4">
+                                  <div className="space-y-3 ml-8">
+                                    <div className="grid grid-cols-2 gap-4">
+                                      <div>
+                                        <p className="text-xs font-semibold text-slate-600 mb-1">Time:</p>
+                                        <p className="text-sm text-slate-800">
+                                          {new Date(encounter.encounter_date).toLocaleTimeString('en-US', {
+                                            hour: '2-digit',
+                                            minute: '2-digit'
+                                          })}
+                                        </p>
+                                      </div>
+                                      {encounter.vitals_json && (
+                                        <div>
+                                          <p className="text-xs font-semibold text-slate-600 mb-1">Vitals:</p>
+                                          <div className="flex gap-4 text-sm text-slate-700">
+                                            {encounter.vitals_json.blood_pressure && (
+                                              <span><strong>BP:</strong> {encounter.vitals_json.blood_pressure}</span>
+                                            )}
+                                            {encounter.vitals_json.heart_rate && (
+                                              <span><strong>HR:</strong> {encounter.vitals_json.heart_rate} bpm</span>
+                                            )}
+                                            {encounter.vitals_json.weight && (
+                                              <span><strong>WT:</strong> {encounter.vitals_json.weight} kg</span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                    {encounter.gp_notes && (
+                                      <div>
+                                        <p className="text-xs font-semibold text-slate-600 mb-1">Full Notes:</p>
+                                        <p className="text-sm text-slate-700 whitespace-pre-wrap bg-white p-3 rounded border border-slate-200">
+                                          {encounter.gp_notes}
+                                        </p>
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-slate-400 text-center py-8">No visits recorded</p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
