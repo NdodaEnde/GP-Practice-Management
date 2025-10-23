@@ -422,55 +422,81 @@ const PatientEHR = () => {
               <CardTitle className="text-lg font-bold text-slate-800">Consultation History</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {encounters.map((encounter) => (
-                  <div key={encounter.id} className="p-5 bg-gradient-to-r from-slate-50 to-blue-50 rounded-lg border border-slate-200">
-                    <div className="flex items-center justify-between mb-3">
-                      <div>
-                        <Badge className="bg-blue-100 text-blue-700 mb-2">General Consultation</Badge>
-                        <p className="font-semibold text-slate-800">{encounter.chief_complaint || 'General consultation'}</p>
-                        <p className="text-sm text-slate-600">
-                          {new Date(encounter.encounter_date).toLocaleDateString('en-US', {
-                            year: 'numeric',
-                            month: 'long',
-                            day: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
-                        </p>
+              <div className="space-y-6">
+                {encounters.length > 0 ? (
+                  (() => {
+                    // Group encounters by date
+                    const groupedEncounters = encounters.reduce((groups, encounter) => {
+                      const date = new Date(encounter.encounter_date).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      });
+                      if (!groups[date]) groups[date] = [];
+                      groups[date].push(encounter);
+                      return groups;
+                    }, {});
+
+                    return Object.entries(groupedEncounters).map(([date, encountersForDate]) => (
+                      <div key={date} className="space-y-3">
+                        {/* Date Header */}
+                        <div className="flex items-center gap-3">
+                          <div className="flex-shrink-0 w-2 h-2 bg-teal-500 rounded-full"></div>
+                          <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wide">{date}</h3>
+                          <div className="flex-1 h-px bg-slate-200"></div>
+                        </div>
+                        
+                        {/* Encounters for this date */}
+                        <div className="space-y-3 ml-5 border-l-2 border-slate-200 pl-4">
+                          {encountersForDate.map((encounter) => (
+                            <div key={encounter.id} className="p-4 bg-gradient-to-r from-slate-50 to-blue-50 rounded-lg border border-slate-200">
+                              <div className="flex items-center justify-between mb-3">
+                                <div>
+                                  <Badge className="bg-blue-100 text-blue-700 mb-2">General Consultation</Badge>
+                                  <p className="font-semibold text-slate-800">{encounter.chief_complaint || 'General consultation'}</p>
+                                  <p className="text-xs text-slate-500">
+                                    {new Date(encounter.encounter_date).toLocaleTimeString('en-US', {
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    })}
+                                  </p>
+                                </div>
+                                <Badge className={encounter.status === 'completed' ? 'bg-emerald-500' : 'bg-amber-500'}>
+                                  {encounter.status}
+                                </Badge>
+                              </div>
+                              {encounter.gp_notes && (
+                                <div className="mt-3 p-3 bg-white rounded border border-slate-200">
+                                  <p className="text-sm font-semibold text-slate-700 mb-1">Assessment & Plan:</p>
+                                  <p className="text-sm text-slate-600">{encounter.gp_notes}</p>
+                                </div>
+                              )}
+                              {encounter.vitals_json && (
+                                <div className="mt-3 flex gap-4 text-sm">
+                                  {encounter.vitals_json.blood_pressure && (
+                                    <span className="text-slate-600">
+                                      <strong>BP:</strong> {encounter.vitals_json.blood_pressure}
+                                    </span>
+                                  )}
+                                  {encounter.vitals_json.heart_rate && (
+                                    <span className="text-slate-600">
+                                      <strong>HR:</strong> {encounter.vitals_json.heart_rate} bpm
+                                    </span>
+                                  )}
+                                  {encounter.vitals_json.weight && (
+                                    <span className="text-slate-600">
+                                      <strong>WT:</strong> {encounter.vitals_json.weight} kg
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                      <Badge className={encounter.status === 'completed' ? 'bg-emerald-500' : 'bg-amber-500'}>
-                        {encounter.status}
-                      </Badge>
-                    </div>
-                    {encounter.gp_notes && (
-                      <div className="mt-3 p-3 bg-white rounded border border-slate-200">
-                        <p className="text-sm font-semibold text-slate-700 mb-1">Assessment & Plan:</p>
-                        <p className="text-sm text-slate-600">{encounter.gp_notes}</p>
-                      </div>
-                    )}
-                    {encounter.vitals_json && (
-                      <div className="mt-3 flex gap-4 text-sm">
-                        {encounter.vitals_json.blood_pressure && (
-                          <span className="text-slate-600">
-                            <strong>BP:</strong> {encounter.vitals_json.blood_pressure}
-                          </span>
-                        )}
-                        {encounter.vitals_json.heart_rate && (
-                          <span className="text-slate-600">
-                            <strong>HR:</strong> {encounter.vitals_json.heart_rate} bpm
-                          </span>
-                        )}
-                        {encounter.vitals_json.weight && (
-                          <span className="text-slate-600">
-                            <strong>WT:</strong> {encounter.vitals_json.weight} kg
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
-                {encounters.length === 0 && (
+                    ));
+                  })()
+                ) : (
                   <p className="text-slate-400 text-center py-8">No visits recorded</p>
                 )}
               </div>
