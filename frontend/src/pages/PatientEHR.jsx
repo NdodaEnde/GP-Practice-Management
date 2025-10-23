@@ -413,10 +413,35 @@ const PatientEHR = () => {
                               {encountersForDate.map((encounter) => {
                                 const isExpanded = expandedEncounters[encounter.id];
                                 
-                                // Extract diagnosis from GP notes
-                                const diagnosis = encounter.gp_notes ? 
-                                  encounter.gp_notes.split('\n')[0].substring(0, 80) + (encounter.gp_notes.length > 80 ? '...' : '') 
-                                  : 'No diagnosis recorded';
+                                // Extract Assessment (diagnosis) from SOAP notes
+                                const extractAssessment = (notes) => {
+                                  if (!notes) return 'No diagnosis recorded';
+                                  
+                                  // Look for Assessment section in SOAP format
+                                  const assessmentMatch = notes.match(/Assessment[:\s]*\n?(.*?)(?=\n\s*Plan[:\s]|\n\s*P[:\s]|$)/is);
+                                  if (assessmentMatch && assessmentMatch[1]) {
+                                    const assessment = assessmentMatch[1].trim();
+                                    return assessment.substring(0, 100) + (assessment.length > 100 ? '...' : '');
+                                  }
+                                  
+                                  // Look for A: pattern (abbreviated SOAP)
+                                  const aMatch = notes.match(/\bA[:\s]+(.*?)(?=\n\s*P[:\s]|$)/is);
+                                  if (aMatch && aMatch[1]) {
+                                    const assessment = aMatch[1].trim();
+                                    return assessment.substring(0, 100) + (assessment.length > 100 ? '...' : '');
+                                  }
+                                  
+                                  // Fallback: first meaningful line
+                                  const lines = notes.split('\n').filter(line => line.trim().length > 0);
+                                  if (lines.length > 0) {
+                                    const firstLine = lines[0].trim();
+                                    return firstLine.substring(0, 100) + (firstLine.length > 100 ? '...' : '');
+                                  }
+                                  
+                                  return 'No diagnosis recorded';
+                                };
+                                
+                                const diagnosis = extractAssessment(encounter.gp_notes);
 
                                 return (
                                   <div key={encounter.id} className="space-y-2">
