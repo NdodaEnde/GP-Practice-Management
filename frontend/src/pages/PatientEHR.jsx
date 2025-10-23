@@ -19,6 +19,7 @@ const PatientEHR = () => {
   const [medications, setMedications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+  const [expandedEncounters, setExpandedEncounters] = useState({});
 
   useEffect(() => {
     loadPatientData();
