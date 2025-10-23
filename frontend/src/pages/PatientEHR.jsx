@@ -417,25 +417,37 @@ const PatientEHR = () => {
                                 const extractAssessment = (notes) => {
                                   if (!notes) return 'No diagnosis recorded';
                                   
-                                  // Look for Assessment section in SOAP format
-                                  const assessmentMatch = notes.match(/Assessment[:\s]*\n?(.*?)(?=\n\s*Plan[:\s]|\n\s*P[:\s]|$)/is);
+                                  // Look for Assessment section in SOAP format (with ** markdown)
+                                  const assessmentMatch = notes.match(/\*\*ASSESSMENT:\*\*[:\s]*\n?(.*?)(?=\n\s*\*\*PLAN|\n\s*\*\*P[:\s]|$)/is);
                                   if (assessmentMatch && assessmentMatch[1]) {
-                                    const assessment = assessmentMatch[1].trim();
-                                    return assessment.substring(0, 100) + (assessment.length > 100 ? '...' : '');
+                                    let assessment = assessmentMatch[1].trim();
+                                    // Remove markdown formatting
+                                    assessment = assessment.replace(/\*\*/g, '').trim();
+                                    return assessment.substring(0, 120) + (assessment.length > 120 ? '...' : '');
+                                  }
+                                  
+                                  // Look for Assessment without markdown
+                                  const assessmentMatch2 = notes.match(/Assessment[:\s]*\n?(.*?)(?=\n\s*Plan[:\s]|\n\s*P[:\s]|$)/is);
+                                  if (assessmentMatch2 && assessmentMatch2[1]) {
+                                    let assessment = assessmentMatch2[1].trim();
+                                    assessment = assessment.replace(/\*\*/g, '').trim();
+                                    return assessment.substring(0, 120) + (assessment.length > 120 ? '...' : '');
                                   }
                                   
                                   // Look for A: pattern (abbreviated SOAP)
                                   const aMatch = notes.match(/\bA[:\s]+(.*?)(?=\n\s*P[:\s]|$)/is);
                                   if (aMatch && aMatch[1]) {
-                                    const assessment = aMatch[1].trim();
-                                    return assessment.substring(0, 100) + (assessment.length > 100 ? '...' : '');
+                                    let assessment = aMatch[1].trim();
+                                    assessment = assessment.replace(/\*\*/g, '').trim();
+                                    return assessment.substring(0, 120) + (assessment.length > 120 ? '...' : '');
                                   }
                                   
                                   // Fallback: first meaningful line
                                   const lines = notes.split('\n').filter(line => line.trim().length > 0);
                                   if (lines.length > 0) {
-                                    const firstLine = lines[0].trim();
-                                    return firstLine.substring(0, 100) + (firstLine.length > 100 ? '...' : '');
+                                    let firstLine = lines[0].trim();
+                                    firstLine = firstLine.replace(/\*\*/g, '').replace(/SUBJECTIVE:|OBJECTIVE:|S:|O:/gi, '').trim();
+                                    return firstLine.substring(0, 120) + (firstLine.length > 120 ? '...' : '');
                                   }
                                   
                                   return 'No diagnosis recorded';
