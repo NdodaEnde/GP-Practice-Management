@@ -3730,6 +3730,50 @@ Return structured JSON with prescriptions, sick_note, and referral sections."""
         logger.error(f"Error extracting clinical actions: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+def parse_soap_notes(soap_text: str) -> dict:
+    """
+    Parse markdown-formatted SOAP notes into structured components
+    Handles various formats: **SUBJECTIVE:**, **S:**, S:, etc.
+    """
+    import re
+    
+    result = {
+        'subjective': '',
+        'objective': '',
+        'assessment': '',
+        'plan': ''
+    }
+    
+    # Remove markdown formatting
+    soap_text = soap_text.replace('**', '')
+    
+    # Patterns to match SOAP sections (case insensitive, various formats)
+    patterns = {
+        'subjective': r'(?:SUBJECTIVE|S):\s*\n(.*?)(?=(?:OBJECTIVE|O):|$)',
+        'objective': r'(?:OBJECTIVE|O):\s*\n(.*?)(?=(?:ASSESSMENT|A):|$)',
+        'assessment': r'(?:ASSESSMENT|A):\s*\n(.*?)(?=(?:PLAN|P):|$)',
+        'plan': r'(?:PLAN|P):\s*\n(.*?)$'
+    }
+    
+    for key, pattern in patterns.items():
+        match = re.search(pattern, soap_text, re.DOTALL | re.IGNORECASE)
+        if match:
+            result[key] = match.group(1).strip()
+    
+    # If no sections found, try splitting by common markers
+    if not any(result.values()):
+        # Split by common section headers
+        sections = re.split(r'\n\s*(?:SUBJECTIVE|OBJECTIVE|ASSESSMENT|PLAN):\s*\n', soap_text, flags=re.IGNORECASE)
+        if len(sections) >= 4:
+            result = {
+                'subjective': sections[1].strip() if len(sections) > 1 else '',
+                'objective': sections[2].strip() if len(sections) > 2 else '',
+                'assessment': sections[3].strip() if len(sections) > 3 else '',
+                'plan': sections[4].strip() if len(sections) > 4 else ''
+            }
+    
+    return result
+
 @api_router.post("/ai-scribe/save-consultation")
 async def save_consultation_to_ehr(request: dict):
     """Save AI Scribe consultation to EHR - creates encounter, extracts diagnosis, links documents"""
