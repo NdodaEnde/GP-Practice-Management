@@ -1221,34 +1221,65 @@ class ICD10Tester:
 
 def main():
     """Main test execution"""
-    tester = PatientCreationTester()
+    import sys
     
-    try:
-        # Run the complete workflow test
-        success = tester.run_patient_creation_complete_data_mapping_test()
+    # Check if we should run ICD-10 tests specifically
+    if len(sys.argv) > 1 and sys.argv[1] == "icd10":
+        # Run ICD-10 tests
+        icd10_tester = ICD10Tester()
         
-        # Print detailed results
-        print("\n" + "="*80)
-        print("DETAILED TEST RESULTS")
-        print("="*80)
+        try:
+            # Run the ICD-10 comprehensive test
+            success = icd10_tester.run_icd10_comprehensive_test()
+            
+            # Print detailed results
+            print("\n" + "="*80)
+            print("DETAILED ICD-10 TEST RESULTS")
+            print("="*80)
+            
+            for result in icd10_tester.test_results:
+                status = "✅" if result['success'] else "❌"
+                print(f"{status} {result['test']}: {result['message']}")
+            
+            return 0 if success else 1
+            
+        except KeyboardInterrupt:
+            print("\n⚠️  Test interrupted by user")
+            return 1
+        except Exception as e:
+            print(f"\n💥 Unexpected error: {str(e)}")
+            return 1
+    
+    else:
+        # Run original patient creation tests
+        tester = PatientCreationTester()
         
-        for result in tester.test_results:
-            status = "✅" if result['success'] else "❌"
-            print(f"{status} {result['test']}: {result['message']}")
-        
-        # Cleanup
-        tester.cleanup_test_data()
-        
-        return 0 if success else 1
-        
-    except KeyboardInterrupt:
-        print("\n⚠️  Test interrupted by user")
-        return 1
-    except Exception as e:
-        print(f"\n💥 Unexpected error: {str(e)}")
-        return 1
-    finally:
-        tester.close_connections()
+        try:
+            # Run the complete workflow test
+            success = tester.run_patient_creation_complete_data_mapping_test()
+            
+            # Print detailed results
+            print("\n" + "="*80)
+            print("DETAILED TEST RESULTS")
+            print("="*80)
+            
+            for result in tester.test_results:
+                status = "✅" if result['success'] else "❌"
+                print(f"{status} {result['test']}: {result['message']}")
+            
+            # Cleanup
+            tester.cleanup_test_data()
+            
+            return 0 if success else 1
+            
+        except KeyboardInterrupt:
+            print("\n⚠️  Test interrupted by user")
+            return 1
+        except Exception as e:
+            print(f"\n💥 Unexpected error: {str(e)}")
+            return 1
+        finally:
+            tester.close_connections()
 
 if __name__ == "__main__":
     exit_code = main()
