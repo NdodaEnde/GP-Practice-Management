@@ -306,6 +306,18 @@ backend:
         agent: "testing"
         comment: "IMMUNIZATIONS DISPLAY BUG FIXES VERIFIED - ALL TESTS PASSED: ✅ CRITICAL SUCCESS: All required fields (doses_in_series, route, anatomical_site, series_name, administered_by) are now properly returned in API responses. ✅ CREATE IMMUNIZATION: Successfully created test immunization with complete data including all previously missing fields. Response includes all 5 required fields with correct values (doses_in_series=3, route='Intramuscular', anatomical_site='Left deltoid', series_name='Hepatitis B Series', administered_by='Nurse Smith'). ✅ GET IMMUNIZATION: Individual immunization GET endpoint returns all required fields. ✅ PATIENT IMMUNIZATIONS LIST: List endpoint includes all fields, enabling 'Dose 1/3' display format instead of 'Dose 1/?'. ✅ SUMMARY ENDPOINT: Summary correctly shows doses_in_series=3 and total_doses=1, enabling proper series progress display. ✅ DISPLAY FIX CONFIRMED: History displays can now show 'Dose 1/3' format, summary cards show correct series totals. The Pydantic response model enhancement in lines 62-77 successfully resolved the missing fields issue."
 
+  - task: "Immunizations Summary Display Logic Improvements"
+    implemented: true
+    working: true
+    file: "/app/backend/api/immunizations.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "IMMUNIZATIONS SUMMARY DISPLAY LOGIC IMPROVEMENTS VERIFIED - ALL TESTS PASSED: ✅ CRITICAL SUCCESS: Enhanced summary endpoint (lines 217-258) now tracks highest_dose_number instead of just counting records. ✅ SCENARIO 1 - Multiple Doses: Created Influenza dose 1 and 2, verified highest_dose_number=2 (not total_doses=2), doses_in_series=3, next_due_date present for incomplete series. ✅ SCENARIO 2 - Complete Series: Created dose 3 with series_complete=True, verified highest_dose_number=3, series_complete=True, next_due_date=None (correctly cleared when complete). ✅ SCENARIO 3 - Mixed Vaccine Types: Created COVID-19 dose 1/2, verified independent tracking - Influenza (dose 3/3, complete=True, next_due=None) and COVID-19 (dose 1/2, complete=False, next_due=2024-04-15). ✅ CONDITIONAL LOGIC: next_due_date properly cleared when series_complete=True. ✅ BACKEND CHANGES: All improvements in /app/backend/api/immunizations.py working correctly. The enhanced summary logic enables proper display of 'Dose 2 of 3' format and correct series completion status."
+
 frontend:
   - task: "Document Extract Button - Frontend UI"
     implemented: true
