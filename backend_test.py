@@ -1859,28 +1859,42 @@ class ImmunizationsTester:
         
         # Summary
         print("\n" + "="*80)
-        print("IMMUNIZATIONS DISPLAY BUG FIXES TEST SUMMARY")
+        print("IMMUNIZATIONS SUMMARY DISPLAY LOGIC TEST SUMMARY")
         print("="*80)
         
         # Determine overall success
-        critical_tests = [create_success, get_success, list_success, summary_success]
+        critical_tests = [scenario1_success, scenario2_success, scenario3_success]
         all_tests_passed = all(critical_tests)
         
         if all_tests_passed:
-            print("✅ ALL TESTS PASSED - Immunizations display bug fixes are working correctly")
-            print("✅ CRITICAL: All required fields (doses_in_series, route, anatomical_site, series_name, administered_by) are now returned in API responses")
-            print("✅ DISPLAY: History can now show 'Dose 1/3' format instead of 'Dose 1/?'")
-            print("✅ SUMMARY: Summary cards show correct series totals")
+            print("✅ ALL TESTS PASSED - Immunizations summary display logic is working correctly")
+            print("✅ CRITICAL SUCCESS: Enhanced summary endpoint tracks highest_dose_number instead of just counting records")
+            print("✅ CONDITIONAL LOGIC: next_due_date properly cleared when series_complete=True")
+            print("✅ MULTIPLE DOSES: highest_dose_number=2 correctly shown (not total_doses=2)")
+            print("✅ COMPLETE SERIES: highest_dose_number=3, series_complete=True, next_due_date=None")
+            print("✅ MIXED VACCINES: Multiple vaccine types tracked independently")
+            print("✅ BACKEND CHANGES: Lines 217-258 in /app/backend/api/immunizations.py working correctly")
         else:
-            print("❌ SOME TESTS FAILED - Immunizations display may still have issues")
+            print("❌ SOME TESTS FAILED - Immunizations summary display logic has issues")
             failed_tests = []
-            if not create_success: failed_tests.append("Create Immunization")
-            if not get_success: failed_tests.append("Get Immunization Fields")
-            if not list_success: failed_tests.append("List Immunizations Fields")
-            if not summary_success: failed_tests.append("Summary Endpoint")
-            print(f"❌ Failed components: {', '.join(failed_tests)}")
+            if not scenario1_success: failed_tests.append("Multiple Doses Scenario")
+            if not scenario2_success: failed_tests.append("Complete Series Scenario")
+            if not scenario3_success: failed_tests.append("Mixed Vaccine Types Scenario")
+            print(f"❌ Failed scenarios: {', '.join(failed_tests)}")
         
         return all_tests_passed
+    
+    def cleanup_test_data(self):
+        """Clean up created test immunizations"""
+        try:
+            for immunization_id in self.created_immunizations:
+                try:
+                    requests.delete(f"{self.backend_url}/immunizations/{immunization_id}", timeout=10)
+                except:
+                    pass  # Ignore cleanup errors
+            print(f"🧹 Cleaned up {len(self.created_immunizations)} test immunizations")
+        except Exception as e:
+            print(f"⚠️  Error in cleanup: {str(e)}")
 
 def main():
     """Main test execution"""
