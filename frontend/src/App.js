@@ -20,6 +20,7 @@ import Billing from './pages/Billing';
 import Analytics from './pages/Analytics';
 import ICD10TestPage from './pages/ICD10TestPage';
 import NAPPITestPage from './pages/NAPPITestPage';
+import LabTestPage from './pages/LabTestPage';
 import Layout from './components/Layout';
 import '@/App.css';
 
