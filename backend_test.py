@@ -1544,13 +1544,84 @@ class ImmunizationsTester:
             self.log_test("Test Patient Immunizations List", False, f"Error getting patient immunizations: {str(e)}")
             return False, None
     
-    def test_immunization_summary(self):
-        """Test GET /api/immunizations/patient/{patient_id}/summary to verify doses_in_series display"""
+    def create_immunization_dose(self, vaccine_type, dose_number, doses_in_series, series_complete=False, next_dose_due=None):
+        """Helper method to create an immunization dose"""
         try:
-            if not self.test_patient_id:
-                self.log_test("Test Immunization Summary", False, "No test patient available")
-                return False, None
+            from datetime import datetime, timedelta
             
+            # Calculate administration date (dose 1 = today, dose 2 = 1 month ago, etc.)
+            admin_date = (datetime.now() - timedelta(days=30 * (dose_number - 1))).strftime('%Y-%m-%d')
+            
+            immunization_data = {
+                "patient_id": self.test_patient_id,
+                "vaccine_name": vaccine_type,
+                "vaccine_type": vaccine_type,
+                "administration_date": admin_date,
+                "dose_number": dose_number,
+                "doses_in_series": doses_in_series,
+                "route": "Intramuscular",
+                "anatomical_site": "Left deltoid",
+                "series_name": f"{vaccine_type} Series",
+                "administered_by": "Nurse Smith",
+                "status": "completed",
+                "series_complete": series_complete,
+                "next_dose_due": next_dose_due,
+                "clinical_notes": f"Test dose {dose_number} of {doses_in_series} for {vaccine_type}"
+            }
+            
+            response = requests.post(
+                f"{self.backend_url}/immunizations",
+                json=immunization_data,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                immunization_id = result.get('id')
+                self.created_immunizations.append(immunization_id)
+                return True, immunization_id, result
+            else:
+                return False, None, response.text
+                
+        except Exception as e:
+            return False, None, str(e)
+    
+    def test_scenario_multiple_doses(self):
+        """Test scenario with multiple doses - verify highest_dose_number tracking"""
+        try:
+            print("\n📋 SCENARIO 1: Multiple Doses Test")
+            
+            # Create dose 1 of Influenza (3-dose series)
+            success1, id1, result1 = self.create_immunization_dose(
+                vaccine_type="Influenza",
+                dose_number=1,
+                doses_in_series=3,
+                series_complete=False,
+                next_dose_due="2024-02-15"
+            )
+            
+            if not success1:
+                self.log_test("Create Influenza Dose 1", False, f"Failed to create dose 1: {result1}")
+                return False
+            
+            self.log_test("Create Influenza Dose 1", True, f"Created dose 1: {id1}")
+            
+            # Create dose 2 of Influenza
+            success2, id2, result2 = self.create_immunization_dose(
+                vaccine_type="Influenza", 
+                dose_number=2,
+                doses_in_series=3,
+                series_complete=False,
+                next_dose_due="2024-03-15"
+            )
+            
+            if not success2:
+                self.log_test("Create Influenza Dose 2", False, f"Failed to create dose 2: {result2}")
+                return False
+            
+            self.log_test("Create Influenza Dose 2", True, f"Created dose 2: {id2}")
+            
+            # Get summary and verify highest_dose_number=2
             response = requests.get(
                 f"{self.backend_url}/immunizations/patient/{self.test_patient_id}/summary",
                 timeout=30
@@ -1558,51 +1629,202 @@ class ImmunizationsTester:
             
             if response.status_code == 200:
                 result = response.json()
+                summary = result.get('summary', {})
+                influenza_summary = summary.get('Influenza', {})
                 
-                if 'summary' in result:
-                    summary = result['summary']
-                    
-                    # Look for our Hepatitis B vaccine
-                    hepatitis_b_summary = summary.get('Hepatitis B')
-                    
-                    if hepatitis_b_summary:
-                        doses_in_series = hepatitis_b_summary.get('doses_in_series')
-                        total_doses = hepatitis_b_summary.get('total_doses')
-                        
-                        if doses_in_series == 3:
-                            self.log_test("Immunization Summary - doses_in_series", True, 
-                                        f"Summary correctly shows doses_in_series: {doses_in_series}")
-                        else:
-                            self.log_test("Immunization Summary - doses_in_series", False, 
-                                        f"Expected doses_in_series=3, got: {doses_in_series}")
-                        
-                        if total_doses >= 1:
-                            self.log_test("Immunization Summary - total_doses", True, 
-                                        f"Summary shows total_doses: {total_doses}")
-                        else:
-                            self.log_test("Immunization Summary - total_doses", False, 
-                                        f"Expected total_doses >= 1, got: {total_doses}")
-                        
-                        self.log_test("Test Immunization Summary", True, 
-                                    "Summary endpoint working correctly")
-                        return True, result
-                    else:
-                        available_vaccines = list(summary.keys())
-                        self.log_test("Test Immunization Summary", False, 
-                                    f"Hepatitis B not found in summary. Available: {available_vaccines}")
-                        return False, result
+                # Verify highest_dose_number=2 (not total_doses=2)
+                highest_dose = influenza_summary.get('highest_dose_number')
+                if highest_dose == 2:
+                    self.log_test("Multiple Doses - highest_dose_number", True, 
+                                f"Correctly tracks highest_dose_number: {highest_dose}")
                 else:
-                    self.log_test("Test Immunization Summary", False, 
-                                "No summary field in response")
-                    return False, result
+                    self.log_test("Multiple Doses - highest_dose_number", False, 
+                                f"Expected highest_dose_number=2, got: {highest_dose}")
+                
+                # Verify doses_in_series=3
+                doses_in_series = influenza_summary.get('doses_in_series')
+                if doses_in_series == 3:
+                    self.log_test("Multiple Doses - doses_in_series", True, 
+                                f"Correctly shows doses_in_series: {doses_in_series}")
+                else:
+                    self.log_test("Multiple Doses - doses_in_series", False, 
+                                f"Expected doses_in_series=3, got: {doses_in_series}")
+                
+                # Verify next_due_date is present (series not complete)
+                next_due_date = influenza_summary.get('next_due_date')
+                if next_due_date:
+                    self.log_test("Multiple Doses - next_due_date", True, 
+                                f"next_due_date present (series incomplete): {next_due_date}")
+                else:
+                    self.log_test("Multiple Doses - next_due_date", False, 
+                                "next_due_date should be present for incomplete series")
+                
+                # Verify series_complete=False
+                series_complete = influenza_summary.get('series_complete')
+                if series_complete == False:
+                    self.log_test("Multiple Doses - series_complete", True, 
+                                f"Correctly shows series_complete: {series_complete}")
+                else:
+                    self.log_test("Multiple Doses - series_complete", False, 
+                                f"Expected series_complete=False, got: {series_complete}")
+                
+                return True
             else:
-                self.log_test("Test Immunization Summary", False, 
-                            f"Failed to get immunization summary: {response.status_code}")
-                return False, None
+                self.log_test("Multiple Doses Summary", False, 
+                            f"Failed to get summary: {response.status_code}")
+                return False
                 
         except Exception as e:
-            self.log_test("Test Immunization Summary", False, f"Error getting immunization summary: {str(e)}")
-            return False, None
+            self.log_test("Multiple Doses Scenario", False, f"Error: {str(e)}")
+            return False
+    
+    def test_scenario_complete_series(self):
+        """Test complete series scenario - verify next_due_date cleared when complete"""
+        try:
+            print("\n📋 SCENARIO 2: Complete Series Test")
+            
+            # Create dose 3 of Influenza (completing the series)
+            success3, id3, result3 = self.create_immunization_dose(
+                vaccine_type="Influenza",
+                dose_number=3,
+                doses_in_series=3,
+                series_complete=True,
+                next_dose_due=None  # Should be None when series complete
+            )
+            
+            if not success3:
+                self.log_test("Create Influenza Dose 3", False, f"Failed to create dose 3: {result3}")
+                return False
+            
+            self.log_test("Create Influenza Dose 3", True, f"Created dose 3 (series complete): {id3}")
+            
+            # Get summary and verify changes
+            response = requests.get(
+                f"{self.backend_url}/immunizations/patient/{self.test_patient_id}/summary",
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                summary = result.get('summary', {})
+                influenza_summary = summary.get('Influenza', {})
+                
+                # Verify highest_dose_number=3
+                highest_dose = influenza_summary.get('highest_dose_number')
+                if highest_dose == 3:
+                    self.log_test("Complete Series - highest_dose_number", True, 
+                                f"Correctly tracks highest_dose_number: {highest_dose}")
+                else:
+                    self.log_test("Complete Series - highest_dose_number", False, 
+                                f"Expected highest_dose_number=3, got: {highest_dose}")
+                
+                # Verify series_complete=True
+                series_complete = influenza_summary.get('series_complete')
+                if series_complete == True:
+                    self.log_test("Complete Series - series_complete", True, 
+                                f"Correctly shows series_complete: {series_complete}")
+                else:
+                    self.log_test("Complete Series - series_complete", False, 
+                                f"Expected series_complete=True, got: {series_complete}")
+                
+                # Verify next_due_date=None (cleared when complete)
+                next_due_date = influenza_summary.get('next_due_date')
+                if next_due_date is None:
+                    self.log_test("Complete Series - next_due_date cleared", True, 
+                                "next_due_date correctly cleared when series complete")
+                else:
+                    self.log_test("Complete Series - next_due_date cleared", False, 
+                                f"Expected next_due_date=None when complete, got: {next_due_date}")
+                
+                return True
+            else:
+                self.log_test("Complete Series Summary", False, 
+                            f"Failed to get summary: {response.status_code}")
+                return False
+                
+        except Exception as e:
+            self.log_test("Complete Series Scenario", False, f"Error: {str(e)}")
+            return False
+    
+    def test_scenario_mixed_vaccine_types(self):
+        """Test mixed vaccine types - verify independent tracking"""
+        try:
+            print("\n📋 SCENARIO 3: Mixed Vaccine Types Test")
+            
+            # Create COVID-19 dose 1 of 2 (incomplete, with next_due_date)
+            success_covid, id_covid, result_covid = self.create_immunization_dose(
+                vaccine_type="COVID-19",
+                dose_number=1,
+                doses_in_series=2,
+                series_complete=False,
+                next_dose_due="2024-04-15"
+            )
+            
+            if not success_covid:
+                self.log_test("Create COVID-19 Dose 1", False, f"Failed to create COVID-19 dose: {result_covid}")
+                return False
+            
+            self.log_test("Create COVID-19 Dose 1", True, f"Created COVID-19 dose 1: {id_covid}")
+            
+            # Get summary and verify both vaccine types
+            response = requests.get(
+                f"{self.backend_url}/immunizations/patient/{self.test_patient_id}/summary",
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                summary = result.get('summary', {})
+                
+                # Verify Influenza summary (should be complete)
+                influenza_summary = summary.get('Influenza', {})
+                if influenza_summary:
+                    flu_highest_dose = influenza_summary.get('highest_dose_number')
+                    flu_complete = influenza_summary.get('series_complete')
+                    flu_next_due = influenza_summary.get('next_due_date')
+                    
+                    if flu_highest_dose == 3 and flu_complete == True and flu_next_due is None:
+                        self.log_test("Mixed Types - Influenza Status", True, 
+                                    f"Influenza: dose {flu_highest_dose}/3, complete={flu_complete}, next_due={flu_next_due}")
+                    else:
+                        self.log_test("Mixed Types - Influenza Status", False, 
+                                    f"Influenza incorrect: dose {flu_highest_dose}, complete={flu_complete}, next_due={flu_next_due}")
+                else:
+                    self.log_test("Mixed Types - Influenza Status", False, "Influenza summary not found")
+                
+                # Verify COVID-19 summary (should be incomplete)
+                covid_summary = summary.get('COVID-19', {})
+                if covid_summary:
+                    covid_highest_dose = covid_summary.get('highest_dose_number')
+                    covid_complete = covid_summary.get('series_complete')
+                    covid_next_due = covid_summary.get('next_due_date')
+                    
+                    if covid_highest_dose == 1 and covid_complete == False and covid_next_due is not None:
+                        self.log_test("Mixed Types - COVID-19 Status", True, 
+                                    f"COVID-19: dose {covid_highest_dose}/2, complete={covid_complete}, next_due={covid_next_due}")
+                    else:
+                        self.log_test("Mixed Types - COVID-19 Status", False, 
+                                    f"COVID-19 incorrect: dose {covid_highest_dose}, complete={covid_complete}, next_due={covid_next_due}")
+                else:
+                    self.log_test("Mixed Types - COVID-19 Status", False, "COVID-19 summary not found")
+                
+                # Verify independent tracking
+                if len(summary) >= 2:
+                    self.log_test("Mixed Types - Independent Tracking", True, 
+                                f"Multiple vaccine types tracked independently: {list(summary.keys())}")
+                else:
+                    self.log_test("Mixed Types - Independent Tracking", False, 
+                                f"Expected multiple vaccine types, found: {list(summary.keys())}")
+                
+                return True
+            else:
+                self.log_test("Mixed Types Summary", False, 
+                            f"Failed to get summary: {response.status_code}")
+                return False
+                
+        except Exception as e:
+            self.log_test("Mixed Vaccine Types Scenario", False, f"Error: {str(e)}")
+            return False
     
     def run_immunizations_display_bug_test(self):
         """Run the complete immunizations display bug verification test"""
