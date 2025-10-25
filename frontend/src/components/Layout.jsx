@@ -16,6 +16,7 @@ const Layout = () => {
     { name: 'ICD-10 Test', path: '/icd10-test', icon: Code },
     { name: 'NAPPI Test', path: '/nappi-test', icon: Package },
     { name: 'Lab Test', path: '/lab-test', icon: Activity },
+    { name: 'Immunizations', path: '/immunizations-test', icon: Syringe },
     { name: 'Billing', path: '/billing', icon: DollarSign },
     { name: 'Analytics', path: '/analytics', icon: BarChart3 },
   ];
