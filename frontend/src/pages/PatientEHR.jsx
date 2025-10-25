@@ -380,6 +380,49 @@ const PatientEHR = () => {
 
               {/* Diagnoses */}
               <DiagnosesManagement patientId={patientId} />
+              
+              {/* Recent Lab Results - Overview */}
+              {labResults.length > 0 && (
+                <Card className="border-0 shadow-lg">
+                  <CardHeader>
+                    <CardTitle className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                      <FlaskConical className="w-5 h-5 text-blue-500" />
+                      Recent Lab Results
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {labResults.slice(0, 3).map((result, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                          <div className="flex-1">
+                            <p className="font-semibold text-sm text-slate-800">{result.test_name}</p>
+                            <p className="text-xs text-slate-500">
+                              {result.result_datetime && new Date(result.result_datetime).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className={`font-bold ${
+                              result.abnormal_flag === 'critical_high' || result.abnormal_flag === 'critical_low' ? 'text-red-600' :
+                              result.abnormal_flag === 'high' || result.abnormal_flag === 'low' ? 'text-amber-600' :
+                              'text-slate-800'
+                            }`}>
+                              {result.result_value} {result.units}
+                            </p>
+                            {result.abnormal_flag !== 'normal' && result.abnormal_flag !== 'unknown' && (
+                              <p className="text-xs font-medium text-amber-600">
+                                {result.abnormal_flag.replace('_', ' ').toUpperCase()}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      <Link to={`/patient/${patientId}`} onClick={() => setActiveTab('vitals')} className="block text-center text-sm text-blue-600 hover:text-blue-700 mt-2">
+                        View all lab results →
+                      </Link>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </div>
 
             {/* Timeline */}
