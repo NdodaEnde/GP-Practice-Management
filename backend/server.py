@@ -180,6 +180,8 @@ class InvoiceCreate(BaseModel):
 
 class PrescriptionItem(BaseModel):
     medication_name: str
+    nappi_code: Optional[str] = None  # South African medication code
+    generic_name: Optional[str] = None  # Generic/active ingredient name
     dosage: str
     frequency: str
     duration: str
