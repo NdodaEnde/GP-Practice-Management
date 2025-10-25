@@ -1421,6 +1421,11 @@ class NAPPITester:
                 try:
                     error_detail = response.json()
                     error_msg += f": {error_detail}"
+                    
+                    # Check for schema-related errors
+                    if 'generic_name' in str(error_detail) and 'column' in str(error_detail):
+                        error_msg += "\n🔧 SCHEMA ISSUE DETECTED: prescription_items table missing nappi_code and generic_name columns"
+                        error_msg += "\n📋 SOLUTION: Execute /app/nappi_prescription_migration.sql in Supabase Dashboard"
                 except:
                     error_msg += f": {response.text}"
                 
