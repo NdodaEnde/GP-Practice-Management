@@ -353,7 +353,12 @@ metadata:
   run_ui: false
 
 test_plan:
-  current_focus: []
+  current_focus:
+    - "Allergy Checks in Prescription Workflow"
+    - "Diagnoses Management Frontend"
+    - "Vitals Table Frontend"
+    - "Diagnoses API Backend"
+    - "Vitals API Backend"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
