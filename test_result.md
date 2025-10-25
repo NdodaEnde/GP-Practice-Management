@@ -1175,4 +1175,52 @@ agent_communication:
       
       BACKEND STATUS: Immunizations API display bug fixes are fully functional
       RECOMMENDATION: All immunization display issues resolved - ready for production use
+  - agent: "main"
+    message: |
+      IMMUNIZATIONS SUMMARY DISPLAY IMPROVEMENTS:
+      
+      USER FEEDBACK:
+      1. Summary cards showing incorrect "Doses given" count (counting records instead of dose numbers)
+      2. Requested conditional display: Show next due date if incomplete, else show "Complete"
+      
+      ISSUES IDENTIFIED:
+      - Summary was counting number of immunization RECORDS (1 record = "Doses given: 1")
+      - Should show HIGHEST dose_number (if you recorded dose 2, show "Doses given: 2")
+      - Next due date and "Complete" status were both showing, needed conditional logic
+      
+      FIXES IMPLEMENTED:
+      
+      1. Backend Enhancement (/app/backend/api/immunizations.py, lines 217-258):
+         - Added 'highest_dose_number' tracking to summary endpoint
+         - Now tracks the maximum dose_number for each vaccine type
+         - If user records dose 2 of 3, summary shows "Doses given: 2" not "1"
+         - Conditional next_due_date: Only shown if series not complete
+         - If series_complete=True, next_due_date is cleared (set to None)
+      
+      2. Frontend Enhancement (/app/frontend/src/pages/ImmunizationsTestPage.jsx, lines 180-202):
+         - Changed display to use highest_dose_number instead of total_doses
+         - Added conditional logic: Show "✓ Series Complete" OR "Next due: [date]", not both
+         - If series complete: Show green checkmark message
+         - If incomplete and has next_due_date: Show orange next due date
+         - If incomplete and no next_due_date: Show nothing (clean UI)
+      
+      LOGIC FLOW:
+      - User creates immunization with dose_number=2, doses_in_series=3
+      - Summary now shows: "Doses given: 2" (not "1")
+      - Series total: 3
+      - Since dose 2/3, if next_dose_due is set: "Next due: [date]"
+      - When user marks series_complete=True: Shows "✓ Series Complete" instead
+      
+      FILES MODIFIED:
+      - /app/backend/api/immunizations.py (summary endpoint logic)
+      - /app/frontend/src/pages/ImmunizationsTestPage.jsx (summary cards display)
+      
+      Backend restarted successfully.
+      
+      READY FOR USER VERIFICATION:
+      Test at /immunizations-test:
+      1. Verify "Doses given" shows dose number (2/3 = shows "2")
+      2. Verify incomplete series shows next due date
+      3. Verify complete series shows "✓ Series Complete" (no due date)
+      4. Test with multiple vaccines at different completion stages
 
