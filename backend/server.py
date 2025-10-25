@@ -3955,6 +3955,8 @@ async def create_prescription(prescription: PrescriptionCreate):
                 'id': item_id,
                 'prescription_id': prescription_id,
                 'medication_name': item.medication_name,
+                'nappi_code': item.nappi_code,  # South African medication code
+                'generic_name': item.generic_name,  # Generic/active ingredient name
                 'dosage': item.dosage,
                 'frequency': item.frequency,
                 'duration': item.duration,
@@ -3962,9 +3964,6 @@ async def create_prescription(prescription: PrescriptionCreate):
                 'instructions': item.instructions,
                 'created_at': datetime.now(timezone.utc).isoformat()
             })
-            # NOTE: nappi_code and generic_name fields are not included
-            # because the database schema needs to be updated first.
-            # Run /app/nappi_prescription_migration.sql to add these columns.
         
         if items_data:
             supabase.table('prescription_items').insert(items_data).execute()
