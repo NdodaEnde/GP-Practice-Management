@@ -49,6 +49,7 @@ function App() {
             <Route path="billing" element={<Billing />} />
             <Route path="analytics" element={<Analytics />} />
             <Route path="icd10-test" element={<ICD10TestPage />} />
+            <Route path="nappi-test" element={<NAPPITestPage />} />
           </Route>
         </Routes>
       </BrowserRouter>
