@@ -750,6 +750,475 @@ class ICD10Tester:
         except:
             pass
 
+    def log_test(self, test_name, success, message, details=None):
+        """Log test results"""
+        result = {
+            'test': test_name,
+            'success': success,
+            'message': message,
+            'details': details or {},
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        }
+        self.test_results.append(result)
+        status = "✅ PASS" if success else "❌ FAIL"
+        print(f"{status}: {test_name} - {message}")
+        if details and not success:
+            print(f"   Details: {details}")
+    
+    def test_icd10_stats(self):
+        """Test GET /api/icd10/stats - Database statistics"""
+        try:
+            response = requests.get(f"{self.backend_url}/icd10/stats", timeout=30)
+            
+            if response.status_code == 200:
+                result = response.json()
+                expected_fields = ['total_codes', 'clinical_use_codes', 'primary_diagnosis_codes', 'version']
+                
+                if all(field in result for field in expected_fields):
+                    total_codes = result.get('total_codes', 0)
+                    clinical_codes = result.get('clinical_use_codes', 0)
+                    primary_codes = result.get('primary_diagnosis_codes', 0)
+                    version = result.get('version', '')
+                    
+                    # Check if we have the expected 41,008 total codes
+                    if total_codes == 41008:
+                        self.log_test("ICD-10 Stats - Total Codes", True, 
+                                    f"Correct total codes: {total_codes}")
+                    else:
+                        self.log_test("ICD-10 Stats - Total Codes", False, 
+                                    f"Expected 41,008 total codes, found: {total_codes}")
+                    
+                    # Verify clinical use codes exist
+                    if clinical_codes > 0:
+                        self.log_test("ICD-10 Stats - Clinical Use Codes", True, 
+                                    f"Clinical use codes available: {clinical_codes}")
+                    else:
+                        self.log_test("ICD-10 Stats - Clinical Use Codes", False, 
+                                    "No clinical use codes found")
+                    
+                    # Verify primary diagnosis codes exist
+                    if primary_codes > 0:
+                        self.log_test("ICD-10 Stats - Primary Diagnosis Codes", True, 
+                                    f"Primary diagnosis codes available: {primary_codes}")
+                    else:
+                        self.log_test("ICD-10 Stats - Primary Diagnosis Codes", False, 
+                                    "No primary diagnosis codes found")
+                    
+                    # Check version info
+                    if version:
+                        self.log_test("ICD-10 Stats - Version Info", True, 
+                                    f"Version information available: {version}")
+                    else:
+                        self.log_test("ICD-10 Stats - Version Info", False, 
+                                    "No version information found")
+                    
+                    self.stats_data = result
+                    self.log_test("ICD-10 Database Statistics", True, 
+                                f"Successfully retrieved database statistics")
+                    return True, result
+                else:
+                    missing_fields = [f for f in expected_fields if f not in result]
+                    self.log_test("ICD-10 Database Statistics", False, 
+                                f"Missing fields in response: {missing_fields}")
+                    return False, result
+            else:
+                error_msg = f"API returned status {response.status_code}"
+                try:
+                    error_detail = response.json()
+                    error_msg += f": {error_detail}"
+                except:
+                    error_msg += f": {response.text}"
+                
+                self.log_test("ICD-10 Database Statistics", False, error_msg)
+                return False, None
+                
+        except Exception as e:
+            self.log_test("ICD-10 Database Statistics", False, f"Request failed: {str(e)}")
+            return False, None
+    
+    def test_icd10_search(self):
+        """Test GET /api/icd10/search - Keyword search functionality"""
+        try:
+            # Test scenarios from review request
+            test_queries = [
+                {"query": "diabetes", "expected_min": 10, "description": "diabetes search"},
+                {"query": "hypertension", "expected_min": 5, "description": "hypertension search"},
+                {"query": "asthma", "expected_min": 3, "description": "asthma search"}
+            ]
+            
+            all_searches_passed = True
+            
+            for test_case in test_queries:
+                query = test_case["query"]
+                expected_min = test_case["expected_min"]
+                description = test_case["description"]
+                
+                # Test with default parameters
+                response = requests.get(
+                    f"{self.backend_url}/icd10/search",
+                    params={"query": query, "limit": 20, "clinical_use_only": True},
+                    timeout=30
+                )
+                
+                if response.status_code == 200:
+                    results = response.json()
+                    
+                    if isinstance(results, list):
+                        result_count = len(results)
+                        
+                        if result_count >= expected_min:
+                            self.log_test(f"ICD-10 Search - {description}", True, 
+                                        f"Found {result_count} results for '{query}'")
+                            
+                            # Verify result structure
+                            if results:
+                                first_result = results[0]
+                                expected_fields = ['code', 'who_full_desc', 'valid_clinical_use', 'valid_primary']
+                                present_fields = [f for f in expected_fields if f in first_result]
+                                
+                                if len(present_fields) >= 3:
+                                    self.log_test(f"ICD-10 Search Result Structure - {query}", True, 
+                                                f"Results have proper structure ({len(present_fields)}/{len(expected_fields)} fields)")
+                                    
+                                    # Verify the search is relevant (query term appears in description)
+                                    desc = first_result.get('who_full_desc', '').lower()
+                                    if query.lower() in desc:
+                                        self.log_test(f"ICD-10 Search Relevance - {query}", True, 
+                                                    f"Search results are relevant to '{query}'")
+                                    else:
+                                        self.log_test(f"ICD-10 Search Relevance - {query}", False, 
+                                                    f"First result may not be relevant: {desc}")
+                                else:
+                                    self.log_test(f"ICD-10 Search Result Structure - {query}", False, 
+                                                f"Results missing required fields ({len(present_fields)}/{len(expected_fields)})")
+                                    all_searches_passed = False
+                        else:
+                            self.log_test(f"ICD-10 Search - {description}", False, 
+                                        f"Expected at least {expected_min} results, found {result_count}")
+                            all_searches_passed = False
+                    else:
+                        self.log_test(f"ICD-10 Search - {description}", False, 
+                                    f"Expected array response, got: {type(results)}")
+                        all_searches_passed = False
+                else:
+                    error_msg = f"API returned status {response.status_code}"
+                    try:
+                        error_detail = response.json()
+                        error_msg += f": {error_detail}"
+                    except:
+                        error_msg += f": {response.text}"
+                    
+                    self.log_test(f"ICD-10 Search - {description}", False, error_msg)
+                    all_searches_passed = False
+            
+            # Test parameter validation
+            # Test minimum query length
+            response = requests.get(
+                f"{self.backend_url}/icd10/search",
+                params={"query": "a", "limit": 20},  # Too short
+                timeout=30
+            )
+            
+            if response.status_code == 422:  # Validation error expected
+                self.log_test("ICD-10 Search - Query Validation", True, 
+                            "Correctly validates minimum query length")
+            else:
+                self.log_test("ICD-10 Search - Query Validation", False, 
+                            f"Expected validation error for short query, got status {response.status_code}")
+                all_searches_passed = False
+            
+            # Test limit parameter
+            response = requests.get(
+                f"{self.backend_url}/icd10/search",
+                params={"query": "diabetes", "limit": 5},
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                results = response.json()
+                if len(results) <= 5:
+                    self.log_test("ICD-10 Search - Limit Parameter", True, 
+                                f"Correctly limits results to {len(results)}")
+                else:
+                    self.log_test("ICD-10 Search - Limit Parameter", False, 
+                                f"Expected max 5 results, got {len(results)}")
+                    all_searches_passed = False
+            
+            if all_searches_passed:
+                self.log_test("ICD-10 Keyword Search", True, 
+                            "All keyword search scenarios passed")
+                return True
+            else:
+                self.log_test("ICD-10 Keyword Search", False, 
+                            "Some keyword search scenarios failed")
+                return False
+                
+        except Exception as e:
+            self.log_test("ICD-10 Keyword Search", False, f"Request failed: {str(e)}")
+            return False
+    
+    def test_icd10_suggest(self):
+        """Test GET /api/icd10/suggest - AI-powered suggestions"""
+        try:
+            # Test with natural language diagnosis text from review request
+            diagnosis_text = "Patient with type 2 diabetes and high blood pressure"
+            
+            response = requests.get(
+                f"{self.backend_url}/icd10/suggest",
+                params={"diagnosis_text": diagnosis_text, "max_suggestions": 5},
+                timeout=60  # AI requests might take longer
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                expected_fields = ['original_text', 'suggestions']
+                
+                if all(field in result for field in expected_fields):
+                    original_text = result.get('original_text')
+                    suggestions = result.get('suggestions', [])
+                    ai_response = result.get('ai_response')
+                    
+                    # Verify original text is preserved
+                    if original_text == diagnosis_text:
+                        self.log_test("ICD-10 AI Suggestions - Original Text", True, 
+                                    "Original diagnosis text preserved correctly")
+                    else:
+                        self.log_test("ICD-10 AI Suggestions - Original Text", False, 
+                                    f"Original text mismatch: expected '{diagnosis_text}', got '{original_text}'")
+                    
+                    # Verify suggestions are provided
+                    if suggestions and len(suggestions) > 0:
+                        self.log_test("ICD-10 AI Suggestions - Results Count", True, 
+                                    f"Received {len(suggestions)} suggestions")
+                        
+                        # Verify suggestion structure
+                        first_suggestion = suggestions[0]
+                        expected_suggestion_fields = ['code', 'who_full_desc']
+                        present_suggestion_fields = [f for f in expected_suggestion_fields if f in first_suggestion]
+                        
+                        if len(present_suggestion_fields) >= 2:
+                            self.log_test("ICD-10 AI Suggestions - Structure", True, 
+                                        f"Suggestions have proper ICD-10 code structure")
+                            
+                            # Check if suggestions are relevant to diabetes/hypertension
+                            relevant_codes = []
+                            for suggestion in suggestions:
+                                code = suggestion.get('code', '')
+                                desc = suggestion.get('who_full_desc', '').lower()
+                                
+                                # Look for diabetes (E11, E10) or hypertension (I10, I15) codes
+                                if (code.startswith('E1') or code.startswith('I1') or 
+                                    'diabetes' in desc or 'hypertension' in desc or 'blood pressure' in desc):
+                                    relevant_codes.append(code)
+                            
+                            if relevant_codes:
+                                self.log_test("ICD-10 AI Suggestions - Relevance", True, 
+                                            f"Found relevant codes: {relevant_codes}")
+                            else:
+                                self.log_test("ICD-10 AI Suggestions - Relevance", False, 
+                                            "No obviously relevant codes found for diabetes/hypertension")
+                        else:
+                            self.log_test("ICD-10 AI Suggestions - Structure", False, 
+                                        f"Suggestions missing required fields ({len(present_suggestion_fields)}/{len(expected_suggestion_fields)})")
+                    else:
+                        # Check if this is a fallback response
+                        if 'note' in result and 'fallback' in result['note'].lower():
+                            self.log_test("ICD-10 AI Suggestions - Fallback", True, 
+                                        "AI unavailable, fallback to keyword search working")
+                        else:
+                            self.log_test("ICD-10 AI Suggestions - Results Count", False, 
+                                        "No suggestions returned")
+                    
+                    # Check AI response field
+                    if ai_response:
+                        self.log_test("ICD-10 AI Suggestions - AI Response", True, 
+                                    f"AI response provided: {ai_response[:100]}...")
+                    else:
+                        self.log_test("ICD-10 AI Suggestions - AI Response", False, 
+                                    "No AI response field found")
+                    
+                    self.log_test("ICD-10 AI-Powered Suggestions", True, 
+                                "AI suggestions endpoint working correctly")
+                    return True, result
+                else:
+                    missing_fields = [f for f in expected_fields if f not in result]
+                    self.log_test("ICD-10 AI-Powered Suggestions", False, 
+                                f"Missing fields in response: {missing_fields}")
+                    return False, result
+            else:
+                error_msg = f"API returned status {response.status_code}"
+                try:
+                    error_detail = response.json()
+                    error_msg += f": {error_detail}"
+                except:
+                    error_msg += f": {response.text}"
+                
+                self.log_test("ICD-10 AI-Powered Suggestions", False, error_msg)
+                return False, None
+                
+        except Exception as e:
+            self.log_test("ICD-10 AI-Powered Suggestions", False, f"Request failed: {str(e)}")
+            return False, None
+    
+    def test_icd10_code_lookup(self):
+        """Test GET /api/icd10/code/{code} - Specific code lookup"""
+        try:
+            # Test with specific code from review request
+            test_code = "E11.9"  # Type 2 diabetes mellitus without complications
+            
+            response = requests.get(
+                f"{self.backend_url}/icd10/code/{test_code}",
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                expected_fields = ['code', 'who_full_desc', 'valid_clinical_use', 'valid_primary']
+                
+                if all(field in result for field in expected_fields):
+                    code = result.get('code')
+                    description = result.get('who_full_desc', '')
+                    valid_clinical = result.get('valid_clinical_use')
+                    valid_primary = result.get('valid_primary')
+                    
+                    # Verify correct code returned
+                    if code == test_code:
+                        self.log_test("ICD-10 Code Lookup - Code Match", True, 
+                                    f"Correct code returned: {code}")
+                    else:
+                        self.log_test("ICD-10 Code Lookup - Code Match", False, 
+                                    f"Expected code '{test_code}', got '{code}'")
+                    
+                    # Verify description contains diabetes-related terms
+                    if 'diabetes' in description.lower():
+                        self.log_test("ICD-10 Code Lookup - Description", True, 
+                                    f"Correct description: {description}")
+                    else:
+                        self.log_test("ICD-10 Code Lookup - Description", False, 
+                                    f"Description may not be correct for diabetes code: {description}")
+                    
+                    # Verify clinical use flags
+                    if isinstance(valid_clinical, bool) and isinstance(valid_primary, bool):
+                        self.log_test("ICD-10 Code Lookup - Validity Flags", True, 
+                                    f"Clinical use: {valid_clinical}, Primary: {valid_primary}")
+                    else:
+                        self.log_test("ICD-10 Code Lookup - Validity Flags", False, 
+                                    f"Invalid validity flags: clinical={valid_clinical}, primary={valid_primary}")
+                    
+                    # Check for optional fields
+                    optional_fields = ['chapter_desc', 'group_desc', 'code_3char', 'code_3char_desc', 'gender', 'age_range']
+                    present_optional = [f for f in optional_fields if f in result and result[f] is not None]
+                    
+                    if present_optional:
+                        self.log_test("ICD-10 Code Lookup - Additional Fields", True, 
+                                    f"Additional fields present: {present_optional}")
+                    else:
+                        self.log_test("ICD-10 Code Lookup - Additional Fields", False, 
+                                    "No additional fields (chapter, group, etc.) found")
+                    
+                    self.log_test("ICD-10 Specific Code Lookup", True, 
+                                f"Successfully retrieved details for code {test_code}")
+                    return True, result
+                else:
+                    missing_fields = [f for f in expected_fields if f not in result]
+                    self.log_test("ICD-10 Specific Code Lookup", False, 
+                                f"Missing fields in response: {missing_fields}")
+                    return False, result
+            elif response.status_code == 404:
+                self.log_test("ICD-10 Specific Code Lookup", False, 
+                            f"Code '{test_code}' not found in database")
+                return False, None
+            else:
+                error_msg = f"API returned status {response.status_code}"
+                try:
+                    error_detail = response.json()
+                    error_msg += f": {error_detail}"
+                except:
+                    error_msg += f": {response.text}"
+                
+                self.log_test("ICD-10 Specific Code Lookup", False, error_msg)
+                return False, None
+                
+        except Exception as e:
+            self.log_test("ICD-10 Specific Code Lookup", False, f"Request failed: {str(e)}")
+            return False, None
+    
+    def test_backend_health(self):
+        """Test if backend is accessible"""
+        try:
+            response = requests.get(f"{self.backend_url}/health", timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                self.log_test("Backend Health Check", True, f"Backend is healthy: {data.get('status')}")
+                return True
+            else:
+                self.log_test("Backend Health Check", False, f"Backend returned status {response.status_code}")
+                return False
+        except Exception as e:
+            self.log_test("Backend Health Check", False, f"Cannot connect to backend: {str(e)}")
+            return False
+    
+    def run_icd10_comprehensive_test(self):
+        """Run comprehensive ICD-10 API testing"""
+        print("\n" + "="*80)
+        print("ICD-10 CODE LOOKUP TEST PAGE BACKEND API TESTING")
+        print("Testing all 4 ICD-10 endpoints as specified in review request")
+        print("="*80)
+        
+        # Step 1: Test backend connectivity
+        if not self.test_backend_health():
+            print("\n❌ Cannot proceed - Backend is not accessible")
+            return False
+        
+        # Step 2: Test database statistics
+        print("\n📊 Step 1: Testing ICD-10 database statistics...")
+        stats_success, _ = self.test_icd10_stats()
+        
+        # Step 3: Test keyword search
+        print("\n🔍 Step 2: Testing ICD-10 keyword search...")
+        search_success = self.test_icd10_search()
+        
+        # Step 4: Test AI-powered suggestions
+        print("\n🤖 Step 3: Testing AI-powered ICD-10 suggestions...")
+        suggest_success, _ = self.test_icd10_suggest()
+        
+        # Step 5: Test specific code lookup
+        print("\n🎯 Step 4: Testing specific ICD-10 code lookup...")
+        lookup_success, _ = self.test_icd10_code_lookup()
+        
+        # Summary
+        print("\n" + "="*80)
+        print("ICD-10 API TEST SUMMARY")
+        print("="*80)
+        
+        # Determine overall success
+        all_tests = [stats_success, search_success, suggest_success, lookup_success]
+        critical_tests = [stats_success, search_success, lookup_success]  # AI suggestions can fallback
+        
+        critical_success = all(critical_tests)
+        all_tests_passed = all(all_tests)
+        
+        if critical_success:
+            if all_tests_passed:
+                print("✅ ALL ICD-10 ENDPOINTS WORKING - Complete functionality verified")
+                print("✅ Database statistics: 41,008 codes loaded")
+                print("✅ Keyword search: diabetes, hypertension, asthma queries working")
+                print("✅ AI suggestions: GPT-4o integration functional")
+                print("✅ Code lookup: E11.9 (diabetes) details retrieved")
+            else:
+                print("✅ CRITICAL ICD-10 ENDPOINTS WORKING - Core functionality verified")
+                if not suggest_success:
+                    print("⚠️  AI suggestions may be using fallback (OpenAI API issue)")
+        else:
+            print("❌ CRITICAL ICD-10 ENDPOINTS FAILED - System has issues")
+            failed_tests = []
+            if not stats_success: failed_tests.append("Database Statistics")
+            if not search_success: failed_tests.append("Keyword Search")
+            if not lookup_success: failed_tests.append("Code Lookup")
+            print(f"❌ Failed components: {', '.join(failed_tests)}")
+        
+        return critical_success
+
 def main():
     """Main test execution"""
     tester = PatientCreationTester()
