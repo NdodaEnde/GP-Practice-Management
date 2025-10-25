@@ -3832,6 +3832,32 @@ async def save_consultation_to_ehr(request: dict):
         
         supabase.table('encounters').insert(encounter_data).execute()
         
+        # Parse SOAP notes into structured format
+        parsed_soap = parse_soap_notes(soap_notes)
+        
+        # Create structured clinical note
+        clinical_note_data = {
+            'id': str(uuid.uuid4()),
+            'tenant_id': DEMO_TENANT_ID,
+            'workspace_id': DEMO_WORKSPACE_ID,
+            'encounter_id': encounter_id,
+            'patient_id': patient_id,
+            'format': 'soap',
+            'subjective': parsed_soap['subjective'],
+            'objective': parsed_soap['objective'],
+            'assessment': parsed_soap['assessment'],
+            'plan': parsed_soap['plan'],
+            'raw_text': soap_notes,  # Keep original for reference
+            'author': doctor_name,
+            'role': 'ai_scribe',
+            'source': 'ai_scribe',
+            'note_datetime': datetime.now(timezone.utc).isoformat(),
+            'created_at': datetime.now(timezone.utc).isoformat()
+        }
+        
+        supabase.table('clinical_notes').insert(clinical_note_data).execute()
+        logger.info(f"Structured clinical note created for encounter {encounter_id}")
+        
         # Add diagnosis to patient's conditions (if not already present)
         diagnosis = extracted_info.get('diagnosis', '')
         if diagnosis:
