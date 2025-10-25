@@ -47,6 +47,7 @@ function App() {
             <Route path="queue/workstation" element={<WorkstationDashboard />} />
             <Route path="billing" element={<Billing />} />
             <Route path="analytics" element={<Analytics />} />
+            <Route path="icd10-test" element={<ICD10TestPage />} />
           </Route>
         </Routes>
       </BrowserRouter>
