@@ -184,17 +184,20 @@ const ImmunizationsTestPage = () => {
                 <div key={vaccineType} className="bg-white rounded-lg shadow-md p-4 border-l-4 border-blue-500">
                   <h3 className="font-semibold text-gray-800 mb-2">{vaccineType}</h3>
                   <div className="space-y-1 text-sm">
-                    <p className="text-gray-600">Doses given: <span className="font-semibold">{data.total_doses}</span></p>
-                    <p className="text-gray-600">Series total: <span className="font-semibold">{data.doses_in_series || 'Unknown'}</span></p>
+                    <p className="text-gray-600">
+                      Doses given: <span className="font-semibold">{data.highest_dose_number || data.total_doses}</span>
+                    </p>
+                    <p className="text-gray-600">
+                      Series total: <span className="font-semibold">{data.doses_in_series || 'Unknown'}</span>
+                    </p>
                     {data.last_dose_date && (
                       <p className="text-gray-600">Last: {new Date(data.last_dose_date).toLocaleDateString()}</p>
                     )}
-                    {data.next_due_date && (
-                      <p className="text-orange-600">Next due: {new Date(data.next_due_date).toLocaleDateString()}</p>
-                    )}
-                    {data.series_complete && (
+                    {data.series_complete ? (
                       <p className="text-green-600 font-semibold">✓ Series Complete</p>
-                    )}
+                    ) : data.next_due_date ? (
+                      <p className="text-orange-600">Next due: {new Date(data.next_due_date).toLocaleDateString()}</p>
+                    ) : null}
                   </div>
                 </div>
               ))}
