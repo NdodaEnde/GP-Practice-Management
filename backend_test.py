@@ -1226,6 +1226,7 @@ class NAPPITester:
         self.test_patient_id = None
         self.created_prescription_id = None
         self.nappi_search_results = []
+        self.selected_nappi_medication = None
         
     def log_test(self, test_name, success, message, details=None):
         """Log test results"""
@@ -1255,6 +1256,408 @@ class NAPPITester:
                 return False
         except Exception as e:
             self.log_test("Backend Health Check", False, f"Cannot connect to backend: {str(e)}")
+            return False
+    
+    def get_test_patient_id(self):
+        """Get or create a test patient for prescription testing"""
+        try:
+            # First, try to get existing patients
+            response = requests.get(f"{self.backend_url}/patients", timeout=30)
+            
+            if response.status_code == 200:
+                patients = response.json()
+                if patients and len(patients) > 0:
+                    # Use the first patient
+                    self.test_patient_id = patients[0]['id']
+                    self.log_test("Get Test Patient", True, 
+                                f"Using existing patient: {self.test_patient_id}")
+                    return True
+                else:
+                    # Create a test patient
+                    patient_data = {
+                        "first_name": "Test",
+                        "last_name": "Patient",
+                        "dob": "1990-01-01",
+                        "id_number": "9001010001088",
+                        "contact_number": "0123456789",
+                        "email": "test@example.com"
+                    }
+                    
+                    create_response = requests.post(
+                        f"{self.backend_url}/patients",
+                        json=patient_data,
+                        timeout=30
+                    )
+                    
+                    if create_response.status_code == 200:
+                        created_patient = create_response.json()
+                        self.test_patient_id = created_patient['id']
+                        self.log_test("Create Test Patient", True, 
+                                    f"Created test patient: {self.test_patient_id}")
+                        return True
+                    else:
+                        self.log_test("Create Test Patient", False, 
+                                    f"Failed to create patient: {create_response.status_code}")
+                        return False
+            else:
+                self.log_test("Get Test Patient", False, 
+                            f"Failed to get patients: {response.status_code}")
+                return False
+                
+        except Exception as e:
+            self.log_test("Get Test Patient", False, f"Error getting test patient: {str(e)}")
+            return False
+    
+    def test_nappi_search(self):
+        """Test NAPPI search for paracetamol"""
+        try:
+            # Search for paracetamol as specified in review request
+            response = requests.get(
+                f"{self.backend_url}/nappi/search",
+                params={"query": "paracetamol", "limit": 10},
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                
+                if 'results' in result and 'count' in result:
+                    results = result['results']
+                    count = result['count']
+                    
+                    if count > 0:
+                        self.nappi_search_results = results
+                        # Select the first result for testing
+                        self.selected_nappi_medication = results[0]
+                        
+                        # Verify the result has required fields
+                        required_fields = ['nappi_code', 'brand_name', 'generic_name']
+                        present_fields = [f for f in required_fields if f in self.selected_nappi_medication]
+                        
+                        if len(present_fields) >= 3:
+                            self.log_test("NAPPI Search - Paracetamol", True, 
+                                        f"Found {count} paracetamol medications. Selected: {self.selected_nappi_medication['brand_name']} (NAPPI: {self.selected_nappi_medication['nappi_code']})")
+                            return True
+                        else:
+                            self.log_test("NAPPI Search - Paracetamol", False, 
+                                        f"Search results missing required fields: {present_fields}/{required_fields}")
+                            return False
+                    else:
+                        self.log_test("NAPPI Search - Paracetamol", False, 
+                                    "No paracetamol medications found in NAPPI database")
+                        return False
+                else:
+                    self.log_test("NAPPI Search - Paracetamol", False, 
+                                f"Invalid response structure: {result}")
+                    return False
+            else:
+                error_msg = f"API returned status {response.status_code}"
+                try:
+                    error_detail = response.json()
+                    error_msg += f": {error_detail}"
+                except:
+                    error_msg += f": {response.text}"
+                
+                self.log_test("NAPPI Search - Paracetamol", False, error_msg)
+                return False
+                
+        except Exception as e:
+            self.log_test("NAPPI Search - Paracetamol", False, f"Request failed: {str(e)}")
+            return False
+    
+    def test_create_prescription_with_nappi(self):
+        """Test creating prescription with complete NAPPI data"""
+        try:
+            if not self.test_patient_id:
+                self.log_test("Create Prescription with NAPPI", False, "No test patient available")
+                return False
+            
+            if not self.selected_nappi_medication:
+                self.log_test("Create Prescription with NAPPI", False, "No NAPPI medication selected")
+                return False
+            
+            # Create prescription with NAPPI data as specified in review request
+            prescription_data = {
+                "patient_id": self.test_patient_id,
+                "doctor_name": "Dr. Smith",
+                "prescription_date": "2025-01-25",
+                "items": [{
+                    "medication_name": self.selected_nappi_medication.get('brand_name', 'Panado 500mg Tablets'),
+                    "nappi_code": self.selected_nappi_medication.get('nappi_code', '111111'),
+                    "generic_name": self.selected_nappi_medication.get('generic_name', 'Paracetamol'),
+                    "dosage": "500mg",
+                    "frequency": "Three times daily",
+                    "duration": "5 days",
+                    "quantity": "15 tablets",
+                    "instructions": "Take with food"
+                }],
+                "notes": "For headache"
+            }
+            
+            response = requests.post(
+                f"{self.backend_url}/prescriptions",
+                json=prescription_data,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                
+                if result.get('status') == 'success':
+                    self.created_prescription_id = result.get('prescription_id')
+                    self.log_test("Create Prescription with NAPPI", True, 
+                                f"Successfully created prescription {self.created_prescription_id} with NAPPI code {prescription_data['items'][0]['nappi_code']}")
+                    return True
+                else:
+                    self.log_test("Create Prescription with NAPPI", False, 
+                                f"Prescription creation failed: {result.get('message', 'Unknown error')}")
+                    return False
+            else:
+                error_msg = f"API returned status {response.status_code}"
+                try:
+                    error_detail = response.json()
+                    error_msg += f": {error_detail}"
+                except:
+                    error_msg += f": {response.text}"
+                
+                self.log_test("Create Prescription with NAPPI", False, error_msg)
+                return False
+                
+        except Exception as e:
+            self.log_test("Create Prescription with NAPPI", False, f"Request failed: {str(e)}")
+            return False
+    
+    def test_retrieve_prescription_with_nappi(self):
+        """Test retrieving prescription with NAPPI data"""
+        try:
+            if not self.test_patient_id:
+                self.log_test("Retrieve Prescription with NAPPI", False, "No test patient available")
+                return False
+            
+            # Get prescriptions for the patient
+            response = requests.get(
+                f"{self.backend_url}/prescriptions/patient/{self.test_patient_id}",
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                
+                if result.get('status') == 'success':
+                    prescriptions = result.get('prescriptions', [])
+                    
+                    if prescriptions:
+                        # Check the first prescription
+                        prescription = prescriptions[0]
+                        items = prescription.get('items', [])
+                        
+                        if items:
+                            item = items[0]
+                            
+                            # Verify NAPPI fields are present
+                            nappi_code = item.get('nappi_code')
+                            generic_name = item.get('generic_name')
+                            medication_name = item.get('medication_name')
+                            
+                            # Check all required fields
+                            required_fields = ['medication_name', 'dosage', 'frequency', 'duration', 'quantity', 'instructions']
+                            present_fields = [f for f in required_fields if f in item and item[f] is not None]
+                            
+                            if len(present_fields) >= 6:
+                                self.log_test("Prescription Item Fields", True, 
+                                            f"All required fields present: {present_fields}")
+                            else:
+                                missing_fields = [f for f in required_fields if f not in item or item[f] is None]
+                                self.log_test("Prescription Item Fields", False, 
+                                            f"Missing fields: {missing_fields}")
+                            
+                            # Verify NAPPI-specific fields
+                            if nappi_code and generic_name:
+                                self.log_test("Retrieve Prescription with NAPPI", True, 
+                                            f"Successfully retrieved prescription with NAPPI code: {nappi_code}, Generic: {generic_name}, Medication: {medication_name}")
+                                return True
+                            else:
+                                self.log_test("Retrieve Prescription with NAPPI", False, 
+                                            f"NAPPI fields missing - NAPPI Code: {nappi_code}, Generic Name: {generic_name}")
+                                return False
+                        else:
+                            self.log_test("Retrieve Prescription with NAPPI", False, 
+                                        "No prescription items found")
+                            return False
+                    else:
+                        self.log_test("Retrieve Prescription with NAPPI", False, 
+                                    "No prescriptions found for patient")
+                        return False
+                else:
+                    self.log_test("Retrieve Prescription with NAPPI", False, 
+                                f"Failed to retrieve prescriptions: {result.get('status')}")
+                    return False
+            else:
+                error_msg = f"API returned status {response.status_code}"
+                try:
+                    error_detail = response.json()
+                    error_msg += f": {error_detail}"
+                except:
+                    error_msg += f": {response.text}"
+                
+                self.log_test("Retrieve Prescription with NAPPI", False, error_msg)
+                return False
+                
+        except Exception as e:
+            self.log_test("Retrieve Prescription with NAPPI", False, f"Request failed: {str(e)}")
+            return False
+    
+    def test_multiple_medications_prescription(self):
+        """Test prescription with multiple medications - one with NAPPI code, one without"""
+        try:
+            if not self.test_patient_id:
+                self.log_test("Multiple Medications Prescription", False, "No test patient available")
+                return False
+            
+            # Create prescription with 2 medications as specified in review request
+            prescription_data = {
+                "patient_id": self.test_patient_id,
+                "doctor_name": "Dr. Jones",
+                "prescription_date": "2025-01-25",
+                "items": [
+                    {
+                        # Medication with NAPPI code
+                        "medication_name": self.selected_nappi_medication.get('brand_name', 'Panado 500mg Tablets') if self.selected_nappi_medication else 'Panado 500mg Tablets',
+                        "nappi_code": self.selected_nappi_medication.get('nappi_code', '111111') if self.selected_nappi_medication else '111111',
+                        "generic_name": self.selected_nappi_medication.get('generic_name', 'Paracetamol') if self.selected_nappi_medication else 'Paracetamol',
+                        "dosage": "500mg",
+                        "frequency": "Twice daily",
+                        "duration": "7 days",
+                        "quantity": "14 tablets",
+                        "instructions": "Take after meals"
+                    },
+                    {
+                        # Medication without NAPPI code (manual entry)
+                        "medication_name": "Custom Herbal Remedy",
+                        "nappi_code": None,  # No NAPPI code
+                        "generic_name": None,  # No generic name
+                        "dosage": "1 teaspoon",
+                        "frequency": "Once daily",
+                        "duration": "10 days",
+                        "quantity": "1 bottle",
+                        "instructions": "Take before bedtime"
+                    }
+                ],
+                "notes": "Mixed prescription - one NAPPI coded, one manual entry"
+            }
+            
+            response = requests.post(
+                f"{self.backend_url}/prescriptions",
+                json=prescription_data,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                
+                if result.get('status') == 'success':
+                    prescription_id = result.get('prescription_id')
+                    
+                    # Now retrieve and verify the prescription
+                    get_response = requests.get(
+                        f"{self.backend_url}/prescriptions/{prescription_id}",
+                        timeout=30
+                    )
+                    
+                    if get_response.status_code == 200:
+                        get_result = get_response.json()
+                        
+                        if get_result.get('status') == 'success':
+                            prescription = get_result.get('prescription', {})
+                            items = prescription.get('items', [])
+                            
+                            if len(items) == 2:
+                                # Check first item (with NAPPI)
+                                item1 = items[0]
+                                has_nappi = item1.get('nappi_code') is not None and item1.get('generic_name') is not None
+                                
+                                # Check second item (without NAPPI)
+                                item2 = items[1]
+                                no_nappi = item2.get('nappi_code') is None and item2.get('generic_name') is None
+                                
+                                if has_nappi and no_nappi:
+                                    self.log_test("Multiple Medications Prescription", True, 
+                                                f"Successfully created and retrieved prescription with mixed NAPPI data - Item 1: NAPPI {item1.get('nappi_code')}, Item 2: Manual entry")
+                                    return True
+                                else:
+                                    self.log_test("Multiple Medications Prescription", False, 
+                                                f"NAPPI data not correctly saved - Item 1 NAPPI: {has_nappi}, Item 2 No NAPPI: {no_nappi}")
+                                    return False
+                            else:
+                                self.log_test("Multiple Medications Prescription", False, 
+                                            f"Expected 2 items, found {len(items)}")
+                                return False
+                        else:
+                            self.log_test("Multiple Medications Prescription", False, 
+                                        f"Failed to retrieve created prescription: {get_result.get('status')}")
+                            return False
+                    else:
+                        self.log_test("Multiple Medications Prescription", False, 
+                                    f"Failed to retrieve prescription: {get_response.status_code}")
+                        return False
+                else:
+                    self.log_test("Multiple Medications Prescription", False, 
+                                f"Prescription creation failed: {result.get('message', 'Unknown error')}")
+                    return False
+            else:
+                error_msg = f"API returned status {response.status_code}"
+                try:
+                    error_detail = response.json()
+                    error_msg += f": {error_detail}"
+                except:
+                    error_msg += f": {response.text}"
+                
+                self.log_test("Multiple Medications Prescription", False, error_msg)
+                return False
+                
+        except Exception as e:
+            self.log_test("Multiple Medications Prescription", False, f"Request failed: {str(e)}")
+            return False
+    
+    def test_end_to_end_nappi_workflow(self):
+        """Test complete end-to-end NAPPI workflow: Search → Select → Create → Retrieve"""
+        try:
+            # This is a summary test that verifies the complete workflow
+            workflow_steps = [
+                ("NAPPI Search", self.nappi_search_results is not None and len(self.nappi_search_results) > 0),
+                ("Medication Selection", self.selected_nappi_medication is not None),
+                ("Prescription Creation", self.created_prescription_id is not None),
+                ("Patient ID Available", self.test_patient_id is not None)
+            ]
+            
+            all_steps_passed = True
+            for step_name, step_result in workflow_steps:
+                if step_result:
+                    self.log_test(f"E2E Workflow - {step_name}", True, f"{step_name} completed successfully")
+                else:
+                    self.log_test(f"E2E Workflow - {step_name}", False, f"{step_name} failed")
+                    all_steps_passed = False
+            
+            if all_steps_passed:
+                # Verify complete data flow
+                if (self.selected_nappi_medication and 
+                    self.selected_nappi_medication.get('nappi_code') and 
+                    self.selected_nappi_medication.get('generic_name')):
+                    
+                    self.log_test("End-to-End NAPPI Workflow", True, 
+                                f"Complete workflow verified: Search → Select → Create → Retrieve. NAPPI Code: {self.selected_nappi_medication['nappi_code']}")
+                    return True
+                else:
+                    self.log_test("End-to-End NAPPI Workflow", False, 
+                                "Workflow completed but NAPPI data incomplete")
+                    return False
+            else:
+                self.log_test("End-to-End NAPPI Workflow", False, 
+                            "Some workflow steps failed")
+                return False
+                
+        except Exception as e:
+            self.log_test("End-to-End NAPPI Workflow", False, f"Workflow verification failed: {str(e)}")
             return False
     
     def get_or_create_test_patient(self):
