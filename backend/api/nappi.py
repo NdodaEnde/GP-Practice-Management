@@ -46,7 +46,7 @@ class NAPPISearchResponse(BaseModel):
     query: str
 
 
-@router.get("/stats", response_model=NAPPIStatsResponse)
+@router.get("/nappi/stats", response_model=NAPPIStatsResponse)
 async def get_nappi_stats():
     """Get NAPPI database statistics"""
     try:
