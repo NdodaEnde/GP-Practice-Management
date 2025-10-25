@@ -264,24 +264,32 @@ const ImmunizationsTestPage = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Dose Number</label>
+                  <label className="block text-sm font-medium mb-1">
+                    Which Dose? (e.g., 1st, 2nd, 3rd)
+                  </label>
                   <input
                     type="number"
                     min="1"
                     value={immunizationForm.dose_number}
                     onChange={(e) => setImmunizationForm({ ...immunizationForm, dose_number: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    placeholder="1"
                   />
+                  <p className="text-xs text-gray-500 mt-1">Current dose being given</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Doses in Series</label>
+                  <label className="block text-sm font-medium mb-1">
+                    Total Doses in Series
+                  </label>
                   <input
                     type="number"
                     min="1"
                     value={immunizationForm.doses_in_series}
                     onChange={(e) => setImmunizationForm({ ...immunizationForm, doses_in_series: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    placeholder="1"
                   />
+                  <p className="text-xs text-gray-500 mt-1">Total doses needed (e.g., COVID-19 = 2)</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Route</label>
