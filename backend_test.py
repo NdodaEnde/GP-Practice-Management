@@ -1955,24 +1955,24 @@ def main():
             return 1
     
     else:
-        # Run original patient creation tests
-        tester = PatientCreationTester()
+        # Run immunizations summary display logic tests by default
+        immunizations_tester = ImmunizationsTester()
         
         try:
-            # Run the complete workflow test
-            success = tester.run_patient_creation_complete_data_mapping_test()
+            # Run the immunizations summary display logic test
+            success = immunizations_tester.run_immunizations_summary_display_test()
             
             # Print detailed results
             print("\n" + "="*80)
-            print("DETAILED TEST RESULTS")
+            print("DETAILED IMMUNIZATIONS TEST RESULTS")
             print("="*80)
             
-            for result in tester.test_results:
+            for result in immunizations_tester.test_results:
                 status = "✅" if result['success'] else "❌"
                 print(f"{status} {result['test']}: {result['message']}")
             
             # Cleanup
-            tester.cleanup_test_data()
+            immunizations_tester.cleanup_test_data()
             
             return 0 if success else 1
             
@@ -1982,8 +1982,6 @@ def main():
         except Exception as e:
             print(f"\n💥 Unexpected error: {str(e)}")
             return 1
-        finally:
-            tester.close_connections()
 
 if __name__ == "__main__":
     exit_code = main()
