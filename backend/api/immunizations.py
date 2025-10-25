@@ -66,9 +66,14 @@ class Immunization(BaseModel):
     vaccine_type: Optional[str]
     administration_date: str
     dose_number: Optional[int]
+    route: Optional[str]
+    anatomical_site: Optional[str]
+    series_name: Optional[str]
+    doses_in_series: Optional[int]
     status: str
     series_complete: bool
     next_dose_due: Optional[str]
+    administered_by: Optional[str]
     occupational_requirement: bool
     created_at: str
 
