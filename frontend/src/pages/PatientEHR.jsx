@@ -9,6 +9,8 @@ import ReactECharts from 'echarts-for-react';
 import { patientAPI, encounterAPI, documentAPI } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import AllergyManagement from '@/components/AllergyManagement';
+import DiagnosesManagement from '@/components/DiagnosesManagement';
+import VitalsManagement from '@/components/VitalsManagement';
 
 const PatientEHR = () => {
   const { patientId } = useParams();
