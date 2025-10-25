@@ -50,11 +50,11 @@ def load_icd10_codes(excel_path='/tmp/icd10.xlsx'):
                 'gender': str(row['Gender']) if pd.notna(row.get('Gender')) else None,
                 'status': str(row['Status']) if pd.notna(row.get('Status')) else None,
                 
-                # Dates
-                'who_start_date': row['WHO_Start_date'].date() if pd.notna(row.get('WHO_Start_date')) else None,
-                'who_end_date': row['WHO_End_date'].date() if pd.notna(row.get('WHO_End_date')) else None,
-                'sa_start_date': row['SA_Start_Date'].date() if pd.notna(row.get('SA_Start_Date')) else None,
-                'sa_end_date': row['SA_End_Date'].date() if pd.notna(row.get('SA_End_Date')) else None,
+                # Dates - convert to ISO string format
+                'who_start_date': row['WHO_Start_date'].date().isoformat() if pd.notna(row.get('WHO_Start_date')) else None,
+                'who_end_date': row['WHO_End_date'].date().isoformat() if pd.notna(row.get('WHO_End_date')) else None,
+                'sa_start_date': row['SA_Start_Date'].date().isoformat() if pd.notna(row.get('SA_Start_Date')) else None,
+                'sa_end_date': row['SA_End_Date'].date().isoformat() if pd.notna(row.get('SA_End_Date')) else None,
             }
             
             codes_to_insert.append(code_data)
