@@ -168,6 +168,21 @@ const PrescriptionBuilder = ({ patientId, encounterId, doctorName, initialData, 
       return;
     }
 
+    // Check for allergy conflicts
+    if (allergyConflicts.length > 0) {
+      const conflictMessages = allergyConflicts.map(c => 
+        `${c.medication} may conflict with allergy: ${c.allergy.allergen}`
+      ).join('\n');
+      
+      const confirmed = window.confirm(
+        `⚠️ ALLERGY WARNING!\n\n${conflictMessages}\n\nReaction: ${allergyConflicts[0].allergy.reaction}\nSeverity: ${allergyConflicts[0].allergy.severity}\n\nAre you sure you want to proceed with this prescription?`
+      );
+      
+      if (!confirmed) {
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       const response = await axios.post(`${backendUrl}/api/prescriptions`, {
@@ -198,6 +213,8 @@ const PrescriptionBuilder = ({ patientId, encounterId, doctorName, initialData, 
         instructions: ''
       }]);
       setNotes('');
+      setAllergyConflicts([]);
+      setShowAllergyWarning(false);
     } catch (error) {
       console.error('Error saving prescription:', error);
       toast({
