@@ -684,6 +684,9 @@ const PatientEHR = () => {
         {/* Tab 3: Vitals & Labs */}
         <TabsContent value="vitals" className="mt-6">
           <div className="space-y-6">
+            {/* Vitals Management Component */}
+            <VitalsManagement patientId={patientId} />
+
             {/* Vitals Trends Chart */}
             <Card className="border-0 shadow-lg">
               <CardHeader>
