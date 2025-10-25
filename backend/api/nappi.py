@@ -9,7 +9,7 @@ from typing import List, Optional
 import os
 from supabase import create_client
 
-router = APIRouter(prefix="/api/nappi", tags=["NAPPI Codes"])
+router = APIRouter()
 
 # Supabase connection
 SUPABASE_URL = os.getenv('SUPABASE_URL')
