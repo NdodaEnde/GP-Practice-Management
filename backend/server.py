@@ -4190,6 +4190,7 @@ from api.nappi import router as nappi_router
 from api.clinical_notes import router as clinical_notes_router
 from api.lab import router as lab_router
 from api.procedures import router as procedures_router
+from api.immunizations import router as immunizations_router
 
 api_router.include_router(allergies_router, tags=["Allergies"])
 api_router.include_router(icd10_router, tags=["ICD-10"])
@@ -4199,6 +4200,7 @@ api_router.include_router(nappi_router, tags=["NAPPI Codes"])
 api_router.include_router(clinical_notes_router, tags=["Clinical Notes"])
 api_router.include_router(lab_router, tags=["Lab Orders & Results"])
 api_router.include_router(procedures_router, tags=["Procedures"])
+api_router.include_router(immunizations_router, tags=["Immunizations"])
 
 app.include_router(api_router)
 
