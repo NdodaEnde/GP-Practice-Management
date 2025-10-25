@@ -35,11 +35,13 @@ const PatientEHR = () => {
       setLoading(true);
       const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
       
-      const [patientRes, encountersRes, conditionsRes, medicationsRes] = await Promise.all([
+      const [patientRes, encountersRes, conditionsRes, medicationsRes, labOrdersRes] = await Promise.all([
         patientAPI.get(patientId),
         encounterAPI.listByPatient(patientId),
         fetch(`${backendUrl}/api/patients/${patientId}/conditions`).then(r => r.json()),
-        fetch(`${backendUrl}/api/patients/${patientId}/medications`).then(r => r.json())
+        fetch(`${backendUrl}/api/patients/${patientId}/medications`).then(r => r.json()),
+        fetch(`${backendUrl}/api/lab-orders/patient/${patientId}`).then(r => r.json()).catch(() => [])
+      ]);
       ]);
       
       setPatient(patientRes.data);
