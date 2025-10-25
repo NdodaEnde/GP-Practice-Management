@@ -81,7 +81,7 @@ async def get_nappi_stats():
         raise HTTPException(status_code=500, detail=f"Error fetching NAPPI stats: {str(e)}")
 
 
-@router.get("/search", response_model=NAPPISearchResponse)
+@router.get("/nappi/search", response_model=NAPPISearchResponse)
 async def search_nappi_codes(
     query: str = Query(..., min_length=2, description="Search query (brand name, generic name, or ingredient)"),
     limit: int = Query(20, le=100, description="Maximum number of results"),
