@@ -1224,7 +1224,7 @@ class ImmunizationsTester:
         self.backend_url = BACKEND_URL
         self.test_results = []
         self.test_patient_id = None
-        self.created_immunization_id = None
+        self.created_immunizations = []  # Track all created immunizations
         
     def log_test(self, test_name, success, message, details=None):
         """Log test results"""
