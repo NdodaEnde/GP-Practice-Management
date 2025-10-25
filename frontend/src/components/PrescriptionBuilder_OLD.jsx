@@ -6,10 +6,10 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Alert, AlertDescription } from './ui/alert';
-import { Plus, Trash2, Search, Save, AlertTriangle, Pill } from 'lucide-react';
+import { Plus, Trash2, Search, Save, AlertTriangle } from 'lucide-react';
 import { useToast } from '../hooks/use-toast';
 
-const PrescriptionBuilderNAPPI = ({ patientId, encounterId, doctorName, initialData, onSave }) => {
+const PrescriptionBuilder = ({ patientId, encounterId, doctorName, initialData, onSave }) => {
   const { toast } = useToast();
   const [prescriptionDate, setPrescriptionDate] = useState(new Date().toISOString().split('T')[0]);
   
@@ -18,8 +18,6 @@ const PrescriptionBuilderNAPPI = ({ patientId, encounterId, doctorName, initialD
     if (initialData && initialData.length > 0) {
       return initialData.map(item => ({
         medication_name: item.medication_name || '',
-        nappi_code: item.nappi_code || '',
-        generic_name: item.generic_name || '',
         dosage: item.dosage || '',
         frequency: item.frequency || '',
         duration: item.duration || '',
@@ -29,8 +27,6 @@ const PrescriptionBuilderNAPPI = ({ patientId, encounterId, doctorName, initialD
     }
     return [{
       medication_name: '',
-      nappi_code: '',
-      generic_name: '',
       dosage: '',
       frequency: '',
       duration: '',
@@ -39,8 +35,8 @@ const PrescriptionBuilderNAPPI = ({ patientId, encounterId, doctorName, initialD
     }];
   });
   const [notes, setNotes] = useState('');
-  const [searchQueries, setSearchQueries] = useState({});
-  const [searchResults, setSearchResults] = useState({});
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
   const [allergies, setAllergies] = useState([]);
@@ -83,19 +79,17 @@ const PrescriptionBuilderNAPPI = ({ patientId, encounterId, doctorName, initialD
 
     const conflicts = [];
     items.forEach((item, index) => {
-      if (!item.medication_name && !item.generic_name) return;
+      if (!item.medication_name) return;
       
       allergies.forEach((allergy) => {
-        const medName = (item.medication_name || '').toLowerCase();
-        const genericName = (item.generic_name || '').toLowerCase();
+        const medName = item.medication_name.toLowerCase();
         const allergen = allergy.allergen.toLowerCase();
         
-        // Check if medication name, generic name, or ingredient contains allergen
-        if (medName.includes(allergen) || genericName.includes(allergen) || 
-            allergen.includes(medName) || allergen.includes(genericName)) {
+        // Check if medication name contains allergen or vice versa
+        if (medName.includes(allergen) || allergen.includes(medName)) {
           conflicts.push({
             itemIndex: index,
-            medication: item.medication_name || item.generic_name,
+            medication: item.medication_name,
             allergy: allergy
           });
         }
@@ -106,26 +100,21 @@ const PrescriptionBuilderNAPPI = ({ patientId, encounterId, doctorName, initialD
     setShowAllergyWarning(conflicts.length > 0);
   };
 
-  // Search NAPPI medications
-  const searchNAPPIMedications = async (query, itemIndex) => {
+  // Search medications
+  const searchMedications = async (query) => {
     if (query.length < 2) {
-      setSearchResults(prev => ({ ...prev, [itemIndex]: [] }));
+      setSearchResults([]);
       return;
     }
 
     setSearching(true);
     try {
       const response = await axios.get(
-        `${backendUrl}/api/nappi/search?query=${encodeURIComponent(query)}&limit=15`
+        `${backendUrl}/api/medications/search?query=${encodeURIComponent(query)}`
       );
-      setSearchResults(prev => ({ ...prev, [itemIndex]: response.data.results || [] }));
+      setSearchResults(response.data.medications || []);
     } catch (error) {
-      console.error('Error searching NAPPI medications:', error);
-      toast({
-        title: "Search Error",
-        description: "Failed to search medications. Please try again.",
-        variant: "destructive"
-      });
+      console.error('Error searching medications:', error);
     } finally {
       setSearching(false);
     }
@@ -135,8 +124,6 @@ const PrescriptionBuilderNAPPI = ({ patientId, encounterId, doctorName, initialD
   const addItem = () => {
     setItems([...items, {
       medication_name: '',
-      nappi_code: '',
-      generic_name: '',
       dosage: '',
       frequency: '',
       duration: '',
@@ -149,13 +136,6 @@ const PrescriptionBuilderNAPPI = ({ patientId, encounterId, doctorName, initialD
   const removeItem = (index) => {
     const newItems = items.filter((_, i) => i !== index);
     setItems(newItems);
-    // Clean up search state
-    const newSearchQueries = { ...searchQueries };
-    const newSearchResults = { ...searchResults };
-    delete newSearchQueries[index];
-    delete newSearchResults[index];
-    setSearchQueries(newSearchQueries);
-    setSearchResults(newSearchResults);
   };
 
   // Update medication item
@@ -165,27 +145,15 @@ const PrescriptionBuilderNAPPI = ({ patientId, encounterId, doctorName, initialD
     setItems(newItems);
   };
 
-  // Select medication from NAPPI search results
-  const selectNAPPIMedication = (index, medication) => {
+  // Select medication from search results
+  const selectMedication = (index, medication) => {
     const newItems = [...items];
-    newItems[index].medication_name = medication.brand_name;
-    newItems[index].nappi_code = medication.nappi_code;
-    newItems[index].generic_name = medication.generic_name;
-    newItems[index].dosage = medication.strength || '';
+    newItems[index].medication_name = medication.name;
+    newItems[index].dosage = medication.common_dosages?.[0] || '';
+    newItems[index].frequency = medication.common_frequencies?.[0] || '';
     setItems(newItems);
-    
-    // Clear search results
-    setSearchResults(prev => ({ ...prev, [index]: [] }));
-    setSearchQueries(prev => ({ ...prev, [index]: '' }));
-  };
-
-  // Get schedule badge color
-  const getScheduleBadgeColor = (schedule) => {
-    if (!schedule) return 'bg-gray-100 text-gray-700';
-    if (schedule === 'S0' || schedule === 'Unscheduled') return 'bg-green-100 text-green-700';
-    if (schedule === 'S1' || schedule === 'S2') return 'bg-yellow-100 text-yellow-700';
-    if (schedule === 'S3' || schedule === 'S4') return 'bg-orange-100 text-orange-700';
-    return 'bg-red-100 text-red-700';
+    setSearchResults([]);
+    setSearchQuery('');
   };
 
   // Save prescription
@@ -222,16 +190,7 @@ const PrescriptionBuilderNAPPI = ({ patientId, encounterId, doctorName, initialD
         encounter_id: encounterId,
         doctor_name: doctorName || 'Dr. Unknown',
         prescription_date: prescriptionDate,
-        items: items.map(item => ({
-          medication_name: item.medication_name,
-          nappi_code: item.nappi_code || null,
-          generic_name: item.generic_name || null,
-          dosage: item.dosage,
-          frequency: item.frequency,
-          duration: item.duration,
-          quantity: item.quantity,
-          instructions: item.instructions
-        })),
+        items: items,
         notes: notes
       });
 
@@ -247,8 +206,6 @@ const PrescriptionBuilderNAPPI = ({ patientId, encounterId, doctorName, initialD
       // Reset form
       setItems([{
         medication_name: '',
-        nappi_code: '',
-        generic_name: '',
         dosage: '',
         frequency: '',
         duration: '',
@@ -258,8 +215,6 @@ const PrescriptionBuilderNAPPI = ({ patientId, encounterId, doctorName, initialD
       setNotes('');
       setAllergyConflicts([]);
       setShowAllergyWarning(false);
-      setSearchQueries({});
-      setSearchResults({});
     } catch (error) {
       console.error('Error saving prescription:', error);
       toast({
@@ -276,8 +231,8 @@ const PrescriptionBuilderNAPPI = ({ patientId, encounterId, doctorName, initialD
     <Card className="w-full">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Pill className="w-5 h-5" />
-          Create Prescription with NAPPI Codes
+          <Save className="w-5 h-5" />
+          Create Prescription
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -361,52 +316,30 @@ const PrescriptionBuilderNAPPI = ({ patientId, encounterId, doctorName, initialD
                   )}
                 </div>
 
-                {/* Medication Search with NAPPI */}
+                {/* Medication Name with Search */}
                 <div>
-                  <Label>Search Medication (NAPPI Database)</Label>
+                  <Label>Medication Name</Label>
                   <div className="relative">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                      <Input
-                        placeholder="Search by brand name, generic name, or ingredient..."
-                        className="pl-10"
-                        value={searchQueries[index] || ''}
-                        onChange={(e) => {
-                          const query = e.target.value;
-                          setSearchQueries(prev => ({ ...prev, [index]: query }));
-                          searchNAPPIMedications(query, index);
-                        }}
-                      />
-                    </div>
-                    
-                    {/* Search Results Dropdown */}
-                    {searchResults[index] && searchResults[index].length > 0 && (
-                      <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-80 overflow-auto">
-                        {searchResults[index].map((med) => (
+                    <Input
+                      placeholder="Search or type medication name"
+                      value={item.medication_name}
+                      onChange={(e) => {
+                        updateItem(index, 'medication_name', e.target.value);
+                        setSearchQuery(e.target.value);
+                        searchMedications(e.target.value);
+                      }}
+                    />
+                    {searchResults.length > 0 && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-auto">
+                        {searchResults.map((med) => (
                           <div
-                            key={med.nappi_code}
-                            className="p-3 hover:bg-gray-50 cursor-pointer border-b last:border-b-0"
-                            onClick={() => selectNAPPIMedication(index, med)}
+                            key={med.id}
+                            className="p-2 hover:bg-gray-100 cursor-pointer"
+                            onClick={() => selectMedication(index, med)}
                           >
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <div className="font-semibold text-blue-700">{med.brand_name}</div>
-                                <div className="text-sm text-gray-600">{med.generic_name}</div>
-                                {med.strength && (
-                                  <div className="text-xs text-gray-500 mt-1">Strength: {med.strength}</div>
-                                )}
-                                <div className="text-xs text-gray-400 mt-1">NAPPI: {med.nappi_code}</div>
-                              </div>
-                              <div className="flex flex-col gap-1 items-end">
-                                {med.schedule && (
-                                  <span className={`px-2 py-0.5 rounded text-xs font-semibold ${getScheduleBadgeColor(med.schedule)}`}>
-                                    {med.schedule}
-                                  </span>
-                                )}
-                                {med.dosage_form && (
-                                  <span className="text-xs text-gray-500">{med.dosage_form}</span>
-                                )}
-                              </div>
+                            <div className="font-semibold">{med.name}</div>
+                            <div className="text-xs text-gray-500">
+                              {med.generic_name} | {med.category}
                             </div>
                           </div>
                         ))}
@@ -415,60 +348,31 @@ const PrescriptionBuilderNAPPI = ({ patientId, encounterId, doctorName, initialD
                   </div>
                 </div>
 
-                {/* Selected Medication Display */}
-                {item.nappi_code && (
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="font-semibold text-blue-800">{item.medication_name}</div>
-                        <div className="text-sm text-gray-600">{item.generic_name}</div>
-                        <div className="text-xs text-gray-500 mt-1">NAPPI Code: {item.nappi_code}</div>
-                      </div>
-                      <Pill className="w-5 h-5 text-blue-600" />
-                    </div>
-                  </div>
-                )}
-
-                {/* Manual Entry Option */}
-                {!item.nappi_code && (
-                  <div>
-                    <Label>Or Enter Medication Name Manually</Label>
-                    <Input
-                      placeholder="Medication name"
-                      value={item.medication_name}
-                      onChange={(e) => updateItem(index, 'medication_name', e.target.value)}
-                    />
-                  </div>
-                )}
-
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <Label>Dosage / Strength *</Label>
+                    <Label>Dosage</Label>
                     <Input
                       placeholder="e.g., 500mg"
                       value={item.dosage}
                       onChange={(e) => updateItem(index, 'dosage', e.target.value)}
-                      required
                     />
                   </div>
 
                   <div>
-                    <Label>Frequency *</Label>
+                    <Label>Frequency</Label>
                     <Input
                       placeholder="e.g., Twice daily"
                       value={item.frequency}
                       onChange={(e) => updateItem(index, 'frequency', e.target.value)}
-                      required
                     />
                   </div>
 
                   <div>
-                    <Label>Duration *</Label>
+                    <Label>Duration</Label>
                     <Input
                       placeholder="e.g., 7 days"
                       value={item.duration}
                       onChange={(e) => updateItem(index, 'duration', e.target.value)}
-                      required
                     />
                   </div>
 
@@ -483,9 +387,9 @@ const PrescriptionBuilderNAPPI = ({ patientId, encounterId, doctorName, initialD
                 </div>
 
                 <div>
-                  <Label>Instructions for Patient</Label>
+                  <Label>Instructions</Label>
                   <Textarea
-                    placeholder="e.g., Take with food, avoid alcohol..."
+                    placeholder="Special instructions for the patient"
                     value={item.instructions}
                     onChange={(e) => updateItem(index, 'instructions', e.target.value)}
                     rows={2}
@@ -496,20 +400,20 @@ const PrescriptionBuilderNAPPI = ({ patientId, encounterId, doctorName, initialD
           ))}
         </div>
 
-        {/* Additional Notes */}
+        {/* Notes */}
         <div>
           <Label htmlFor="notes">Additional Notes</Label>
           <Textarea
             id="notes"
-            placeholder="Any additional notes for the prescription..."
+            placeholder="Any additional notes about the prescription"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={3}
           />
         </div>
 
-        {/* Save Button */}
-        <div className="flex justify-end gap-3">
+        {/* Action Buttons */}
+        <div className="flex justify-end gap-2">
           <Button
             onClick={savePrescription}
             disabled={saving}
@@ -524,4 +428,4 @@ const PrescriptionBuilderNAPPI = ({ patientId, encounterId, doctorName, initialD
   );
 };
 
-export default PrescriptionBuilderNAPPI;
+export default PrescriptionBuilder;
