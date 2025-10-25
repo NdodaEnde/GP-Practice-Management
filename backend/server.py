@@ -849,7 +849,12 @@ async def create_encounter_from_document(patient_id: str, parsed_data: Dict[str,
             'created_at': datetime.now(timezone.utc).isoformat()
         })
         
-        logger.info(f"Created encounter {encounter_id} from document {document_id}")
+        # Auto-populate structured EHR tables
+        await populate_allergies_from_document(patient_id, parsed_data)
+        await populate_diagnoses_from_document(patient_id, encounter_id, parsed_data)
+        await populate_vitals_from_document(patient_id, encounter_id, parsed_data)
+        
+        logger.info(f"Created encounter {encounter_id} from document {document_id} with structured EHR data")
         return encounter_id
         
     except Exception as e:
