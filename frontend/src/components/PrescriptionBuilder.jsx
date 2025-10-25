@@ -236,6 +236,48 @@ const PrescriptionBuilder = ({ patientId, encounterId, doctorName, initialData, 
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Patient Allergies Alert */}
+        {allergies.length > 0 && (
+          <Alert className="border-red-500 bg-red-50">
+            <AlertTriangle className="h-4 w-4 text-red-600" />
+            <AlertDescription>
+              <strong className="text-red-700">Patient has {allergies.length} known {allergies.length === 1 ? 'allergy' : 'allergies'}:</strong>
+              <ul className="mt-2 list-disc list-inside space-y-1">
+                {allergies.map((allergy) => (
+                  <li key={allergy.id} className="text-sm">
+                    <strong>{allergy.allergen}</strong> - {allergy.reaction} 
+                    <span className="ml-2 px-2 py-0.5 bg-red-200 text-red-800 rounded text-xs font-semibold">
+                      {allergy.severity}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Allergy Conflict Warning */}
+        {showAllergyWarning && allergyConflicts.length > 0 && (
+          <Alert variant="destructive" className="border-orange-500 bg-orange-50">
+            <AlertTriangle className="h-5 w-5 text-orange-600" />
+            <AlertDescription>
+              <strong className="text-orange-800 text-lg">⚠️ ALLERGY CONFLICT DETECTED!</strong>
+              <ul className="mt-2 space-y-2">
+                {allergyConflicts.map((conflict, idx) => (
+                  <li key={idx} className="text-sm bg-white p-2 rounded border border-orange-300">
+                    <strong className="text-orange-900">Medication #{conflict.itemIndex + 1}: {conflict.medication}</strong>
+                    <br />
+                    <span className="text-orange-700">May conflict with known allergy: {conflict.allergy.allergen}</span>
+                    <br />
+                    <span className="text-red-600 font-semibold">Reaction: {conflict.allergy.reaction} | Severity: {conflict.allergy.severity}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-orange-800 font-semibold">Please review before prescribing!</p>
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Prescription Date */}
         <div>
           <Label htmlFor="prescription_date">Prescription Date</Label>
