@@ -13,6 +13,7 @@ const Layout = () => {
     { name: 'GP Patient Digitization', path: '/gp-digitize', icon: Stethoscope },
     { name: 'Digitised Documents', path: '/gp/documents', icon: FileText },
     { name: 'Patients', path: '/patients', icon: Users },
+    { name: 'ICD-10 Test', path: '/icd10-test', icon: Code },
     { name: 'Billing', path: '/billing', icon: DollarSign },
     { name: 'Analytics', path: '/analytics', icon: BarChart3 },
   ];
