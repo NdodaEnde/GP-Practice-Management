@@ -212,6 +212,7 @@ const ImmunizationsTestPage = () => {
                     vaccine_name: vaccine.name,
                     vaccine_type: vaccine.type,
                     series_name: vaccine.series,
+                    dose_number: 1,  // Always start at dose 1
                     doses_in_series: vaccine.doses,
                     series_complete: vaccine.doses === 1
                   })}
