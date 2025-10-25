@@ -51,6 +51,7 @@ function App() {
             <Route path="analytics" element={<Analytics />} />
             <Route path="icd10-test" element={<ICD10TestPage />} />
             <Route path="nappi-test" element={<NAPPITestPage />} />
+            <Route path="lab-test" element={<LabTestPage />} />
           </Route>
         </Routes>
       </BrowserRouter>
