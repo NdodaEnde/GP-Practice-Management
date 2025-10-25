@@ -226,12 +226,19 @@ async def get_immunization_summary(patient_id: str):
             if vaccine_type not in summary:
                 summary[vaccine_type] = {
                     'total_doses': 0,
+                    'highest_dose_number': 0,
                     'doses_in_series': None,
                     'last_dose_date': None,
                     'next_due_date': None,
                     'series_complete': False
                 }
             
+            # Track highest dose number (not just count of records)
+            dose_number = imm.get('dose_number') or 0
+            if dose_number > summary[vaccine_type]['highest_dose_number']:
+                summary[vaccine_type]['highest_dose_number'] = dose_number
+            
+            # Also keep record count for reference
             summary[vaccine_type]['total_doses'] += 1
             
             # Track doses in series (use the most recent or highest value)
@@ -245,15 +252,17 @@ async def get_immunization_summary(patient_id: str):
             if not summary[vaccine_type]['last_dose_date'] or admin_date > summary[vaccine_type]['last_dose_date']:
                 summary[vaccine_type]['last_dose_date'] = admin_date
             
-            # Track next due date
+            # Track next due date (only if series not complete)
             next_due = imm.get('next_dose_due')
-            if next_due:
+            if next_due and not imm.get('series_complete'):
                 if not summary[vaccine_type]['next_due_date'] or next_due < summary[vaccine_type]['next_due_date']:
                     summary[vaccine_type]['next_due_date'] = next_due
             
             # Check if any series is complete
             if imm.get('series_complete'):
                 summary[vaccine_type]['series_complete'] = True
+                # Clear next_due_date if series is complete
+                summary[vaccine_type]['next_due_date'] = None
         
         return {
             'patient_id': patient_id,
