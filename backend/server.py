@@ -433,6 +433,238 @@ async def find_patient_matches(demographics: Dict[str, Any]) -> List[Dict[str, A
     
     return matches[:5]  # Return top 5 matches
 
+async def populate_allergies_from_document(patient_id: str, parsed_data: Dict[str, Any]):
+    """Auto-populate allergies table from extracted document data"""
+    try:
+        demographics = parsed_data.get('demographics', {})
+        allergies_data = demographics.get('allergies') or demographics.get('known_allergies')
+        
+        if not allergies_data:
+            return
+        
+        # Handle different formats: string or list
+        if isinstance(allergies_data, str):
+            if allergies_data.lower() in ['none', 'nil', 'nka', 'nkda', 'no known allergies']:
+                return
+            allergies_list = [a.strip() for a in allergies_data.split(',') if a.strip()]
+        elif isinstance(allergies_data, list):
+            allergies_list = allergies_data
+        else:
+            return
+        
+        for allergy_item in allergies_list:
+            if isinstance(allergy_item, dict):
+                allergen = allergy_item.get('allergen') or allergy_item.get('name') or str(allergy_item)
+                reaction = allergy_item.get('reaction', 'Unknown reaction')
+                severity = allergy_item.get('severity', 'moderate')
+            else:
+                allergen = str(allergy_item)
+                reaction = 'Unknown reaction'
+                severity = 'moderate'
+            
+            # Check if allergy already exists
+            existing = supabase.table('allergies')\
+                .select('*')\
+                .eq('patient_id', patient_id)\
+                .ilike('allergen', f'%{allergen}%')\
+                .eq('status', 'active')\
+                .execute()
+            
+            if not existing.data:
+                allergy_data = {
+                    'id': str(uuid.uuid4()),
+                    'patient_id': patient_id,
+                    'allergen': allergen,
+                    'reaction': reaction,
+                    'severity': severity,
+                    'status': 'active',
+                    'notes': 'Auto-imported from digitized document',
+                    'created_at': datetime.now(timezone.utc).isoformat()
+                }
+                supabase.table('allergies').insert(allergy_data).execute()
+                logger.info(f"Created allergy: {allergen} for patient {patient_id}")
+    
+    except Exception as e:
+        logger.error(f"Error populating allergies: {e}")
+
+async def populate_diagnoses_from_document(patient_id: str, encounter_id: str, parsed_data: Dict[str, Any]):
+    """Auto-populate diagnoses table with AI ICD-10 matching from extracted document data"""
+    try:
+        chronic_summary = parsed_data.get('chronic_summary', {})
+        clinical_notes = parsed_data.get('clinical_notes', {})
+        
+        # Collect diagnoses from different sources
+        diagnoses_to_process = []
+        
+        # From chronic conditions
+        conditions = chronic_summary.get('chronic_conditions', [])
+        for condition in conditions:
+            if isinstance(condition, dict):
+                diagnosis_text = condition.get('condition') or condition.get('name')
+            else:
+                diagnosis_text = str(condition)
+            
+            if diagnosis_text:
+                diagnoses_to_process.append({
+                    'text': diagnosis_text,
+                    'type': 'primary',
+                    'onset_date': None
+                })
+        
+        # From clinical notes (assessment/diagnosis section)
+        if isinstance(clinical_notes, dict):
+            assessment = clinical_notes.get('assessment') or clinical_notes.get('diagnosis')
+            if assessment:
+                diagnoses_to_process.append({
+                    'text': assessment,
+                    'type': 'primary',
+                    'onset_date': None
+                })
+        
+        # Process each diagnosis with AI ICD-10 matching
+        import httpx
+        for diagnosis_item in diagnoses_to_process:
+            diagnosis_text = diagnosis_item['text']
+            
+            # Skip if empty or already exists
+            if not diagnosis_text or len(diagnosis_text) < 3:
+                continue
+            
+            # Check if diagnosis already exists
+            existing = supabase.table('diagnoses')\
+                .select('*')\
+                .eq('patient_id', patient_id)\
+                .ilike('diagnosis_description', f'%{diagnosis_text}%')\
+                .eq('status', 'active')\
+                .execute()
+            
+            if existing.data:
+                continue
+            
+            # Use AI to suggest ICD-10 code
+            icd10_code = None
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(
+                        f"http://localhost:8001/api/icd10/suggest",
+                        params={'diagnosis_text': diagnosis_text, 'max_suggestions': 1},
+                        timeout=10.0
+                    )
+                    if response.status_code == 200:
+                        data = response.json()
+                        if data.get('suggestions') and len(data['suggestions']) > 0:
+                            icd10_code = data['suggestions'][0]['code']
+                            logger.info(f"AI matched '{diagnosis_text}' to ICD-10 code: {icd10_code}")
+            except Exception as e:
+                logger.warning(f"ICD-10 AI matching failed for '{diagnosis_text}': {e}")
+            
+            # If AI matching failed, try simple keyword search
+            if not icd10_code:
+                try:
+                    async with httpx.AsyncClient() as client:
+                        response = await client.get(
+                            f"http://localhost:8001/api/icd10/search",
+                            params={'query': diagnosis_text, 'limit': 1},
+                            timeout=10.0
+                        )
+                        if response.status_code == 200:
+                            data = response.json()
+                            if len(data) > 0:
+                                icd10_code = data[0]['code']
+                                logger.info(f"Keyword matched '{diagnosis_text}' to ICD-10 code: {icd10_code}")
+                except Exception as e:
+                    logger.warning(f"ICD-10 keyword search failed for '{diagnosis_text}': {e}")
+            
+            # Create diagnosis record (even without ICD-10 code)
+            if icd10_code or diagnosis_text:
+                diagnosis_data = {
+                    'id': str(uuid.uuid4()),
+                    'patient_id': patient_id,
+                    'encounter_id': encounter_id,
+                    'icd10_code': icd10_code or 'UNMAPPED',
+                    'diagnosis_description': diagnosis_text,
+                    'diagnosis_type': diagnosis_item['type'],
+                    'status': 'active',
+                    'notes': 'Auto-imported from digitized document' + ('' if icd10_code else ' - ICD-10 code needs manual assignment'),
+                    'created_at': datetime.now(timezone.utc).isoformat()
+                }
+                
+                # Only insert if we have a valid ICD-10 code or the description is substantial
+                if icd10_code and icd10_code != 'UNMAPPED':
+                    supabase.table('diagnoses').insert(diagnosis_data).execute()
+                    logger.info(f"Created diagnosis: {diagnosis_text} ({icd10_code}) for patient {patient_id}")
+    
+    except Exception as e:
+        logger.error(f"Error populating diagnoses: {e}")
+
+async def populate_vitals_from_document(patient_id: str, encounter_id: str, parsed_data: Dict[str, Any]):
+    """Auto-populate vitals table from extracted document data"""
+    try:
+        vitals_data = parsed_data.get('vitals', {})
+        demographics = parsed_data.get('demographics', {})
+        
+        if not vitals_data:
+            return
+        
+        # Get measurement date from document
+        measurement_date = demographics.get('document_date') or datetime.now(timezone.utc).isoformat()
+        if 'T' in measurement_date:
+            measurement_date = measurement_date.split('T')[0]
+        
+        # Get vital records (handle both new and old structures)
+        vital_records = vitals_data.get('vital_entries') or vitals_data.get('vital_signs_records') or []
+        
+        if not vital_records:
+            return
+        
+        # Process each vital record (usually we want the most recent)
+        for idx, vital_record in enumerate(vital_records[:1]):  # Just take the first/most recent one
+            # Extract and normalize vital signs
+            bp_systolic = vital_record.get('bp_systolic')
+            bp_diastolic = vital_record.get('bp_diastolic')
+            heart_rate = vital_record.get('pulse') or vital_record.get('heart_rate')
+            temperature = vital_record.get('temperature')
+            weight = vital_record.get('weight_kg') or vital_record.get('weight')
+            height = vital_record.get('height_cm') or vital_record.get('height')
+            oxygen_saturation = vital_record.get('oxygen_saturation') or vital_record.get('spo2')
+            
+            # Only create record if at least one vital sign exists
+            if not any([bp_systolic, heart_rate, temperature, weight, height, oxygen_saturation]):
+                continue
+            
+            # Check if similar vital already exists for this date
+            existing = supabase.table('vitals')\
+                .select('*')\
+                .eq('patient_id', patient_id)\
+                .eq('measurement_date', measurement_date)\
+                .execute()
+            
+            if existing.data:
+                continue
+            
+            vital_data = {
+                'id': str(uuid.uuid4()),
+                'patient_id': patient_id,
+                'encounter_id': encounter_id,
+                'measurement_date': measurement_date,
+                'blood_pressure_systolic': int(bp_systolic) if bp_systolic else None,
+                'blood_pressure_diastolic': int(bp_diastolic) if bp_diastolic else None,
+                'heart_rate': int(heart_rate) if heart_rate else None,
+                'temperature': float(temperature) if temperature else None,
+                'weight': float(weight) if weight else None,
+                'height': float(height) if height else None,
+                'oxygen_saturation': int(oxygen_saturation) if oxygen_saturation else None,
+                'notes': 'Auto-imported from digitized document',
+                'created_at': datetime.now(timezone.utc).isoformat(),
+                'recorded_by': 'system'
+            }
+            
+            supabase.table('vitals').insert(vital_data).execute()
+            logger.info(f"Created vitals record for patient {patient_id} on {measurement_date}")
+    
+    except Exception as e:
+        logger.error(f"Error populating vitals: {e}")
+
 async def create_encounter_from_document(patient_id: str, parsed_data: Dict[str, Any], document_id: str) -> str:
     """Create an encounter from validated document data"""
     try:
