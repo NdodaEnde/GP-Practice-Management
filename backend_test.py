@@ -1826,12 +1826,12 @@ class ImmunizationsTester:
             self.log_test("Mixed Vaccine Types Scenario", False, f"Error: {str(e)}")
             return False
     
-    def run_immunizations_display_bug_test(self):
-        """Run the complete immunizations display bug verification test"""
+    def run_immunizations_summary_display_test(self):
+        """Run the improved immunizations summary display logic test"""
         print("\n" + "="*80)
-        print("IMMUNIZATIONS API DISPLAY BUG FIXES VERIFICATION")
-        print("Testing that doses_in_series, route, anatomical_site, series_name, administered_by")
-        print("fields are properly returned in API responses")
+        print("IMMUNIZATIONS SUMMARY DISPLAY LOGIC TEST")
+        print("Testing enhanced summary endpoint with highest_dose_number tracking")
+        print("and conditional next_due_date display logic")
         print("="*80)
         
         # Step 1: Test backend connectivity
@@ -1845,28 +1845,17 @@ class ImmunizationsTester:
             print("\n❌ Cannot proceed - No test patient available")
             return False
         
-        # Step 3: Check existing immunizations
-        print("\n💉 Step 2: Checking existing immunizations...")
-        existing_success, _ = self.test_check_existing_immunizations()
+        # Step 3: Test scenario with multiple doses
+        print("\n💉 Step 2: Testing multiple doses scenario...")
+        scenario1_success = self.test_scenario_multiple_doses()
         
-        # Step 4: Create test immunization with complete data
-        print("\n➕ Step 3: Creating test immunization with complete data...")
-        create_success, _ = self.test_create_immunization_with_complete_data()
-        if not create_success:
-            print("\n❌ Failed to create test immunization")
-            return False
+        # Step 4: Test complete series scenario
+        print("\n✅ Step 3: Testing complete series scenario...")
+        scenario2_success = self.test_scenario_complete_series()
         
-        # Step 5: Verify individual immunization GET includes all fields
-        print("\n🔍 Step 4: Verifying individual immunization GET response...")
-        get_success, _ = self.test_get_immunization_verify_fields()
-        
-        # Step 6: Verify patient immunizations list includes all fields
-        print("\n📋 Step 5: Verifying patient immunizations list response...")
-        list_success, _ = self.test_patient_immunizations_list()
-        
-        # Step 7: Verify summary endpoint shows correct doses_in_series
-        print("\n📊 Step 6: Verifying immunization summary endpoint...")
-        summary_success, _ = self.test_immunization_summary()
+        # Step 5: Test mixed vaccine types
+        print("\n🔄 Step 4: Testing mixed vaccine types scenario...")
+        scenario3_success = self.test_scenario_mixed_vaccine_types()
         
         # Summary
         print("\n" + "="*80)
