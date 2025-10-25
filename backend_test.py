@@ -1906,8 +1906,8 @@ def main():
         immunizations_tester = ImmunizationsTester()
         
         try:
-            # Run the immunizations display bug test
-            success = immunizations_tester.run_immunizations_display_bug_test()
+            # Run the immunizations summary display logic test
+            success = immunizations_tester.run_immunizations_summary_display_test()
             
             # Print detailed results
             print("\n" + "="*80)
