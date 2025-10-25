@@ -258,6 +258,30 @@ backend:
         agent: "testing"
         comment: "COMPREHENSIVE ICD-10 BACKEND TESTING COMPLETE - ALL 4 ENDPOINTS WORKING PERFECTLY: ✅ GET /api/icd10/stats returns correct database statistics (41,008 total codes, 35,481 clinical use codes, 11,857 primary diagnosis codes, ICD-10 MIT 2021 South Africa version). ✅ GET /api/icd10/search successfully searches with queries 'diabetes' (20 results), 'hypertension' (18 results), 'asthma' (8 results). All results have proper structure with code, who_full_desc, valid_clinical_use, valid_primary fields. Query validation and limit parameters working correctly. ✅ GET /api/icd10/suggest AI-powered suggestions working with GPT-4o integration. Test query 'Patient with type 2 diabetes and high blood pressure' returned relevant codes E11.9 and I10 with proper structure and AI response. ✅ GET /api/icd10/code/E11.9 specific code lookup working perfectly, returns 'Type 2 diabetes mellitus without complications' with all required fields and additional metadata (chapter_desc, group_desc, code_3char, code_3char_desc). All authentication with OPENAI_API_KEY functional. Backend ready for frontend integration."
 
+  - task: "Diagnoses API Backend"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/api/diagnoses.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "IMPLEMENTED: Created diagnoses.py API with full CRUD endpoints. Endpoints: POST /api/diagnoses (create diagnosis with ICD-10 code validation), GET /api/diagnoses/patient/{patient_id} (get all patient diagnoses with optional status and type filters), GET /api/diagnoses/{diagnosis_id} (get specific diagnosis), PATCH /api/diagnoses/{diagnosis_id} (update diagnosis), DELETE /api/diagnoses/{diagnosis_id} (soft delete), GET /api/diagnoses/encounter/{encounter_id} (get encounter diagnoses). Features: Auto-validates ICD-10 codes exist in database, supports diagnosis types (primary, secondary, differential), status tracking (active, resolved, ruled_out), onset_date and notes. Router integrated into server.py. Ready for testing."
+
+  - task: "Vitals API Backend"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/api/vitals.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "IMPLEMENTED: Created vitals.py API with full CRUD endpoints. Endpoints: POST /api/vitals (create vital signs record with auto-BMI calculation), GET /api/vitals/patient/{patient_id} (get patient vitals with limit), GET /api/vitals/{vital_id} (get specific vital), PATCH /api/vitals/{vital_id} (update vital with BMI recalculation), DELETE /api/vitals/{vital_id} (delete vital), GET /api/vitals/encounter/{encounter_id} (get encounter vitals), GET /api/vitals/patient/{patient_id}/latest (get most recent vital). Supports all vital signs: BP, HR, temp, RR, SpO2, weight, height, BMI. Router integrated into server.py. Ready for testing."
+
 frontend:
   - task: "Document Extract Button - Frontend UI"
     implemented: true
