@@ -1,13 +1,13 @@
 <analysis>
-The AI engineer's work in this trajectory primarily focused on two key areas. First, it completed the implementation of critical patient safety features, specifically establishing a comprehensive ICD-10 code system. This involved setting up backend APIs for search and AI-powered suggestions, creating a dedicated frontend test page (), and integrating it into the main application. Second, and more significantly, the engineer automated the EHR population workflow. This entailed developing helper functions and integrating them into  in  to automatically parse extracted document data and populate structured ,  (with ICD-10), and  tables. Additionally, allergy checks were integrated into the prescription workflow, and frontend components for diagnoses and vitals management were created and incorporated into . The work concluded with an agreement to proceed to Phase 2 and the initial step of processing NAPPI codes.
+The previous AI engineer significantly advanced the SurgiScan EHR application. Initial work centered on enhancing patient safety, including establishing a comprehensive ICD-10 system, integrating allergy checks into prescription workflows, and creating structured diagnoses and vitals management with automated EHR population from digitized documents. The most substantial recent effort involved implementing the NAPPI codes system, encompassing database schema, data extraction from a PDF (including iterative refinement for brand/generic name separation and dataset completeness), backend APIs, and a dedicated frontend test page. Subsequently, the engineer moved to Phase 2: Clinical Workflow Enhancement, completing Structured Clinical Notes (SOAP), Lab Orders & Results (with manual entry and EHR integration), Procedures, and Immunizations. Challenges included database migration issues (UUID vs. TEXT ID types), debugging frontend interaction for quick search buttons, and refining PDF data extraction. The work paused while fixing display inaccuracies in the Immunizations test page.
 </analysis>
 
 <product_requirements>
-SurgiScan is a multi-tenant healthcare SaaS for Occupational Health and GP Practices, focusing on Patient & Encounter Management and Document Digitization. It uses a LandingAI microservice for extraction, storing raw documents in MongoDB and structured data in Supabase. Key features include Patient Matching, EHR population, Document Archive Viewer, Queue Management, and AI Scribe for SOAP notes. Recent development focused on AI Scribe, an Enhanced Prescription Module, Comprehensive EHR Integration, various Bug Fixes, a Document Architecture Refactor (Parse → Store → Extract), EHR Enhancements (improved display, date grouping, diagnosis extraction), and Core EHR Component Expansion. The expansion included patient safety features like an Allergies system, a structured Diagnoses table with ICD-10 codes, and a dedicated Vitals table, with a major focus on auto-populating these from digitized documents.
+SurgiScan is a multi-tenant healthcare SaaS for Occupational Health and GP Practices, focusing on Patient & Encounter Management and Document Digitization. It uses a LandingAI microservice for extraction, storing raw documents in MongoDB and structured data in Supabase. Key features include Patient Matching, EHR population, Document Archive Viewer, Queue Management, and AI Scribe for SOAP notes. The application also provides an Enhanced Prescription Module, Comprehensive EHR Integration, and Core EHR Component Expansion. This expansion added patient safety features: an Allergies system, a structured Diagnoses table with ICD-10 codes, and a dedicated Vitals table, with a major focus on auto-populating these from digitized documents. Subsequent work introduced the NAPPI code system for medications, Structured Clinical Notes for AI Scribe output, Lab Orders & Results, Procedures, and Immunizations tracking to enhance clinical workflows.
 </product_requirements>
 
 <key_technical_concepts>
--   **Backend**: FastAPI, Python-dotenv, Supabase (Postgres), MongoDB, , usage: openai [-h] [-v] [-b API_BASE] [-k API_KEY] [-p PROXY [PROXY ...]]
+- **Backend**: FastAPI, Supabase (Postgres), MongoDB, , usage: openai [-h] [-v] [-b API_BASE] [-k API_KEY] [-p PROXY [PROXY ...]]
               [-o ORGANIZATION] [-t {openai,azure}]
               [--api-version API_VERSION] [--azure-endpoint AZURE_ENDPOINT]
               [--azure-ad-token AZURE_AD_TOKEN] [-V]
@@ -44,10 +44,38 @@ options:
                         https://www.microsoft.com/en-
                         us/security/business/identity-access/microsoft-entra-
                         id
-  -V, --version         show program's version number and exit (GPT-4o), , , .
--   **Frontend**: React, React Router DOM, Axios, , Shadcn UI components.
--   **APIs**: OpenAI (Whisper, GPT-4o), LandingAI Vision Agent (DPT-2 Parse/Extract).
--   **Data Handling**: UUIDs for IDs, ISO datetime, hybrid Supabase/MongoDB, URL-based state, database views.
+  -V, --version         show program's version number and exit (GPT-4o), usage: pdfplumber [-h] [--structure | --structure-text]
+                  [--format {csv,json,text}] [--types TYPES [TYPES ...]]
+                  [--include-attrs INCLUDE_ATTRS [INCLUDE_ATTRS ...]]
+                  [--exclude-attrs EXCLUDE_ATTRS [EXCLUDE_ATTRS ...]]
+                  [--laparams LAPARAMS] [--precision PRECISION]
+                  [--pages PAGES [PAGES ...]] [--indent INDENT]
+                  [infile]
+
+positional arguments:
+  infile
+
+options:
+  -h, --help            show this help message and exit
+  --structure           Write the structure tree as JSON. All other arguments
+                        except --pages, --laparams, and --indent will be
+                        ignored
+  --structure-text      Write the structure tree as JSON including text
+                        contents. All other arguments except --pages,
+                        --laparams, and --indent will be ignored
+  --format {csv,json,text}
+  --types TYPES [TYPES ...]
+  --include-attrs INCLUDE_ATTRS [INCLUDE_ATTRS ...]
+                        Include *only* these object attributes in output.
+  --exclude-attrs EXCLUDE_ATTRS [EXCLUDE_ATTRS ...]
+                        Exclude these object attributes from output.
+  --laparams LAPARAMS
+  --precision PRECISION
+  --pages PAGES [PAGES ...]
+  --indent INDENT       Indent level for JSON pretty-printing..
+- **Frontend**: React, React Router DOM, Axios, Shadcn UI components.
+- **Data Handling**: UUIDs (with corrections for TEXT consistency), ISO datetime, hybrid Supabase/MongoDB.
+- **Workflow**: Automated document data extraction for EHR population, API-driven CRUD operations.
 </key_technical_concepts>
 
 <code_architecture>
@@ -55,71 +83,89 @@ The application uses a React frontend, FastAPI backend, and a hybrid Supabase (P
 
 
 -   **/app/backend/server.py**: Main FastAPI application.
-    -   **Importance**: Centralizes API routes, handles data persistence, and orchestrates integrations.
-    -   **Changes**: Integrated  and  API routers. Critically, it was updated to include helper functions for , , and , which are called within  to auto-populate structured EHR tables from document extractions.
--   **/app/backend/api/allergies.py**: FastAPI router for allergy-related endpoints.
-    -   **Importance**: Provides CRUD operations for patient allergies.
-    -   **Changes**: Existing file, no direct changes in trajectory, but referenced.
--   **/app/backend/api/icd10.py**: FastAPI router for ICD-10 code lookup.
-    -   **Importance**: Enables searching and AI-powered suggestions for ICD-10 codes.
-    -   **Changes**: Existing file, confirmed to use GPT-4o for suggestions.
--   **/app/backend/api/diagnoses.py (new)**: FastAPI router for diagnoses-related endpoints.
-    -   **Importance**: Provides CRUD operations for patient diagnoses.
+    -   **Importance**: Centralizes API routes, orchestrates integrations.
+    -   **Changes**: Integrated , , , , and  API routers. Updated  with helper functions for auto-populating structured EHR tables (, , ). Modified  to use  and save structured notes.
+-   **/app/backend/api/nappi.py (new)**: FastAPI router for NAPPI code lookup and search.
+    -   **Importance**: Provides access to South African medication codes.
+    -   **Changes**: Newly created, includes search and statistics endpoints. Required fixing path prefixes and structure.
+-   **/app/backend/load_nappi_codes.py (new)**: Script to load NAPPI codes from CSV into Supabase.
+    -   **Importance**: Populates the NAPPI database.
+    -   **Changes**: Newly created, iteratively refined to improve data extraction and handling of brand/generic names, and to integrate common medications.
+-   **/app/backend/database/nappi_codes_migration.sql (new)**: SQL schema for the  table.
+    -   **Importance**: Defines the structure for storing medication data.
     -   **Changes**: Newly created.
--   **/app/backend/api/vitals.py (new)**: FastAPI router for vitals-related endpoints.
-    -   **Importance**: Provides CRUD operations for patient vitals.
-    -   **Changes**: Newly created.
--   **/app/frontend/src/App.js**: React router configuration.
-    -   **Importance**: Defines application routes.
-    -   **Changes**: Added a route for  page.
--   **/app/frontend/src/components/Layout.jsx**: Main application layout.
-    -   **Importance**: Provides consistent navigation and overall structure.
-    -   **Changes**: Added a navigation link to ICD-10 Test page.
+-   **/app/frontend/src/pages/NAPPITestPage.jsx (new)**: Frontend page for testing NAPPI search and display.
+    -   **Importance**: Dedicated UI for verifying NAPPI functionality.
+    -   **Changes**: Newly created, includes search, filtering, and displays medication details. Fixed quick search button interaction bug.
 -   **/app/frontend/src/components/PrescriptionBuilder.jsx**: Component for building prescriptions.
     -   **Importance**: Enables creation and management of patient prescriptions.
-    -   **Changes**: Modified to fetch patient allergies, display alerts for known allergies, and show a warning dialog for potential allergy conflicts with prescribed medications.
--   **/app/frontend/src/components/DiagnosesManagement.jsx (new)**: React component for managing patient diagnoses.
-    -   **Importance**: Provides a UI for displaying and adding patient diagnoses with ICD-10 integration.
-    -   **Changes**: Newly created and integrated into .
--   **/app/frontend/src/components/VitalsManagement.jsx (new)**: React component for managing patient vitals.
-    -   **Importance**: Provides a UI for displaying and adding patient vitals.
-    -   **Changes**: Newly created and integrated into .
+    -   **Changes**: Modified to fetch patient allergies and display alerts for conflicts. (No direct NAPPI integration yet, but planned).
+-   **/app/backend/api/clinical_notes.py (new)**: FastAPI router for structured clinical notes.
+    -   **Importance**: Provides CRUD for SOAP notes.
+    -   **Changes**: Newly created.
+-   **/app/backend/database/clinical_notes_migration.sql (new)**: SQL schema for the  table.
+    -   **Importance**: Stores structured SOAP notes.
+    -   **Changes**: Newly created, corrected to use  for ID fields to match existing  table.
+-   **/app/backend/api/lab.py (new)**: FastAPI router for lab orders and results.
+    -   **Importance**: Manages lab data.
+    -   **Changes**: Newly created.
+-   **/app/backend/database/lab_orders_results_migration.sql (new)**: SQL schema for lab orders and results.
+    -   **Importance**: Defines structure for lab data.
+    -   **Changes**: Newly created.
+-   **/app/frontend/src/pages/LabTestPage.jsx (new)**: Frontend page for testing lab system.
+    -   **Importance**: UI for verifying lab functionality.
+    -   **Changes**: Newly created.
 -   **/app/frontend/src/pages/PatientEHR.jsx**: Patient Electronic Health Record.
-    -   **Importance**: Central hub for viewing and managing patient health information.
-    -   **Changes**: Integrated  and  components into the respective tabs and overview section.
--   **/app/frontend/src/pages/ICD10TestPage.jsx**: React page for testing ICD-10 code lookup and AI suggestions.
-    -   **Importance**: Provides a dedicated interface to verify ICD-10 API functionality.
-    -   **Changes**: Existing file, its functionality was thoroughly tested in the trajectory.
--   **/app/CURRENT_STATUS.md (new)**: Document detailing the current completed features.
-    -   **Importance**: Provides a clear overview of the current state of the application.
-    -   **Changes**: Newly created to reflect the latest completed features.
+    -   **Importance**: Central hub for patient health information.
+    -   **Changes**: Replaced hardcoded lab data with real data fetched from the backend API. Integrated recent lab results into the overview tab.
+-   **/app/backend/api/procedures.py (new)**: FastAPI router for procedures.
+    -   **Importance**: Manages medical procedures.
+    -   **Changes**: Newly created.
+-   **/app/backend/database/procedures_migration.sql (new)**: SQL schema for procedures.
+    -   **Importance**: Defines structure for procedure data.
+    -   **Changes**: Newly created.
+-   **/app/backend/api/immunizations.py (new)**: FastAPI router for immunizations.
+    -   **Importance**: Manages vaccination records.
+    -   **Changes**: Newly created.
+-   **/app/backend/database/immunizations_migration.sql (new)**: SQL schema for immunizations.
+    -   **Importance**: Defines structure for immunization data.
+    -   **Changes**: Newly created.
+-   **/app/frontend/src/pages/ImmunizationsTestPage.jsx (new)**: Frontend page for testing immunization system.
+    -   **Importance**: UI for verifying immunization functionality.
+    -   **Changes**: Newly created. Fixed quick vaccine buttons not resetting dose numbers and improved form labels/examples.
+-   **/app/frontend/src/App.js**: React router configuration.
+    -   **Importance**: Defines application routes.
+    -   **Changes**: Added routes for , , and .
+-   **/app/frontend/src/components/Layout.jsx**: Main application layout.
+    -   **Importance**: Provides consistent navigation.
+    -   **Changes**: Added navigation links to NAPPI Test, Lab Test, and Immunizations Test pages.
 </code_architecture>
 
 <pending_tasks>
--   Complete Phase 1.6: Access Audit Trail (full testing with processed documents)
--   Fine-tune analytics displays and metrics.
--   Implement human validation for AI Scribe notes (doctor review).
--   Implement the Workstation Dashboard (full testing).
--   Add Empty State Messages and Extraction Summary Banner for UI feedback.
--   Further testing of the EHR integration with various medical records.
--   Implement batch upload support for documents.
--   Implement a background job system (async parse/extract).
+- Complete Phase 1.6: Access Audit Trail (full testing with processed documents)
+- Fine-tune analytics displays and metrics.
+- Implement human validation for AI Scribe notes (doctor review).
+- Implement the Workstation Dashboard (full testing).
+- Add Empty State Messages and Extraction Summary Banner for UI feedback.
+- Further testing of the EHR integration with various medical records.
+- Implement batch upload support for documents.
+- Implement a background job system (async parse/extract).
+- Integrate NAPPI search into .
 </pending_tasks>
 
 <current_work>
-Immediately before this summary request, the AI engineer was implementing Phase 1: Patient Safety Critical. This included backend and frontend allergy systems and the initial creation of an ICD-10 test page.
+The AI engineer was working on **Sprint 2.4: Immunizations**. The backend API and database schema for immunizations have been successfully implemented and tested. A frontend test page () was created to allow manual interaction with the system.
 
-During this trajectory, the following was completed:
-1.  **ICD-10 Test Page (Frontend)**: The  was thoroughly reviewed and confirmed to be working. Its route was added to , and a navigation link was included in . Extensive UI testing confirmed keyword search and AI-powered suggestions (using GPT-4o) were fully functional and displayed results correctly.
-2.  **Allergy Checks in Prescription Workflow**: The  component was enhanced to fetch and display patient allergies. It now warns users of potential medication conflicts with known allergies before a prescription is saved.
-3.  **Diagnoses and Vitals Management**:
-    *   **Backend APIs**: New FastAPI routers ( and ) were created in  and  respectively, and integrated into .
-    *   **Frontend Components**: New React components  and  were created.
-    *   **EHR Integration**: These new components were integrated into , with  placed in the overview tab and  within the existing vitals tab.
-4.  **Automated EHR Population from Documents**: A major enhancement was implemented in . Helper functions (, , ) were added and called within . This allows the system to automatically parse extracted data from digitized documents and populate the structured ,  (with ICD-10 codes), and  tables in the EHR.
-5.  **Roadmap Update**: Confirmed that AI-powered features (AI Scribe and ICD-10 suggestions) use the same GPT-4o model. A  file was created to reflect the updated project status.
+During user testing, it was identified that:
+1.  The quick vaccine buttons on the  were not correctly resetting the  to 1. This was fixed by updating the  function to accept a query parameter and ensuring quick buttons utilize this override.
+2.  The labels for Doses in Series and Which Dose? were initially confusing; these were improved with clearer text and an example section to guide the user.
+3.  The user inquired about when to check Series Complete, which was clarified.
+4.  Immediately before this summary request, two display-related bugs were reported on the :
+    *   The summary card was showing a count of 1 record instead of the actual  value.
+    *   The history display showed Dose 1/? instead of Dose 1/3.
+The AI engineer was in the process of fixing these display issues in , having just noted that the output seems wrong and deciding to re-check file changes for proper display fixes.
 </current_work>
 
 <optional_next_step>
-The next step is to extract NAPPI codes from the provided PDF document () into a CSV format.
+Fix the display inaccuracies on the  for summary cards and history.
 </optional_next_step>

@@ -11,7 +11,7 @@ import os
 from pymongo import MongoClient
 
 # Configuration
-BACKEND_URL = "https://healthflow-ai-1.preview.emergentagent.com/api"
+BACKEND_URL = "https://medical-records-10.preview.emergentagent.com/api"
 MONGO_URL = "mongodb://localhost:27017"
 DATABASE_NAME = "surgiscan_documents"
 
