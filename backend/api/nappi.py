@@ -128,7 +128,7 @@ async def search_nappi_codes(
         raise HTTPException(status_code=500, detail=f"Error searching NAPPI codes: {str(e)}")
 
 
-@router.get("/code/{nappi_code}", response_model=NAPPICode)
+@router.get("/nappi/code/{nappi_code}", response_model=NAPPICode)
 async def get_nappi_code(nappi_code: str):
     """Get specific NAPPI code details"""
     try:
