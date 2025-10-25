@@ -726,29 +726,49 @@ const PatientEHR = () => {
                 <CardTitle className="text-lg font-bold text-slate-800">Recent Lab Results</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  {mockLabResults.map((lab, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-4 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
-                      <div className="flex-1">
-                        <p className="font-semibold text-slate-800">{lab.test}</p>
-                        <p className="text-sm text-slate-600">Normal range: {lab.range}</p>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <div className="text-right">
-                          <p className="font-bold text-lg text-slate-800">{lab.value}</p>
-                          <p className="text-sm text-slate-600">{lab.unit}</p>
+                {labResults.length > 0 ? (
+                  <div className="space-y-3">
+                    {labResults.slice(0, 6).map((result, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-4 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
+                        <div className="flex-1">
+                          <p className="font-semibold text-slate-800">{result.test_name}</p>
+                          <p className="text-sm text-slate-600">
+                            {result.reference_range ? `Normal range: ${result.reference_range}` : 'No reference range'}
+                          </p>
+                          {result.result_datetime && (
+                            <p className="text-xs text-slate-500 mt-1">
+                              {new Date(result.result_datetime).toLocaleDateString()}
+                            </p>
+                          )}
                         </div>
-                        <Badge className={
-                          lab.status === 'high' ? 'bg-red-100 text-red-700' :
-                          lab.status === 'low' ? 'bg-amber-100 text-amber-700' :
-                          'bg-emerald-100 text-emerald-700'
-                        }>
-                          {lab.status}
-                        </Badge>
+                        <div className="flex items-center gap-4">
+                          <div className="text-right">
+                            <p className="font-bold text-lg text-slate-800">{result.result_value}</p>
+                            <p className="text-sm text-slate-600">{result.units || ''}</p>
+                          </div>
+                          <Badge className={
+                            result.abnormal_flag === 'critical_high' || result.abnormal_flag === 'critical_low' ? 'bg-red-100 text-red-700' :
+                            result.abnormal_flag === 'high' || result.abnormal_flag === 'low' ? 'bg-amber-100 text-amber-700' :
+                            result.abnormal_flag === 'normal' ? 'bg-emerald-100 text-emerald-700' :
+                            'bg-slate-100 text-slate-700'
+                          }>
+                            {result.abnormal_flag === 'critical_high' ? 'Critical High' :
+                             result.abnormal_flag === 'critical_low' ? 'Critical Low' :
+                             result.abnormal_flag === 'high' ? 'High' :
+                             result.abnormal_flag === 'low' ? 'Low' :
+                             result.abnormal_flag === 'normal' ? 'Normal' : 'Unknown'}
+                          </Badge>
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-slate-400">
+                    <FlaskConical className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                    <p>No lab results available</p>
+                    <p className="text-sm mt-1">Lab results will appear here once tests are ordered and completed</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
