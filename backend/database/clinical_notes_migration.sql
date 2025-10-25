@@ -40,7 +40,7 @@ CREATE TABLE clinical_notes (
     
     -- Version control for edits
     version INTEGER DEFAULT 1,
-    parent_note_id UUID REFERENCES clinical_notes(id),
+    parent_note_id TEXT REFERENCES clinical_notes(id),
     
     -- Audit
     created_at TIMESTAMPTZ DEFAULT NOW(),
