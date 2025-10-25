@@ -3874,6 +3874,13 @@ async def get_medication_details(medication_id: str):
 # ==================== Application Setup ====================
 
 # Include router
+# Include specialized API routers
+from api.allergies import router as allergies_router
+from api.icd10 import router as icd10_router
+
+api_router.include_router(allergies_router, tags=["Allergies"])
+api_router.include_router(icd10_router, tags=["ICD-10"])
+
 app.include_router(api_router)
 
 # CORS middleware
