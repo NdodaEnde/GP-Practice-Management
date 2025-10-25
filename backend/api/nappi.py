@@ -167,7 +167,7 @@ async def get_nappi_by_generic(
         raise HTTPException(status_code=500, detail=f"Error fetching NAPPI codes by generic: {str(e)}")
 
 
-@router.get("/by-schedule/{schedule}", response_model=List[NAPPICode])
+@router.get("/nappi/by-schedule/{schedule}", response_model=List[NAPPICode])
 async def get_nappi_by_schedule(
     schedule: str,
     limit: int = Query(50, le=200)
