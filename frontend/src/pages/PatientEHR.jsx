@@ -42,15 +42,31 @@ const PatientEHR = () => {
         fetch(`${backendUrl}/api/patients/${patientId}/medications`).then(r => r.json()),
         fetch(`${backendUrl}/api/lab-orders/patient/${patientId}`).then(r => r.json()).catch(() => [])
       ]);
-      ]);
       
       setPatient(patientRes.data);
       setEncounters(encountersRes.data);
       setConditions(conditionsRes.conditions || []);
       setMedications(medicationsRes.medications || []);
+      setLabOrders(labOrdersRes || []);
+      
+      // Load lab results for all orders
+      if (labOrdersRes && labOrdersRes.length > 0) {
+        const allResults = [];
+        for (const order of labOrdersRes) {
+          try {
+            const resultsRes = await fetch(`${backendUrl}/api/lab-results/order/${order.id}`).then(r => r.json());
+            allResults.push(...(resultsRes || []));
+          } catch (err) {
+            console.log('No results for order', order.id);
+          }
+        }
+        setLabResults(allResults);
+      }
       
       console.log('Loaded conditions:', conditionsRes.conditions);
       console.log('Loaded medications:', medicationsRes.medications);
+      console.log('Loaded lab orders:', labOrdersRes);
+      console.log('Loaded lab results:', labResults);
       
       // Load documents for all encounters
       if (encountersRes.data.length > 0) {
