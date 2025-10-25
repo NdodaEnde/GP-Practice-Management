@@ -978,3 +978,99 @@ agent_communication:
       - Diagnosis records created with ICD-10 codes and show in DiagnosesManagement
       - Vital records created and show in VitalsManagement
       - Prescription workflow shows allergy alerts
+  - agent: "main"
+    message: |
+      PHASE 2: NAPPI CODES IMPLEMENTATION COMPLETE:
+      
+      IMPLEMENTED FEATURES:
+      
+      1. DATABASE SCHEMA (/app/backend/database/nappi_codes_migration.sql):
+         - Created nappi_codes table with comprehensive fields
+         - Fields: nappi_code (PK), brand_name, generic_name, schedule, strength, dosage_form, ingredients
+         - Full-text search indexes for brand, generic, and ingredients
+         - Schedule-based filtering support
+         - Status tracking (active, discontinued, inactive)
+      
+      2. CSV LOADER SCRIPT (/app/backend/load_nappi_codes.py):
+         - Flexible column name mapping (handles variations in CSV format)
+         - Batch insertion (1000 records per batch)
+         - Duplicate handling with upsert
+         - Schedule normalization (S0-S8, Unscheduled)
+         - Progress reporting and error handling
+         - Usage: python load_nappi_codes.py <path_to_csv>
+      
+      3. BACKEND API (/app/backend/api/nappi.py):
+         - GET /api/nappi/stats - Database statistics and schedule breakdown
+         - GET /api/nappi/search - Full-text search (brand, generic, ingredients)
+         - GET /api/nappi/code/{nappi_code} - Specific medication lookup
+         - GET /api/nappi/by-generic/{generic_name} - All brands for generic
+         - GET /api/nappi/by-schedule/{schedule} - Filter by medicine schedule
+         - Search filters: query, limit, schedule, active_only
+      
+      4. FRONTEND TEST PAGE (/app/frontend/src/pages/NAPPITestPage.jsx):
+         - Real-time medication search interface
+         - Database statistics display (total codes, active codes, by schedule)
+         - Schedule filtering dropdown (S0-S6)
+         - Quick search buttons for common medications
+         - Schedule badge color coding system
+         - Database initialization status check
+         - Setup instructions displayed if table not initialized
+      
+      5. SAMPLE DATA (/app/backend/nappi_sample_data.csv):
+         - 20 common South African medications for testing
+         - Includes various schedules (S0-S4)
+         - Paracetamol, Ibuprofen, Amoxicillin, Statins, etc.
+      
+      6. INITIALIZATION SCRIPT (/app/backend/init_nappi_table.py):
+         - Verifies nappi_codes table exists
+         - Shows current record count
+         - Provides setup instructions if table missing
+      
+      7. DOCUMENTATION (/app/NAPPI_IMPLEMENTATION.md):
+         - Complete setup guide
+         - API documentation with examples
+         - South African medicine schedule reference
+         - PDF extraction instructions
+         - Testing procedures
+         - Future integration plans
+      
+      FILES CREATED:
+      - /app/backend/database/nappi_codes_migration.sql
+      - /app/backend/api/nappi.py
+      - /app/backend/load_nappi_codes.py
+      - /app/backend/init_nappi_table.py
+      - /app/backend/nappi_sample_data.csv
+      - /app/frontend/src/pages/NAPPITestPage.jsx
+      - /app/NAPPI_IMPLEMENTATION.md
+      
+      FILES MODIFIED:
+      - /app/backend/server.py (added NAPPI router)
+      - /app/frontend/src/App.js (added NAPPI test route)
+      - /app/frontend/src/components/Layout.jsx (added navigation link)
+      
+      SETUP REQUIRED (Manual Steps):
+      1. Run SQL migration in Supabase Dashboard SQL Editor:
+         - Open: https://supabase.com/dashboard
+         - Execute: /app/backend/database/nappi_codes_migration.sql
+      
+      2. Verify table creation:
+         - Run: python /app/backend/init_nappi_table.py
+      
+      3. Load sample data for testing:
+         - Run: python /app/backend/load_nappi_codes.py /app/backend/nappi_sample_data.csv
+      
+      4. Test frontend:
+         - Navigate to: http://localhost:3000/nappi-test
+         - Try searches: paracetamol, ibuprofen, amoxicillin
+      
+      NEXT STEPS:
+      - User needs to extract full NAPPI data from PDF to CSV
+      - Load full database: python load_nappi_codes.py <path_to_full_csv>
+      - Integrate NAPPI search into PrescriptionBuilder component
+      - Add NAPPI codes to prescription records for medical aid claims
+      
+      READY FOR TESTING:
+      Backend endpoints are live and ready. Frontend test page created.
+      Database table needs to be created in Supabase first (manual step).
+      Sample data provided for initial testing once table is created.
+
