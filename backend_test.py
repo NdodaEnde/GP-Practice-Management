@@ -2394,6 +2394,36 @@ def main():
             print(f"\n💥 Unexpected error: {str(e)}")
             return 1
     
+    # Check if we should run NAPPI tests specifically
+    elif len(sys.argv) > 1 and sys.argv[1] == "nappi":
+        # Run NAPPI integration tests
+        nappi_tester = NAPPITester()
+        
+        try:
+            # Run the NAPPI integration test
+            success = nappi_tester.run_nappi_integration_test()
+            
+            # Print detailed results
+            print("\n" + "="*80)
+            print("DETAILED NAPPI INTEGRATION TEST RESULTS")
+            print("="*80)
+            
+            for result in nappi_tester.test_results:
+                status = "✅" if result['success'] else "❌"
+                print(f"{status} {result['test']}: {result['message']}")
+            
+            # Cleanup
+            nappi_tester.cleanup_test_data()
+            
+            return 0 if success else 1
+            
+        except KeyboardInterrupt:
+            print("\n⚠️  Test interrupted by user")
+            return 1
+        except Exception as e:
+            print(f"\n💥 Unexpected error: {str(e)}")
+            return 1
+    
     else:
         # Run immunizations summary display logic tests by default
         immunizations_tester = ImmunizationsTester()
