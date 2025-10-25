@@ -1219,6 +1219,458 @@ class ICD10Tester:
         
         return critical_success
 
+class ImmunizationsTester:
+    def __init__(self):
+        self.backend_url = BACKEND_URL
+        self.test_results = []
+        self.test_patient_id = None
+        self.created_immunization_id = None
+        
+    def log_test(self, test_name, success, message, details=None):
+        """Log test results"""
+        result = {
+            'test': test_name,
+            'success': success,
+            'message': message,
+            'details': details or {},
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        }
+        self.test_results.append(result)
+        status = "✅ PASS" if success else "❌ FAIL"
+        print(f"{status}: {test_name} - {message}")
+        if details and not success:
+            print(f"   Details: {details}")
+    
+    def test_backend_health(self):
+        """Test if backend is accessible"""
+        try:
+            response = requests.get(f"{self.backend_url}/health", timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                self.log_test("Backend Health Check", True, f"Backend is healthy: {data.get('status')}")
+                return True
+            else:
+                self.log_test("Backend Health Check", False, f"Backend returned status {response.status_code}")
+                return False
+        except Exception as e:
+            self.log_test("Backend Health Check", False, f"Cannot connect to backend: {str(e)}")
+            return False
+    
+    def get_test_patient(self):
+        """Get a patient ID for testing"""
+        try:
+            response = requests.get(f"{self.backend_url}/patients", timeout=30)
+            
+            if response.status_code == 200:
+                patients = response.json()
+                if patients and len(patients) > 0:
+                    self.test_patient_id = patients[0]['id']
+                    patient_name = f"{patients[0].get('first_name', '')} {patients[0].get('last_name', '')}"
+                    self.log_test("Get Test Patient", True, 
+                                f"Found test patient: {patient_name} (ID: {self.test_patient_id})")
+                    return True
+                else:
+                    self.log_test("Get Test Patient", False, "No patients found in system")
+                    return False
+            else:
+                self.log_test("Get Test Patient", False, f"Failed to get patients: {response.status_code}")
+                return False
+                
+        except Exception as e:
+            self.log_test("Get Test Patient", False, f"Error getting test patient: {str(e)}")
+            return False
+    
+    def test_check_existing_immunizations(self):
+        """Check existing immunizations for the test patient"""
+        try:
+            if not self.test_patient_id:
+                self.log_test("Check Existing Immunizations", False, "No test patient available")
+                return False, None
+            
+            response = requests.get(
+                f"{self.backend_url}/immunizations/patient/{self.test_patient_id}",
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                immunizations = response.json()
+                
+                if immunizations and len(immunizations) > 0:
+                    # Check if existing immunizations have all required fields
+                    first_imm = immunizations[0]
+                    required_fields = ['doses_in_series', 'route', 'anatomical_site', 'series_name', 'administered_by']
+                    present_fields = [field for field in required_fields if field in first_imm]
+                    
+                    self.log_test("Check Existing Immunizations", True, 
+                                f"Found {len(immunizations)} existing immunizations")
+                    
+                    if len(present_fields) == len(required_fields):
+                        self.log_test("Existing Immunizations Fields", True, 
+                                    f"All required fields present: {present_fields}")
+                        
+                        # Check if doses_in_series is not null
+                        doses_in_series = first_imm.get('doses_in_series')
+                        if doses_in_series is not None:
+                            self.log_test("Existing Immunizations - doses_in_series", True, 
+                                        f"doses_in_series field has value: {doses_in_series}")
+                        else:
+                            self.log_test("Existing Immunizations - doses_in_series", False, 
+                                        "doses_in_series field is null - this causes display issues")
+                    else:
+                        missing_fields = [field for field in required_fields if field not in first_imm]
+                        self.log_test("Existing Immunizations Fields", False, 
+                                    f"Missing fields: {missing_fields}")
+                else:
+                    self.log_test("Check Existing Immunizations", True, 
+                                "No existing immunizations found - will create test data")
+                
+                return True, immunizations
+            else:
+                self.log_test("Check Existing Immunizations", False, 
+                            f"Failed to get immunizations: {response.status_code}")
+                return False, None
+                
+        except Exception as e:
+            self.log_test("Check Existing Immunizations", False, f"Error checking immunizations: {str(e)}")
+            return False, None
+    
+    def test_create_immunization_with_complete_data(self):
+        """Create test immunization with complete data including all previously missing fields"""
+        try:
+            if not self.test_patient_id:
+                self.log_test("Create Test Immunization", False, "No test patient available")
+                return False, None
+            
+            # Create immunization with all the fields that were previously missing
+            immunization_data = {
+                "patient_id": self.test_patient_id,
+                "vaccine_name": "Hepatitis B",
+                "vaccine_type": "Hepatitis B",
+                "administration_date": "2024-01-15",
+                "dose_number": 1,
+                "doses_in_series": 3,  # This was missing in response model
+                "route": "Intramuscular",  # This was missing in response model
+                "anatomical_site": "Left deltoid",  # This was missing in response model
+                "series_name": "Hepatitis B Series",  # This was missing in response model
+                "administered_by": "Nurse Smith",  # This was missing in response model
+                "status": "completed",
+                "series_complete": False,
+                "next_dose_due": "2024-02-15",
+                "clinical_notes": "Test immunization for display bug verification"
+            }
+            
+            response = requests.post(
+                f"{self.backend_url}/immunizations",
+                json=immunization_data,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                self.created_immunization_id = result.get('id')
+                
+                # Verify all fields are present in the response
+                required_fields = ['doses_in_series', 'route', 'anatomical_site', 'series_name', 'administered_by']
+                present_fields = [field for field in required_fields if field in result and result[field] is not None]
+                
+                if len(present_fields) == len(required_fields):
+                    self.log_test("Create Test Immunization - Response Fields", True, 
+                                f"All required fields present in response: {present_fields}")
+                    
+                    # Verify specific field values
+                    if result.get('doses_in_series') == 3:
+                        self.log_test("Create Test Immunization - doses_in_series", True, 
+                                    f"doses_in_series correctly returned: {result.get('doses_in_series')}")
+                    else:
+                        self.log_test("Create Test Immunization - doses_in_series", False, 
+                                    f"Expected doses_in_series=3, got: {result.get('doses_in_series')}")
+                    
+                    if result.get('route') == "Intramuscular":
+                        self.log_test("Create Test Immunization - route", True, 
+                                    f"route correctly returned: {result.get('route')}")
+                    else:
+                        self.log_test("Create Test Immunization - route", False, 
+                                    f"Expected route='Intramuscular', got: {result.get('route')}")
+                    
+                    if result.get('anatomical_site') == "Left deltoid":
+                        self.log_test("Create Test Immunization - anatomical_site", True, 
+                                    f"anatomical_site correctly returned: {result.get('anatomical_site')}")
+                    else:
+                        self.log_test("Create Test Immunization - anatomical_site", False, 
+                                    f"Expected anatomical_site='Left deltoid', got: {result.get('anatomical_site')}")
+                else:
+                    missing_fields = [field for field in required_fields if field not in result or result[field] is None]
+                    self.log_test("Create Test Immunization - Response Fields", False, 
+                                f"Missing or null fields in response: {missing_fields}")
+                
+                self.log_test("Create Test Immunization", True, 
+                            f"Successfully created immunization: {self.created_immunization_id}")
+                return True, result
+            else:
+                error_msg = f"API returned status {response.status_code}"
+                try:
+                    error_detail = response.json()
+                    error_msg += f": {error_detail}"
+                except:
+                    error_msg += f": {response.text}"
+                
+                self.log_test("Create Test Immunization", False, error_msg)
+                return False, None
+                
+        except Exception as e:
+            self.log_test("Create Test Immunization", False, f"Error creating immunization: {str(e)}")
+            return False, None
+    
+    def test_get_immunization_verify_fields(self):
+        """Get the created immunization and verify all fields are present"""
+        try:
+            if not self.created_immunization_id:
+                self.log_test("Get Immunization Verify Fields", False, "No created immunization ID available")
+                return False, None
+            
+            response = requests.get(
+                f"{self.backend_url}/immunizations/{self.created_immunization_id}",
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                
+                # Verify all previously missing fields are present
+                required_fields = ['doses_in_series', 'route', 'anatomical_site', 'series_name', 'administered_by']
+                field_checks = {}
+                
+                for field in required_fields:
+                    value = result.get(field)
+                    field_checks[field] = value is not None
+                    
+                    if value is not None:
+                        self.log_test(f"Get Immunization - {field}", True, 
+                                    f"{field} field present: {value}")
+                    else:
+                        self.log_test(f"Get Immunization - {field}", False, 
+                                    f"{field} field is null or missing")
+                
+                all_fields_present = all(field_checks.values())
+                
+                if all_fields_present:
+                    self.log_test("Get Immunization Verify Fields", True, 
+                                "All required fields present in GET response")
+                else:
+                    missing_fields = [field for field, present in field_checks.items() if not present]
+                    self.log_test("Get Immunization Verify Fields", False, 
+                                f"Missing fields: {missing_fields}")
+                
+                return all_fields_present, result
+            else:
+                self.log_test("Get Immunization Verify Fields", False, 
+                            f"Failed to get immunization: {response.status_code}")
+                return False, None
+                
+        except Exception as e:
+            self.log_test("Get Immunization Verify Fields", False, f"Error getting immunization: {str(e)}")
+            return False, None
+    
+    def test_patient_immunizations_list(self):
+        """Test GET /api/immunizations/patient/{patient_id} to verify all fields in list"""
+        try:
+            if not self.test_patient_id:
+                self.log_test("Test Patient Immunizations List", False, "No test patient available")
+                return False, None
+            
+            response = requests.get(
+                f"{self.backend_url}/immunizations/patient/{self.test_patient_id}",
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                immunizations = response.json()
+                
+                if immunizations and len(immunizations) > 0:
+                    # Find our created immunization
+                    created_imm = None
+                    for imm in immunizations:
+                        if imm.get('id') == self.created_immunization_id:
+                            created_imm = imm
+                            break
+                    
+                    if created_imm:
+                        # Verify all fields are present in the list response
+                        required_fields = ['doses_in_series', 'route', 'anatomical_site', 'series_name', 'administered_by']
+                        field_checks = {}
+                        
+                        for field in required_fields:
+                            value = created_imm.get(field)
+                            field_checks[field] = value is not None
+                        
+                        all_fields_present = all(field_checks.values())
+                        
+                        if all_fields_present:
+                            self.log_test("Patient Immunizations List - Fields", True, 
+                                        "All required fields present in list response")
+                            
+                            # Verify specific values for display format
+                            doses_in_series = created_imm.get('doses_in_series')
+                            dose_number = created_imm.get('dose_number')
+                            
+                            if doses_in_series and dose_number:
+                                self.log_test("Patient Immunizations List - Dose Display", True, 
+                                            f"Can display 'Dose {dose_number}/{doses_in_series}' format")
+                            else:
+                                self.log_test("Patient Immunizations List - Dose Display", False, 
+                                            f"Cannot display dose format - dose_number: {dose_number}, doses_in_series: {doses_in_series}")
+                        else:
+                            missing_fields = [field for field, present in field_checks.items() if not present]
+                            self.log_test("Patient Immunizations List - Fields", False, 
+                                        f"Missing fields in list response: {missing_fields}")
+                        
+                        self.log_test("Test Patient Immunizations List", True, 
+                                    f"Found created immunization in patient list")
+                        return all_fields_present, immunizations
+                    else:
+                        self.log_test("Test Patient Immunizations List", False, 
+                                    "Created immunization not found in patient list")
+                        return False, immunizations
+                else:
+                    self.log_test("Test Patient Immunizations List", False, 
+                                "No immunizations found for patient")
+                    return False, None
+            else:
+                self.log_test("Test Patient Immunizations List", False, 
+                            f"Failed to get patient immunizations: {response.status_code}")
+                return False, None
+                
+        except Exception as e:
+            self.log_test("Test Patient Immunizations List", False, f"Error getting patient immunizations: {str(e)}")
+            return False, None
+    
+    def test_immunization_summary(self):
+        """Test GET /api/immunizations/patient/{patient_id}/summary to verify doses_in_series display"""
+        try:
+            if not self.test_patient_id:
+                self.log_test("Test Immunization Summary", False, "No test patient available")
+                return False, None
+            
+            response = requests.get(
+                f"{self.backend_url}/immunizations/patient/{self.test_patient_id}/summary",
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                
+                if 'summary' in result:
+                    summary = result['summary']
+                    
+                    # Look for our Hepatitis B vaccine
+                    hepatitis_b_summary = summary.get('Hepatitis B')
+                    
+                    if hepatitis_b_summary:
+                        doses_in_series = hepatitis_b_summary.get('doses_in_series')
+                        total_doses = hepatitis_b_summary.get('total_doses')
+                        
+                        if doses_in_series == 3:
+                            self.log_test("Immunization Summary - doses_in_series", True, 
+                                        f"Summary correctly shows doses_in_series: {doses_in_series}")
+                        else:
+                            self.log_test("Immunization Summary - doses_in_series", False, 
+                                        f"Expected doses_in_series=3, got: {doses_in_series}")
+                        
+                        if total_doses >= 1:
+                            self.log_test("Immunization Summary - total_doses", True, 
+                                        f"Summary shows total_doses: {total_doses}")
+                        else:
+                            self.log_test("Immunization Summary - total_doses", False, 
+                                        f"Expected total_doses >= 1, got: {total_doses}")
+                        
+                        self.log_test("Test Immunization Summary", True, 
+                                    "Summary endpoint working correctly")
+                        return True, result
+                    else:
+                        available_vaccines = list(summary.keys())
+                        self.log_test("Test Immunization Summary", False, 
+                                    f"Hepatitis B not found in summary. Available: {available_vaccines}")
+                        return False, result
+                else:
+                    self.log_test("Test Immunization Summary", False, 
+                                "No summary field in response")
+                    return False, result
+            else:
+                self.log_test("Test Immunization Summary", False, 
+                            f"Failed to get immunization summary: {response.status_code}")
+                return False, None
+                
+        except Exception as e:
+            self.log_test("Test Immunization Summary", False, f"Error getting immunization summary: {str(e)}")
+            return False, None
+    
+    def run_immunizations_display_bug_test(self):
+        """Run the complete immunizations display bug verification test"""
+        print("\n" + "="*80)
+        print("IMMUNIZATIONS API DISPLAY BUG FIXES VERIFICATION")
+        print("Testing that doses_in_series, route, anatomical_site, series_name, administered_by")
+        print("fields are properly returned in API responses")
+        print("="*80)
+        
+        # Step 1: Test backend connectivity
+        if not self.test_backend_health():
+            print("\n❌ Cannot proceed - Backend is not accessible")
+            return False
+        
+        # Step 2: Get a test patient
+        print("\n👤 Step 1: Getting test patient...")
+        if not self.get_test_patient():
+            print("\n❌ Cannot proceed - No test patient available")
+            return False
+        
+        # Step 3: Check existing immunizations
+        print("\n💉 Step 2: Checking existing immunizations...")
+        existing_success, _ = self.test_check_existing_immunizations()
+        
+        # Step 4: Create test immunization with complete data
+        print("\n➕ Step 3: Creating test immunization with complete data...")
+        create_success, _ = self.test_create_immunization_with_complete_data()
+        if not create_success:
+            print("\n❌ Failed to create test immunization")
+            return False
+        
+        # Step 5: Verify individual immunization GET includes all fields
+        print("\n🔍 Step 4: Verifying individual immunization GET response...")
+        get_success, _ = self.test_get_immunization_verify_fields()
+        
+        # Step 6: Verify patient immunizations list includes all fields
+        print("\n📋 Step 5: Verifying patient immunizations list response...")
+        list_success, _ = self.test_patient_immunizations_list()
+        
+        # Step 7: Verify summary endpoint shows correct doses_in_series
+        print("\n📊 Step 6: Verifying immunization summary endpoint...")
+        summary_success, _ = self.test_immunization_summary()
+        
+        # Summary
+        print("\n" + "="*80)
+        print("IMMUNIZATIONS DISPLAY BUG FIXES TEST SUMMARY")
+        print("="*80)
+        
+        # Determine overall success
+        critical_tests = [create_success, get_success, list_success, summary_success]
+        all_tests_passed = all(critical_tests)
+        
+        if all_tests_passed:
+            print("✅ ALL TESTS PASSED - Immunizations display bug fixes are working correctly")
+            print("✅ CRITICAL: All required fields (doses_in_series, route, anatomical_site, series_name, administered_by) are now returned in API responses")
+            print("✅ DISPLAY: History can now show 'Dose 1/3' format instead of 'Dose 1/?'")
+            print("✅ SUMMARY: Summary cards show correct series totals")
+        else:
+            print("❌ SOME TESTS FAILED - Immunizations display may still have issues")
+            failed_tests = []
+            if not create_success: failed_tests.append("Create Immunization")
+            if not get_success: failed_tests.append("Get Immunization Fields")
+            if not list_success: failed_tests.append("List Immunizations Fields")
+            if not summary_success: failed_tests.append("Summary Endpoint")
+            print(f"❌ Failed components: {', '.join(failed_tests)}")
+        
+        return all_tests_passed
+
 def main():
     """Main test execution"""
     import sys
