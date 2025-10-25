@@ -1219,6 +1219,446 @@ class ICD10Tester:
         
         return critical_success
 
+class NAPPITester:
+    def __init__(self):
+        self.backend_url = BACKEND_URL
+        self.test_results = []
+        self.test_patient_id = None
+        self.created_prescription_id = None
+        self.nappi_search_results = []
+        
+    def log_test(self, test_name, success, message, details=None):
+        """Log test results"""
+        result = {
+            'test': test_name,
+            'success': success,
+            'message': message,
+            'details': details or {},
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        }
+        self.test_results.append(result)
+        status = "✅ PASS" if success else "❌ FAIL"
+        print(f"{status}: {test_name} - {message}")
+        if details and not success:
+            print(f"   Details: {details}")
+    
+    def test_backend_health(self):
+        """Test if backend is accessible"""
+        try:
+            response = requests.get(f"{self.backend_url}/health", timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                self.log_test("Backend Health Check", True, f"Backend is healthy: {data.get('status')}")
+                return True
+            else:
+                self.log_test("Backend Health Check", False, f"Backend returned status {response.status_code}")
+                return False
+        except Exception as e:
+            self.log_test("Backend Health Check", False, f"Cannot connect to backend: {str(e)}")
+            return False
+    
+    def get_or_create_test_patient(self):
+        """Get or create a test patient for prescription testing"""
+        try:
+            # First try to get existing patients
+            response = requests.get(f"{self.backend_url}/patients", timeout=30)
+            if response.status_code == 200:
+                patients = response.json()
+                if patients and len(patients) > 0:
+                    self.test_patient_id = patients[0]['id']
+                    self.log_test("Get Test Patient", True, f"Using existing patient: {self.test_patient_id}")
+                    return True
+            
+            # Create a new test patient if none exist
+            patient_data = {
+                "first_name": "John",
+                "last_name": "Doe",
+                "dob": "1980-01-01",
+                "id_number": "8001015009087",
+                "contact_number": "0123456789",
+                "email": "john.doe@test.com",
+                "address": "123 Test Street, Test City",
+                "medical_aid": "Test Medical Aid"
+            }
+            
+            response = requests.post(f"{self.backend_url}/patients", json=patient_data, timeout=30)
+            if response.status_code == 200:
+                result = response.json()
+                self.test_patient_id = result['id']
+                self.log_test("Create Test Patient", True, f"Created test patient: {self.test_patient_id}")
+                return True
+            else:
+                self.log_test("Create Test Patient", False, f"Failed to create patient: {response.status_code}")
+                return False
+                
+        except Exception as e:
+            self.log_test("Get/Create Test Patient", False, f"Error: {str(e)}")
+            return False
+    
+    def test_nappi_search_endpoint(self):
+        """Test GET /api/nappi/search with common medications"""
+        try:
+            # Test medications from review request
+            test_medications = ["paracetamol", "ibuprofen", "amoxicillin", "atenolol"]
+            all_searches_passed = True
+            
+            for medication in test_medications:
+                response = requests.get(
+                    f"{self.backend_url}/nappi/search",
+                    params={"query": medication, "limit": 10},
+                    timeout=30
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    
+                    # Check response structure
+                    expected_fields = ['results', 'count', 'query']
+                    if all(field in result for field in expected_fields):
+                        results = result['results']
+                        count = result['count']
+                        
+                        if count > 0 and len(results) > 0:
+                            # Verify result structure
+                            first_result = results[0]
+                            expected_result_fields = ['nappi_code', 'brand_name', 'generic_name', 'strength', 'dosage_form', 'schedule']
+                            present_fields = [f for f in expected_result_fields if f in first_result]
+                            
+                            if len(present_fields) >= 4:  # At least 4 of 6 required fields
+                                self.log_test(f"NAPPI Search - {medication}", True, 
+                                            f"Found {count} results with proper structure")
+                                
+                                # Store some results for prescription testing
+                                if medication == "paracetamol" and len(results) > 0:
+                                    self.nappi_search_results = results[:3]  # Store first 3 results
+                            else:
+                                self.log_test(f"NAPPI Search - {medication}", False, 
+                                            f"Results missing required fields. Present: {present_fields}")
+                                all_searches_passed = False
+                        else:
+                            self.log_test(f"NAPPI Search - {medication}", False, 
+                                        f"No results found for {medication}")
+                            all_searches_passed = False
+                    else:
+                        missing_fields = [f for f in expected_fields if f not in result]
+                        self.log_test(f"NAPPI Search - {medication}", False, 
+                                    f"Response missing fields: {missing_fields}")
+                        all_searches_passed = False
+                else:
+                    error_msg = f"API returned status {response.status_code}"
+                    try:
+                        error_detail = response.json()
+                        error_msg += f": {error_detail}"
+                    except:
+                        error_msg += f": {response.text}"
+                    
+                    self.log_test(f"NAPPI Search - {medication}", False, error_msg)
+                    all_searches_passed = False
+            
+            if all_searches_passed:
+                self.log_test("NAPPI Search Endpoint", True, "All medication searches completed successfully")
+                return True
+            else:
+                self.log_test("NAPPI Search Endpoint", False, "Some medication searches failed")
+                return False
+                
+        except Exception as e:
+            self.log_test("NAPPI Search Endpoint", False, f"Request failed: {str(e)}")
+            return False
+    
+    def test_prescription_creation_with_nappi(self):
+        """Test creating prescription with NAPPI codes"""
+        try:
+            if not self.test_patient_id:
+                self.log_test("Prescription Creation with NAPPI", False, "No test patient available")
+                return False
+            
+            if not self.nappi_search_results:
+                self.log_test("Prescription Creation with NAPPI", False, "No NAPPI search results available")
+                return False
+            
+            # Use first NAPPI result for prescription
+            nappi_result = self.nappi_search_results[0]
+            
+            # Create prescription data as specified in review request
+            prescription_data = {
+                "patient_id": self.test_patient_id,
+                "doctor_name": "Dr. Test",
+                "prescription_date": "2025-01-25",
+                "items": [{
+                    "medication_name": nappi_result.get('brand_name', 'Panado 500mg'),
+                    "nappi_code": nappi_result.get('nappi_code', '123456'),
+                    "generic_name": nappi_result.get('generic_name', 'Paracetamol'),
+                    "dosage": "500mg",
+                    "frequency": "Three times daily",
+                    "duration": "5 days",
+                    "quantity": "15 tablets",
+                    "instructions": "Take with food"
+                }],
+                "notes": "Test prescription with NAPPI integration"
+            }
+            
+            response = requests.post(
+                f"{self.backend_url}/prescriptions",
+                json=prescription_data,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                
+                if result.get('status') == 'success':
+                    self.created_prescription_id = result.get('prescription_id')
+                    self.log_test("Prescription Creation with NAPPI", True, 
+                                f"Successfully created prescription {self.created_prescription_id} with NAPPI code {nappi_result.get('nappi_code')}")
+                    return True
+                else:
+                    self.log_test("Prescription Creation with NAPPI", False, 
+                                f"Prescription creation failed: {result.get('message', 'Unknown error')}")
+                    return False
+            else:
+                error_msg = f"API returned status {response.status_code}"
+                try:
+                    error_detail = response.json()
+                    error_msg += f": {error_detail}"
+                except:
+                    error_msg += f": {response.text}"
+                
+                self.log_test("Prescription Creation with NAPPI", False, error_msg)
+                return False
+                
+        except Exception as e:
+            self.log_test("Prescription Creation with NAPPI", False, f"Request failed: {str(e)}")
+            return False
+    
+    def test_prescription_retrieval_with_nappi(self):
+        """Test GET /api/prescriptions/patient/{patient_id} and verify NAPPI codes"""
+        try:
+            if not self.test_patient_id:
+                self.log_test("Prescription Retrieval with NAPPI", False, "No test patient available")
+                return False
+            
+            response = requests.get(
+                f"{self.backend_url}/prescriptions/patient/{self.test_patient_id}",
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                
+                if result.get('status') == 'success':
+                    prescriptions = result.get('prescriptions', [])
+                    
+                    if prescriptions and len(prescriptions) > 0:
+                        # Find our test prescription
+                        test_prescription = None
+                        for prescription in prescriptions:
+                            if prescription.get('id') == self.created_prescription_id:
+                                test_prescription = prescription
+                                break
+                        
+                        if test_prescription:
+                            items = test_prescription.get('items', [])
+                            
+                            if items and len(items) > 0:
+                                first_item = items[0]
+                                
+                                # Verify NAPPI code fields are present
+                                nappi_code = first_item.get('nappi_code')
+                                generic_name = first_item.get('generic_name')
+                                medication_name = first_item.get('medication_name')
+                                
+                                if nappi_code and generic_name and medication_name:
+                                    self.log_test("Prescription NAPPI Fields Verification", True, 
+                                                f"All NAPPI fields present: medication_name='{medication_name}', nappi_code='{nappi_code}', generic_name='{generic_name}'")
+                                    
+                                    # Verify the fields are saved correctly
+                                    expected_fields = ['dosage', 'frequency', 'duration', 'quantity', 'instructions']
+                                    present_fields = [f for f in expected_fields if f in first_item and first_item[f]]
+                                    
+                                    if len(present_fields) >= 4:
+                                        self.log_test("Prescription Data Integrity", True, 
+                                                    f"Prescription data saved correctly ({len(present_fields)}/{len(expected_fields)} fields)")
+                                    else:
+                                        self.log_test("Prescription Data Integrity", False, 
+                                                    f"Some prescription fields missing: {[f for f in expected_fields if f not in present_fields]}")
+                                    
+                                    self.log_test("Prescription Retrieval with NAPPI", True, 
+                                                "Successfully retrieved prescription with NAPPI codes")
+                                    return True
+                                else:
+                                    missing_fields = []
+                                    if not nappi_code: missing_fields.append('nappi_code')
+                                    if not generic_name: missing_fields.append('generic_name')
+                                    if not medication_name: missing_fields.append('medication_name')
+                                    
+                                    self.log_test("Prescription NAPPI Fields Verification", False, 
+                                                f"Missing NAPPI fields: {missing_fields}")
+                                    return False
+                            else:
+                                self.log_test("Prescription Retrieval with NAPPI", False, 
+                                            "Prescription has no items")
+                                return False
+                        else:
+                            self.log_test("Prescription Retrieval with NAPPI", False, 
+                                        f"Test prescription {self.created_prescription_id} not found in results")
+                            return False
+                    else:
+                        self.log_test("Prescription Retrieval with NAPPI", False, 
+                                    "No prescriptions found for patient")
+                        return False
+                else:
+                    self.log_test("Prescription Retrieval with NAPPI", False, 
+                                f"Failed to retrieve prescriptions: {result.get('status')}")
+                    return False
+            else:
+                error_msg = f"API returned status {response.status_code}"
+                try:
+                    error_detail = response.json()
+                    error_msg += f": {error_detail}"
+                except:
+                    error_msg += f": {response.text}"
+                
+                self.log_test("Prescription Retrieval with NAPPI", False, error_msg)
+                return False
+                
+        except Exception as e:
+            self.log_test("Prescription Retrieval with NAPPI", False, f"Request failed: {str(e)}")
+            return False
+    
+    def test_nappi_stats_endpoint(self):
+        """Test GET /api/nappi/stats for database verification"""
+        try:
+            response = requests.get(f"{self.backend_url}/nappi/stats", timeout=30)
+            
+            if response.status_code == 200:
+                result = response.json()
+                expected_fields = ['total_codes', 'active_codes', 'by_schedule']
+                
+                if all(field in result for field in expected_fields):
+                    total_codes = result.get('total_codes', 0)
+                    active_codes = result.get('active_codes', 0)
+                    by_schedule = result.get('by_schedule', {})
+                    
+                    if total_codes > 0:
+                        self.log_test("NAPPI Database Stats", True, 
+                                    f"NAPPI database contains {total_codes} total codes, {active_codes} active codes")
+                        
+                        # Check schedule breakdown
+                        if by_schedule:
+                            schedule_info = ", ".join([f"{k}: {v}" for k, v in by_schedule.items()])
+                            self.log_test("NAPPI Schedule Breakdown", True, 
+                                        f"Schedule distribution: {schedule_info}")
+                        
+                        return True
+                    else:
+                        self.log_test("NAPPI Database Stats", False, 
+                                    "NAPPI database appears to be empty")
+                        return False
+                else:
+                    missing_fields = [f for f in expected_fields if f not in result]
+                    self.log_test("NAPPI Database Stats", False, 
+                                f"Response missing fields: {missing_fields}")
+                    return False
+            else:
+                error_msg = f"API returned status {response.status_code}"
+                try:
+                    error_detail = response.json()
+                    error_msg += f": {error_detail}"
+                except:
+                    error_msg += f": {response.text}"
+                
+                self.log_test("NAPPI Database Stats", False, error_msg)
+                return False
+                
+        except Exception as e:
+            self.log_test("NAPPI Database Stats", False, f"Request failed: {str(e)}")
+            return False
+    
+    def run_nappi_integration_test(self):
+        """Run comprehensive NAPPI integration test"""
+        print("\n" + "="*80)
+        print("NAPPI INTEGRATION INTO PRESCRIPTION BUILDER TEST")
+        print("Testing NAPPI search, prescription creation, and data retrieval")
+        print("="*80)
+        
+        # Step 1: Test backend connectivity
+        if not self.test_backend_health():
+            print("\n❌ Cannot proceed - Backend is not accessible")
+            return False
+        
+        # Step 2: Test NAPPI database stats
+        print("\n📊 Step 1: Testing NAPPI database statistics...")
+        stats_success = self.test_nappi_stats_endpoint()
+        
+        # Step 3: Test NAPPI search endpoint
+        print("\n🔍 Step 2: Testing NAPPI search endpoint...")
+        search_success = self.test_nappi_search_endpoint()
+        
+        # Step 4: Get or create test patient
+        print("\n👤 Step 3: Getting test patient...")
+        patient_success = self.get_or_create_test_patient()
+        if not patient_success:
+            print("\n❌ Cannot proceed - Failed to get test patient")
+            return False
+        
+        # Step 5: Test prescription creation with NAPPI codes
+        print("\n💊 Step 4: Testing prescription creation with NAPPI codes...")
+        create_success = self.test_prescription_creation_with_nappi()
+        
+        # Step 6: Test prescription retrieval and NAPPI code verification
+        print("\n📋 Step 5: Testing prescription retrieval and NAPPI verification...")
+        retrieve_success = self.test_prescription_retrieval_with_nappi()
+        
+        # Summary
+        print("\n" + "="*80)
+        print("NAPPI INTEGRATION TEST SUMMARY")
+        print("="*80)
+        
+        # Determine overall success
+        critical_tests = [search_success, create_success, retrieve_success]
+        all_tests = [stats_success, search_success, patient_success, create_success, retrieve_success]
+        
+        critical_success = all(critical_tests)
+        all_tests_passed = all(all_tests)
+        
+        if critical_success:
+            if all_tests_passed:
+                print("✅ ALL NAPPI INTEGRATION TESTS PASSED")
+                print("✅ NAPPI search returns medications from database")
+                print("✅ Prescriptions can be created with NAPPI codes")
+                print("✅ NAPPI codes are saved and retrieved correctly")
+                print("✅ All fields (medication_name, nappi_code, generic_name) present in responses")
+            else:
+                print("✅ CRITICAL NAPPI INTEGRATION TESTS PASSED")
+                print("✅ Core NAPPI functionality working")
+                if not stats_success:
+                    print("⚠️  NAPPI database statistics may have issues")
+                if not patient_success:
+                    print("⚠️  Patient management may have issues")
+        else:
+            print("❌ CRITICAL NAPPI INTEGRATION TESTS FAILED")
+            failed_tests = []
+            if not search_success: failed_tests.append("NAPPI Search")
+            if not create_success: failed_tests.append("Prescription Creation")
+            if not retrieve_success: failed_tests.append("Prescription Retrieval")
+            print(f"❌ Failed components: {', '.join(failed_tests)}")
+        
+        return critical_success
+    
+    def cleanup_test_data(self):
+        """Clean up test data"""
+        try:
+            if self.created_prescription_id:
+                print(f"🧹 Test prescription {self.created_prescription_id} created for testing (not cleaned up)")
+            
+            if self.test_patient_id:
+                print(f"🧹 Test patient {self.test_patient_id} used for testing (not cleaned up)")
+            
+            print("🧹 NAPPI integration tests completed")
+        except Exception as e:
+            print(f"⚠️  Error in cleanup: {str(e)}")
+
 class ImmunizationsTester:
     def __init__(self):
         self.backend_url = BACKEND_URL
