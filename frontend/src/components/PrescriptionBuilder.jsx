@@ -86,6 +86,9 @@ const PrescriptionBuilderNAPPI = ({ patientId, encounterId, doctorName, initialD
       if (!item.medication_name && !item.generic_name) return;
       
       allergies.forEach((allergy) => {
+        // Skip if allergy doesn't have allergen field
+        if (!allergy || !allergy.allergen) return;
+        
         const medName = (item.medication_name || '').toLowerCase();
         const genericName = (item.generic_name || '').toLowerCase();
         const allergen = allergy.allergen.toLowerCase();
