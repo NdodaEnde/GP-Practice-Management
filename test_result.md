@@ -294,6 +294,18 @@ backend:
         agent: "main"
         comment: "IMPLEMENTED: Created intelligent auto-population workflow that takes extracted document data (ANY format) and automatically populates structured EHR tables. Features: 1) populate_allergies_from_document() - extracts and creates allergy records, 2) populate_diagnoses_from_document() - extracts diagnoses and uses AI to match ICD-10 codes (falls back to keyword search), creates diagnosis records with proper coding, 3) populate_vitals_from_document() - extracts vitals and creates individual structured records. All functions handle duplicates, normalize data formats, and link to encounters. Integrated into create_encounter_from_document(). This completes the vision: Upload any doctor's document → System intelligently allocates information to correct EHR components with medical coding. Ready for E2E testing with real documents."
 
+  - task: "Immunizations API Display Bug Fixes"
+    implemented: true
+    working: true
+    file: "/app/backend/api/immunizations.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "IMMUNIZATIONS DISPLAY BUG FIXES VERIFIED - ALL TESTS PASSED: ✅ CRITICAL SUCCESS: All required fields (doses_in_series, route, anatomical_site, series_name, administered_by) are now properly returned in API responses. ✅ CREATE IMMUNIZATION: Successfully created test immunization with complete data including all previously missing fields. Response includes all 5 required fields with correct values (doses_in_series=3, route='Intramuscular', anatomical_site='Left deltoid', series_name='Hepatitis B Series', administered_by='Nurse Smith'). ✅ GET IMMUNIZATION: Individual immunization GET endpoint returns all required fields. ✅ PATIENT IMMUNIZATIONS LIST: List endpoint includes all fields, enabling 'Dose 1/3' display format instead of 'Dose 1/?'. ✅ SUMMARY ENDPOINT: Summary correctly shows doses_in_series=3 and total_doses=1, enabling proper series progress display. ✅ DISPLAY FIX CONFIRMED: History displays can now show 'Dose 1/3' format, summary cards show correct series totals. The Pydantic response model enhancement in lines 62-77 successfully resolved the missing fields issue."
+
 frontend:
   - task: "Document Extract Button - Frontend UI"
     implemented: true
