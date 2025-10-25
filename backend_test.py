@@ -39,6 +39,12 @@ class PatientCreationTester:
         self.parsed_document_data = None
         self.created_patient_id = None
         self.created_encounter_id = None
+
+class ICD10Tester:
+    def __init__(self):
+        self.backend_url = BACKEND_URL
+        self.test_results = []
+        self.stats_data = None
         
     def log_test(self, test_name, success, message, details=None):
         """Log test results"""
