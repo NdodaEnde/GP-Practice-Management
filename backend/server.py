@@ -3878,10 +3878,12 @@ async def get_medication_details(medication_id: str):
 from api.allergies import router as allergies_router
 from api.icd10 import router as icd10_router
 from api.diagnoses import router as diagnoses_router
+from api.vitals import router as vitals_router
 
 api_router.include_router(allergies_router, tags=["Allergies"])
 api_router.include_router(icd10_router, tags=["ICD-10"])
 api_router.include_router(diagnoses_router, tags=["Diagnoses"])
+api_router.include_router(vitals_router, tags=["Vitals"])
 
 app.include_router(api_router)
 
