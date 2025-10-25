@@ -318,6 +318,18 @@ backend:
         agent: "testing"
         comment: "IMMUNIZATIONS SUMMARY DISPLAY LOGIC IMPROVEMENTS VERIFIED - ALL TESTS PASSED: ✅ CRITICAL SUCCESS: Enhanced summary endpoint (lines 217-258) now tracks highest_dose_number instead of just counting records. ✅ SCENARIO 1 - Multiple Doses: Created Influenza dose 1 and 2, verified highest_dose_number=2 (not total_doses=2), doses_in_series=3, next_due_date present for incomplete series. ✅ SCENARIO 2 - Complete Series: Created dose 3 with series_complete=True, verified highest_dose_number=3, series_complete=True, next_due_date=None (correctly cleared when complete). ✅ SCENARIO 3 - Mixed Vaccine Types: Created COVID-19 dose 1/2, verified independent tracking - Influenza (dose 3/3, complete=True, next_due=None) and COVID-19 (dose 1/2, complete=False, next_due=2024-04-15). ✅ CONDITIONAL LOGIC: next_due_date properly cleared when series_complete=True. ✅ BACKEND CHANGES: All improvements in /app/backend/api/immunizations.py working correctly. The enhanced summary logic enables proper display of 'Dose 2 of 3' format and correct series completion status."
 
+  - task: "NAPPI Integration into Prescription Builder"
+    implemented: true
+    working: false
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: false
+        agent: "testing"
+        comment: "CRITICAL SCHEMA ISSUE IDENTIFIED: NAPPI integration partially implemented but database schema missing required columns. ✅ NAPPI Search Endpoint: GET /api/nappi/search working perfectly - tested with paracetamol, ibuprofen, amoxicillin, atenolol. Returns proper structure with nappi_code, brand_name, generic_name, strength, dosage_form, schedule. Database contains 1637 NAPPI codes. ✅ NAPPI API: All endpoints functional (/api/nappi/stats, /api/nappi/search, /api/nappi/code/{code}). ❌ PRESCRIPTION CREATION: Backend models include nappi_code and generic_name fields, but prescription_items table schema missing these columns. Error: 'Could not find the generic_name column of prescription_items in the schema cache'. ❌ PRESCRIPTION RETRIEVAL: Cannot test until schema is fixed. 🔧 SOLUTION PROVIDED: Created /app/nappi_prescription_migration.sql to add missing columns. Backend code temporarily reverted to work without NAPPI fields until schema is updated. Basic prescription creation working without NAPPI codes."
+
 frontend:
   - task: "Document Extract Button - Frontend UI"
     implemented: true
