@@ -286,6 +286,42 @@ frontend:
         agent: "testing"
         comment: "BACKEND TESTING VERIFIED - ALL ICD-10 APIS READY FOR FRONTEND: ✅ All 4 backend endpoints (/api/icd10/stats, /api/icd10/search, /api/icd10/suggest, /api/icd10/code/{code}) are working perfectly and ready for frontend integration. ✅ Database contains 41,008 ICD-10 codes as expected. ✅ Search functionality tested with diabetes, hypertension, asthma queries returning relevant results. ✅ AI suggestions using GPT-4o working correctly with OPENAI_API_KEY authentication. ✅ Specific code lookup (E11.9) returning complete details. Frontend ICD10TestPage.jsx can now be tested end-to-end with confidence that all backend APIs are functional."
 
+  - task: "Allergy Checks in Prescription Workflow"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/src/components/PrescriptionBuilder.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "IMPLEMENTED: Enhanced PrescriptionBuilder.jsx with comprehensive allergy checking system. Features: 1) Auto-fetches patient allergies on component mount, 2) Displays red alert banner at top if patient has known allergies with allergen, reaction, and severity, 3) Real-time allergy conflict detection - checks each medication against known allergies, 4) Orange warning banner showing specific conflicts with details, 5) Confirmation dialog before saving if conflicts detected, showing all allergy information. Uses GET /api/allergies/patient/{patient_id} endpoint. Ready for testing with patients who have allergies."
+
+  - task: "Diagnoses Management Frontend"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/src/components/DiagnosesManagement.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "IMPLEMENTED: Created DiagnosesManagement.jsx component with ICD-10 integration. Features: 1) Display all patient diagnoses with ICD-10 codes, 2) Add new diagnosis form with ICD-10 search (real-time search as you type), 3) Select ICD-10 codes from dropdown with full description, 4) Diagnosis types (primary, secondary, differential) with color-coded badges, 5) Status tracking (active, resolved, ruled_out), 6) Onset date and notes fields, 7) Update diagnosis status (mark as resolved), 8) Delete diagnoses. Backend API created: /api/diagnoses with CRUD endpoints. Integrated into PatientEHR Overview tab. Ready for testing."
+
+  - task: "Vitals Table Frontend"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/src/components/VitalsManagement.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "IMPLEMENTED: Created VitalsManagement.jsx component for comprehensive vitals tracking. Features: 1) Record vital signs: BP (systolic/diastolic), heart rate, temperature, respiratory rate, SpO2, weight, height, 2) Auto-calculate BMI from weight and height, 3) Display all vitals history in cards with date, 4) Comprehensive form with all vital parameters, 5) Notes field for additional context, 6) Delete vitals records. Backend API created: /api/vitals with CRUD endpoints. Integrated into PatientEHR Vitals & Labs tab (first section). Ready for testing."
+
 metadata:
   created_by: "main_agent"
   version: "1.0"
