@@ -203,7 +203,7 @@ const ImmunizationsTestPage = () => {
           {/* Quick Vaccines */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
             <h3 className="font-semibold mb-3">Quick Add Common Vaccines:</h3>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 mb-3">
               {quickVaccines.map((vaccine) => (
                 <button
                   key={vaccine.name}
@@ -221,6 +221,14 @@ const ImmunizationsTestPage = () => {
                   {vaccine.name}
                 </button>
               ))}
+            </div>
+            <div className="text-xs text-gray-600 bg-white p-3 rounded border border-blue-200">
+              <p className="font-semibold mb-1">💡 How to use:</p>
+              <ul className="list-disc list-inside space-y-1">
+                <li><strong>Which Dose?</strong> = The dose you're giving NOW (1st dose = 1, 2nd dose = 2, etc.)</li>
+                <li><strong>Total Doses in Series</strong> = How many doses are needed in total (COVID-19 = 2, Hep B = 3)</li>
+                <li>Example: Giving 2nd COVID shot → Which Dose = <strong>2</strong>, Total = <strong>2</strong></li>
+              </ul>
             </div>
           </div>
 
