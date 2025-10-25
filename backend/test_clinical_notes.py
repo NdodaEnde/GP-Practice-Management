@@ -23,13 +23,14 @@ def test_clinical_notes():
     print("=" * 70)
     
     # Get a test patient
-    patients = supabase.table('patients').select('id, full_name').limit(1).execute()
+    patients = supabase.table('patients').select('id, first_name, last_name').limit(1).execute()
     if not patients.data:
         print("❌ No patients found. Please create a patient first.")
         return
     
     patient = patients.data[0]
-    print(f"\n✅ Using test patient: {patient['full_name']} ({patient['id']})")
+    patient_name = f"{patient['first_name']} {patient['last_name']}"
+    print(f"\n✅ Using test patient: {patient_name} ({patient['id']})")
     
     # Create a test encounter
     encounter_id = str(uuid.uuid4())
