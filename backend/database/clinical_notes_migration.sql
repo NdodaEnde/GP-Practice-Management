@@ -6,11 +6,11 @@
 DROP TABLE IF EXISTS clinical_notes CASCADE;
 
 CREATE TABLE clinical_notes (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id UUID NOT NULL,
-    workspace_id UUID NOT NULL,
-    encounter_id UUID NOT NULL,
-    patient_id UUID NOT NULL,
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    workspace_id TEXT NOT NULL,
+    encounter_id TEXT NOT NULL,
+    patient_id TEXT NOT NULL,
     
     -- Note type and format
     format TEXT CHECK (format IN ('soap', 'free_text', 'discharge_summary', 'referral_letter', 'procedure_note', 'progress_note')) DEFAULT 'soap',
