@@ -1073,4 +1073,46 @@ agent_communication:
       Backend endpoints are live and ready. Frontend test page created.
       Database table needs to be created in Supabase first (manual step).
       Sample data provided for initial testing once table is created.
+  - agent: "main"
+    message: |
+      IMMUNIZATIONS DISPLAY BUGS FIXED:
+      
+      ISSUE IDENTIFIED:
+      1. History display showing "Dose 1/?" instead of "Dose 1/3"
+      2. Summary card not displaying doses_in_series correctly
+      
+      ROOT CAUSE:
+      The backend Immunization response model (Pydantic) was missing key fields that are stored in the database:
+      - doses_in_series
+      - route
+      - anatomical_site
+      - series_name
+      - administered_by
+      
+      These fields were being saved to the database but not returned in API responses, 
+      causing the frontend to display "?" and "Unknown" values.
+      
+      FIX IMPLEMENTED:
+      Updated /app/backend/api/immunizations.py:
+      - Enhanced Immunization response model (BaseModel) to include all missing fields
+      - Added: doses_in_series, route, anatomical_site, series_name, administered_by
+      - Now all fields stored in database are properly returned in API responses
+      
+      EXPECTED RESULTS:
+      1. History display will now show "Dose 1/3" (or actual series total)
+      2. Summary cards will show correct "Series total: 3" (or actual value)
+      3. All immunization details (route, site, administrator) display correctly
+      
+      FILES MODIFIED:
+      - /app/backend/api/immunizations.py (lines 62-77: Enhanced Immunization model)
+      
+      Backend restarted successfully and is running.
+      
+      READY FOR TESTING:
+      Test the ImmunizationsTestPage (/immunizations-test):
+      1. Select a patient with existing immunizations
+      2. Verify history shows "Dose 1/3" (not "Dose 1/?")
+      3. Verify summary cards show correct "Series total" values
+      4. Add a new immunization (e.g., Hepatitis B with 3 doses in series)
+      5. Verify all fields display correctly in both summary and history
 
