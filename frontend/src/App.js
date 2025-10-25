@@ -19,6 +19,7 @@ import VitalsStation from './pages/VitalsStation';
 import Billing from './pages/Billing';
 import Analytics from './pages/Analytics';
 import ICD10TestPage from './pages/ICD10TestPage';
+import NAPPITestPage from './pages/NAPPITestPage';
 import Layout from './components/Layout';
 import '@/App.css';
 
