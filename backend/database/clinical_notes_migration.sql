@@ -31,7 +31,7 @@ CREATE TABLE clinical_notes (
     
     -- Source tracking
     source TEXT CHECK (source IN ('ai_scribe', 'manual_entry', 'document_extraction', 'imported')) DEFAULT 'ai_scribe',
-    source_document_id UUID,
+    source_document_id TEXT,
     
     -- Signature and approval
     signed BOOLEAN DEFAULT false,
