@@ -27,8 +27,10 @@ const NAPPITestPage = () => {
     }
   };
 
-  const handleSearch = async () => {
-    if (!searchQuery.trim() || searchQuery.length < 2) {
+  const handleSearch = async (queryOverride = null) => {
+    const searchTerm = queryOverride || searchQuery;
+    
+    if (!searchTerm.trim() || searchTerm.length < 2) {
       setError('Please enter at least 2 characters');
       return;
     }
@@ -38,7 +40,7 @@ const NAPPITestPage = () => {
     
     try {
       const params = {
-        query: searchQuery,
+        query: searchTerm,
         limit: 20
       };
       
