@@ -357,6 +357,9 @@ const PatientEHR = () => {
                   <AllergyManagement patientId={patientId} />
                 </CardContent>
               </Card>
+
+              {/* Diagnoses */}
+              <DiagnosesManagement patientId={patientId} />
             </div>
 
             {/* Timeline */}
