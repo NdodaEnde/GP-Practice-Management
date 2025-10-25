@@ -3955,6 +3955,8 @@ async def create_prescription(prescription: PrescriptionCreate):
                 'id': item_id,
                 'prescription_id': prescription_id,
                 'medication_name': item.medication_name,
+                'nappi_code': item.nappi_code,
+                'generic_name': item.generic_name,
                 'dosage': item.dosage,
                 'frequency': item.frequency,
                 'duration': item.duration,
