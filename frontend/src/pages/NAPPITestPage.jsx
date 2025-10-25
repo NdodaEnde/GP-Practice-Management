@@ -188,7 +188,10 @@ const NAPPITestPage = () => {
             {quickSearches.map((term) => (
               <button
                 key={term}
-                onClick={() => { setSearchQuery(term); setTimeout(handleSearch, 100); }}
+                onClick={() => { 
+                  setSearchQuery(term);
+                  handleSearch(term);
+                }}
                 className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-full hover:bg-gray-200"
               >
                 {term}
