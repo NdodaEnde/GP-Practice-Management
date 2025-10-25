@@ -282,6 +282,18 @@ backend:
         agent: "main"
         comment: "IMPLEMENTED: Created vitals.py API with full CRUD endpoints. Endpoints: POST /api/vitals (create vital signs record with auto-BMI calculation), GET /api/vitals/patient/{patient_id} (get patient vitals with limit), GET /api/vitals/{vital_id} (get specific vital), PATCH /api/vitals/{vital_id} (update vital with BMI recalculation), DELETE /api/vitals/{vital_id} (delete vital), GET /api/vitals/encounter/{encounter_id} (get encounter vitals), GET /api/vitals/patient/{patient_id}/latest (get most recent vital). Supports all vital signs: BP, HR, temp, RR, SpO2, weight, height, BMI. Router integrated into server.py. Ready for testing."
 
+  - task: "Auto-Population Workflow - Document to Structured EHR"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "critical"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "IMPLEMENTED: Created intelligent auto-population workflow that takes extracted document data (ANY format) and automatically populates structured EHR tables. Features: 1) populate_allergies_from_document() - extracts and creates allergy records, 2) populate_diagnoses_from_document() - extracts diagnoses and uses AI to match ICD-10 codes (falls back to keyword search), creates diagnosis records with proper coding, 3) populate_vitals_from_document() - extracts vitals and creates individual structured records. All functions handle duplicates, normalize data formats, and link to encounters. Integrated into create_encounter_from_document(). This completes the vision: Upload any doctor's document → System intelligently allocates information to correct EHR components with medical coding. Ready for E2E testing with real documents."
+
 frontend:
   - task: "Document Extract Button - Frontend UI"
     implemented: true
