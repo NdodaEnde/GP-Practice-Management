@@ -221,12 +221,19 @@ async def get_immunization_summary(patient_id: str):
             if vaccine_type not in summary:
                 summary[vaccine_type] = {
                     'total_doses': 0,
+                    'doses_in_series': None,
                     'last_dose_date': None,
                     'next_due_date': None,
                     'series_complete': False
                 }
             
             summary[vaccine_type]['total_doses'] += 1
+            
+            # Track doses in series (use the most recent or highest value)
+            doses_in_series = imm.get('doses_in_series')
+            if doses_in_series:
+                if not summary[vaccine_type]['doses_in_series'] or doses_in_series > summary[vaccine_type]['doses_in_series']:
+                    summary[vaccine_type]['doses_in_series'] = doses_in_series
             
             # Track most recent dose
             admin_date = imm.get('administration_date')
