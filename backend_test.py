@@ -2920,24 +2920,24 @@ def main():
             return 1
     
     else:
-        # Run immunizations summary display logic tests by default
-        immunizations_tester = ImmunizationsTester()
+        # Run NAPPI integration tests by default (as per review request)
+        nappi_tester = NAPPITester()
         
         try:
-            # Run the immunizations summary display logic test
-            success = immunizations_tester.run_immunizations_summary_display_test()
+            # Run the NAPPI integration test
+            success = nappi_tester.run_nappi_integration_test()
             
             # Print detailed results
             print("\n" + "="*80)
-            print("DETAILED IMMUNIZATIONS TEST RESULTS")
+            print("DETAILED NAPPI INTEGRATION TEST RESULTS")
             print("="*80)
             
-            for result in immunizations_tester.test_results:
+            for result in nappi_tester.test_results:
                 status = "✅" if result['success'] else "❌"
                 print(f"{status} {result['test']}: {result['message']}")
             
             # Cleanup
-            immunizations_tester.cleanup_test_data()
+            nappi_tester.cleanup_test_data()
             
             return 0 if success else 1
             
