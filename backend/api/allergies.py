@@ -43,9 +43,8 @@ class AllergyResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-# Constants
-DEMO_TENANT_ID = "demo-tenant-001"
-DEMO_WORKSPACE_ID = "demo-gp-workspace-001"
+# Constants (will be retrieved from patient record)
+DEFAULT_WORKSPACE_ID = "demo-gp-workspace-001"
 
 @router.post("/allergies", response_model=AllergyResponse)
 async def create_allergy(allergy: AllergyCreate, supabase=None):
@@ -53,10 +52,17 @@ async def create_allergy(allergy: AllergyCreate, supabase=None):
     from server import supabase  # Import from main server
     
     try:
+        # Get patient's workspace_id
+        patient_result = supabase.table('patients').select('workspace_id').eq('id', allergy.patient_id).execute()
+        if not patient_result.data:
+            raise HTTPException(status_code=404, detail="Patient not found")
+        
+        workspace_id = patient_result.data[0]['workspace_id']
+        
         allergy_data = {
             'id': str(uuid.uuid4()),
-            'tenant_id': DEMO_TENANT_ID,
-            'workspace_id': DEMO_WORKSPACE_ID,
+            'tenant_id': workspace_id,  # Use workspace_id as tenant_id for compatibility
+            'workspace_id': workspace_id,
             'patient_id': allergy.patient_id,
             'substance': allergy.substance,
             'reaction': allergy.reaction,
