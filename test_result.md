@@ -246,6 +246,18 @@ backend:
         agent: "testing"
         comment: "BACKEND TESTING COMPLETE - ALL ENDPOINTS WORKING: ✅ GET /api/gp/documents successfully lists digitised documents with status 'parsed'/'extracted'. ✅ POST /api/gp/documents/{document_id}/extract successfully extracts structured data with demographics (27 fields including patient_name, dob, id_number), chronic_summary (5 medications), vitals, and clinical_notes. ✅ Properly saves structured_extraction to MongoDB and updates document status to 'extracted'. ✅ GET /api/gp/parsed-document/{mongo_id} correctly prioritizes structured_extraction over extracted_data. ✅ Demographics data path verified - contains comprehensive patient information accessible for GPValidationInterface. The 'No demographic data extracted' issue is RESOLVED - demographics section contains all required fields."
 
+  - task: "ICD10 Test Page - Backend APIs"
+    implemented: true
+    working: true
+    file: "/app/backend/api/icd10.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "COMPREHENSIVE ICD-10 BACKEND TESTING COMPLETE - ALL 4 ENDPOINTS WORKING PERFECTLY: ✅ GET /api/icd10/stats returns correct database statistics (41,008 total codes, 35,481 clinical use codes, 11,857 primary diagnosis codes, ICD-10 MIT 2021 South Africa version). ✅ GET /api/icd10/search successfully searches with queries 'diabetes' (20 results), 'hypertension' (18 results), 'asthma' (8 results). All results have proper structure with code, who_full_desc, valid_clinical_use, valid_primary fields. Query validation and limit parameters working correctly. ✅ GET /api/icd10/suggest AI-powered suggestions working with GPT-4o integration. Test query 'Patient with type 2 diabetes and high blood pressure' returned relevant codes E11.9 and I10 with proper structure and AI response. ✅ GET /api/icd10/code/E11.9 specific code lookup working perfectly, returns 'Type 2 diabetes mellitus without complications' with all required fields and additional metadata (chapter_desc, group_desc, code_3char, code_3char_desc). All authentication with OPENAI_API_KEY functional. Backend ready for frontend integration."
+
 frontend:
   - task: "Document Extract Button - Frontend UI"
     implemented: true
