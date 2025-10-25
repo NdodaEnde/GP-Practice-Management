@@ -898,3 +898,71 @@ agent_communication:
       3. Record vital signs - verify BMI auto-calculation and history display
       4. Verify all data persists across page reloads
       5. Test CRUD operations for diagnoses and vitals
+  - agent: "main"
+    message: |
+      AUTO-POPULATION WORKFLOW IMPLEMENTATION COMPLETE:
+      
+      PROBLEM SOLVED:
+      Previously, extracted document data would only create encounters with bulk JSON data.
+      The new structured tables (allergies, diagnoses, vitals) had to be manually populated.
+      
+      SOLUTION IMPLEMENTED:
+      Enhanced create_encounter_from_document() with 3 new helper functions that automatically
+      populate structured EHR tables from ANY document format:
+      
+      1. populate_allergies_from_document():
+         - Extracts allergies from demographics section
+         - Handles multiple formats: string, list, dict
+         - Parses allergen, reaction, severity
+         - Auto-creates allergy records in allergies table
+         - Skips duplicates (checks existing allergies)
+         - Handles "none", "nil", "NKA" cases
+      
+      2. populate_diagnoses_from_document():
+         - Extracts diagnoses from chronic_conditions and clinical_notes
+         - **AI-POWERED ICD-10 MATCHING**: Uses our /api/icd10/suggest endpoint
+         - Falls back to keyword search if AI matching fails
+         - Auto-creates diagnosis records with proper ICD-10 codes
+         - Marks unmapped diagnoses for manual review
+         - Skips duplicates
+         - Links to encounter for context
+      
+      3. populate_vitals_from_document():
+         - Extracts all vital signs from vitals section
+         - Handles both old and new data structures
+         - Creates individual vital records in vitals table
+         - Auto-links to encounter
+         - Uses document date as measurement date
+         - Skips duplicates for same date
+      
+      WORKFLOW NOW:
+      Upload Document → Parse → Extract → Validate → Confirm Match/Create Patient
+      ↓
+      ✅ Creates Encounter
+      ✅ Auto-populates Allergies table (with RED ALERT in prescriptions)
+      ✅ Auto-populates Diagnoses table (with AI-matched ICD-10 codes)
+      ✅ Auto-populates Vitals table (individual structured records)
+      ✅ Creates Conditions (legacy)
+      ✅ Creates Medications
+      
+      INTELLIGENCE:
+      - Regardless of doctor's document format
+      - Regardless of how data is structured
+      - System intelligently maps to correct EHR components
+      - With proper medical coding (ICD-10)
+      - With patient safety checks (allergy alerts)
+      
+      FILES MODIFIED:
+      - /app/backend/server.py (added 3 helper functions + integration)
+      
+      TESTING NEEDED:
+      Test with a real document that contains:
+      1. Allergies (e.g., "Penicillin", "Aspirin")
+      2. Diagnoses (e.g., "Type 2 Diabetes", "Hypertension")
+      3. Vitals (BP, HR, temp, etc.)
+      
+      Verify:
+      - Allergy records created and show in AllergyManagement component
+      - Diagnosis records created with ICD-10 codes and show in DiagnosesManagement
+      - Vital records created and show in VitalsManagement
+      - Prescription workflow shows allergy alerts
