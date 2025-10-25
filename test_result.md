@@ -279,8 +279,7 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Document Extract Button - Backend"
-    - "Document Extract Button - Frontend UI"
+    - "ICD10 Test Page - Frontend"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
