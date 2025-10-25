@@ -2924,7 +2924,7 @@ def main():
         nappi_tester = NAPPITester()
         
         try:
-            # Run the NAPPI integration test
+            # Run the comprehensive NAPPI integration test from review request
             success = nappi_tester.run_nappi_integration_test()
             
             # Print detailed results
