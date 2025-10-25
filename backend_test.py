@@ -1660,6 +1660,93 @@ class NAPPITester:
             self.log_test("End-to-End NAPPI Workflow", False, f"Workflow verification failed: {str(e)}")
             return False
     
+    def run_nappi_integration_test(self):
+        """Run complete NAPPI integration with prescriptions test"""
+        print("\n" + "="*80)
+        print("NAPPI INTEGRATION WITH PRESCRIPTIONS TEST")
+        print("Testing complete NAPPI workflow as specified in review request")
+        print("="*80)
+        
+        # Step 1: Test backend connectivity
+        if not self.test_backend_health():
+            print("\n❌ Cannot proceed - Backend is not accessible")
+            return False
+        
+        # Step 2: Get a patient ID
+        print("\n👥 Step 1: Getting patient ID for prescription testing...")
+        patient_success = self.get_test_patient_id()
+        if not patient_success:
+            print("\n❌ Cannot proceed - Failed to get test patient")
+            return False
+        
+        # Step 3: Search NAPPI for medication (paracetamol)
+        print("\n🔍 Step 2: Searching NAPPI for paracetamol...")
+        search_success = self.test_nappi_search()
+        if not search_success:
+            print("\n❌ Cannot proceed - NAPPI search failed")
+            return False
+        
+        # Step 4: Create prescription with complete NAPPI data
+        print("\n💊 Step 3: Creating prescription with complete NAPPI data...")
+        create_success = self.test_create_prescription_with_nappi()
+        if not create_success:
+            print("\n❌ Prescription creation with NAPPI failed")
+            return False
+        
+        # Step 5: Retrieve prescription with NAPPI data
+        print("\n📋 Step 4: Retrieving prescription with NAPPI data...")
+        retrieve_success = self.test_retrieve_prescription_with_nappi()
+        
+        # Step 6: Test multiple medications (one with NAPPI, one without)
+        print("\n🔄 Step 5: Testing multiple medications (mixed NAPPI data)...")
+        multiple_success = self.test_multiple_medications_prescription()
+        
+        # Step 7: End-to-end workflow verification
+        print("\n🎯 Step 6: Verifying end-to-end NAPPI workflow...")
+        e2e_success = self.test_end_to_end_nappi_workflow()
+        
+        # Summary
+        print("\n" + "="*80)
+        print("NAPPI INTEGRATION TEST SUMMARY")
+        print("="*80)
+        
+        # Determine overall success
+        critical_tests = [
+            patient_success, search_success, create_success, retrieve_success
+        ]
+        additional_tests = [
+            multiple_success, e2e_success
+        ]
+        
+        critical_success = all(critical_tests)
+        all_tests_passed = critical_success and all(additional_tests)
+        
+        if critical_success:
+            if all_tests_passed:
+                print("✅ ALL NAPPI INTEGRATION TESTS PASSED")
+                print("✅ CRITICAL SUCCESS: Complete NAPPI integration working")
+                print("✅ Prescriptions created with NAPPI codes save successfully")
+                print("✅ NAPPI codes and generic names retrieved correctly")
+                print("✅ Optional fields work (nappi_code can be null for manual entries)")
+                print("✅ Complete integration verified from search to retrieval")
+            else:
+                print("✅ CRITICAL NAPPI INTEGRATION WORKING")
+                print("✅ Core functionality: Search → Create → Retrieve working")
+                if not multiple_success:
+                    print("⚠️  Mixed NAPPI data (optional fields) may have issues")
+                if not e2e_success:
+                    print("⚠️  End-to-end workflow verification had issues")
+        else:
+            print("❌ CRITICAL NAPPI INTEGRATION FAILED")
+            failed_tests = []
+            if not patient_success: failed_tests.append("Patient Setup")
+            if not search_success: failed_tests.append("NAPPI Search")
+            if not create_success: failed_tests.append("Prescription Creation")
+            if not retrieve_success: failed_tests.append("Prescription Retrieval")
+            print(f"❌ Failed components: {', '.join(failed_tests)}")
+        
+        return critical_success
+    
     def get_or_create_test_patient(self):
         """Get or create a test patient for prescription testing"""
         try:
