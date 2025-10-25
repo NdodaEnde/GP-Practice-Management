@@ -354,7 +354,7 @@ async def get_immunization_certificates(patient_id: str):
 async def delete_immunization(immunization_id: str):
     """Delete an immunization record"""
     try:
-        result = supabase.table('immunizations')\
+        supabase.table('immunizations')\
             .delete()\
             .eq('id', immunization_id)\
             .execute()
