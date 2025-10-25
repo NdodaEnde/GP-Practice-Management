@@ -5,7 +5,8 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
-import { Plus, Trash2, Search, Save } from 'lucide-react';
+import { Alert, AlertDescription } from './ui/alert';
+import { Plus, Trash2, Search, Save, AlertTriangle } from 'lucide-react';
 import { useToast } from '../hooks/use-toast';
 
 const PrescriptionBuilder = ({ patientId, encounterId, doctorName, initialData, onSave }) => {
@@ -38,8 +39,66 @@ const PrescriptionBuilder = ({ patientId, encounterId, doctorName, initialData, 
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [allergies, setAllergies] = useState([]);
+  const [loadingAllergies, setLoadingAllergies] = useState(false);
+  const [showAllergyWarning, setShowAllergyWarning] = useState(false);
+  const [allergyConflicts, setAllergyConflicts] = useState([]);
 
   const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
+
+  // Fetch patient allergies on component mount
+  useEffect(() => {
+    if (patientId) {
+      fetchPatientAllergies();
+    }
+  }, [patientId]);
+
+  // Check for allergy conflicts whenever items change
+  useEffect(() => {
+    checkAllergyConflicts();
+  }, [items, allergies]);
+
+  const fetchPatientAllergies = async () => {
+    setLoadingAllergies(true);
+    try {
+      const response = await axios.get(`${backendUrl}/api/allergies/patient/${patientId}`);
+      setAllergies(response.data || []);
+    } catch (error) {
+      console.error('Error fetching allergies:', error);
+    } finally {
+      setLoadingAllergies(false);
+    }
+  };
+
+  const checkAllergyConflicts = () => {
+    if (allergies.length === 0) {
+      setAllergyConflicts([]);
+      setShowAllergyWarning(false);
+      return;
+    }
+
+    const conflicts = [];
+    items.forEach((item, index) => {
+      if (!item.medication_name) return;
+      
+      allergies.forEach((allergy) => {
+        const medName = item.medication_name.toLowerCase();
+        const allergen = allergy.allergen.toLowerCase();
+        
+        // Check if medication name contains allergen or vice versa
+        if (medName.includes(allergen) || allergen.includes(medName)) {
+          conflicts.push({
+            itemIndex: index,
+            medication: item.medication_name,
+            allergy: allergy
+          });
+        }
+      });
+    });
+
+    setAllergyConflicts(conflicts);
+    setShowAllergyWarning(conflicts.length > 0);
+  };
 
   // Search medications
   const searchMedications = async (query) => {
