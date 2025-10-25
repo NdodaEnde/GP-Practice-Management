@@ -103,10 +103,9 @@
 #====================================================================================================
 
 user_problem_statement: |
-  Phase 1.7: Document Architecture Refactor - Implement "Extract" button in Document Validation interface.
-  Documents are stored in Digitised Documents archive with "parsed" status. When user clicks "Extract",
-  the system should extract structured data (Demographics, Conditions, Vitals, Clinical Notes) and
-  display them in editable validation tabs, similar to the existing GPValidationInterface.
+  Phase 1: Patient Safety Critical - Implement Allergy Management System with ICD-10 coded diagnoses.
+  Create comprehensive allergy tracking with RED ALERT banner, prescription safety checks, and structured
+  vitals/diagnoses tables. Load 41,008 ICD-10 codes for medical aid billing readiness.
 
 backend:
   - task: "GP Document Upload & Processing"
