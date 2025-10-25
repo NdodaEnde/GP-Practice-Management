@@ -147,7 +147,7 @@ async def get_nappi_code(nappi_code: str):
         raise HTTPException(status_code=500, detail=f"Error fetching NAPPI code: {str(e)}")
 
 
-@router.get("/by-generic/{generic_name}", response_model=List[NAPPICode])
+@router.get("/nappi/by-generic/{generic_name}", response_model=List[NAPPICode])
 async def get_nappi_by_generic(
     generic_name: str,
     limit: int = Query(20, le=100)
