@@ -3951,19 +3951,33 @@ async def create_prescription(prescription: PrescriptionCreate):
         items_data = []
         for item in prescription.items:
             item_id = str(uuid.uuid4())
-            items_data.append({
+            item_data = {
                 'id': item_id,
                 'prescription_id': prescription_id,
                 'medication_name': item.medication_name,
-                'nappi_code': item.nappi_code,
-                'generic_name': item.generic_name,
                 'dosage': item.dosage,
                 'frequency': item.frequency,
                 'duration': item.duration,
                 'quantity': item.quantity,
                 'instructions': item.instructions,
                 'created_at': datetime.now(timezone.utc).isoformat()
-            })
+            }
+            
+            # Only add NAPPI fields if they exist in the schema
+            # TODO: Remove this check after running nappi_prescription_migration.sql
+            if hasattr(item, 'nappi_code') and item.nappi_code:
+                try:
+                    # Test if nappi_code column exists by attempting a small query
+                    test_result = supabase.table('prescription_items').select('nappi_code').limit(1).execute()
+                    item_data['nappi_code'] = item.nappi_code
+                    if hasattr(item, 'generic_name') and item.generic_name:
+                        item_data['generic_name'] = item.generic_name
+                except Exception as e:
+                    # Column doesn't exist, skip NAPPI fields
+                    logger.warning(f"NAPPI columns not found in prescription_items table: {e}")
+                    pass
+            
+            items_data.append(item_data)
         
         if items_data:
             supabase.table('prescription_items').insert(items_data).execute()
