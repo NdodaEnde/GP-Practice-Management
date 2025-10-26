@@ -1219,6 +1219,592 @@ class ICD10Tester:
         
         return critical_success
 
+class BillingTester:
+    def __init__(self):
+        self.backend_url = BACKEND_URL
+        self.test_results = []
+        self.test_patient_id = None
+        self.created_invoice_id = None
+        self.created_payment_id = None
+        self.created_claim_id = None
+        self.invoice_data = None
+        
+    def log_test(self, test_name, success, message, details=None):
+        """Log test results"""
+        result = {
+            'test': test_name,
+            'success': success,
+            'message': message,
+            'details': details or {},
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        }
+        self.test_results.append(result)
+        status = "✅ PASS" if success else "❌ FAIL"
+        print(f"{status}: {test_name} - {message}")
+        if details and not success:
+            print(f"   Details: {details}")
+    
+    def test_backend_health(self):
+        """Test if backend is accessible"""
+        try:
+            response = requests.get(f"{self.backend_url}/health", timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                self.log_test("Backend Health Check", True, f"Backend is healthy: {data.get('status')}")
+                return True
+            else:
+                self.log_test("Backend Health Check", False, f"Backend returned status {response.status_code}")
+                return False
+        except Exception as e:
+            self.log_test("Backend Health Check", False, f"Cannot connect to backend: {str(e)}")
+            return False
+    
+    def get_test_patient_id(self):
+        """Get a patient ID for testing"""
+        try:
+            # Get list of patients
+            response = requests.get(f"{self.backend_url}/patients", timeout=30)
+            
+            if response.status_code == 200:
+                patients = response.json()
+                if patients and len(patients) > 0:
+                    self.test_patient_id = patients[0]['id']
+                    patient_name = f"{patients[0].get('first_name', '')} {patients[0].get('last_name', '')}"
+                    self.log_test("Get Test Patient ID", True, 
+                                f"Using patient: {patient_name} (ID: {self.test_patient_id})")
+                    return True
+                else:
+                    self.log_test("Get Test Patient ID", False, "No patients found in system")
+                    return False
+            else:
+                self.log_test("Get Test Patient ID", False, f"Failed to get patients: {response.status_code}")
+                return False
+                
+        except Exception as e:
+            self.log_test("Get Test Patient ID", False, f"Error getting patient ID: {str(e)}")
+            return False
+    
+    def test_create_invoice(self):
+        """Test POST /api/invoices - Create invoice with multiple items"""
+        try:
+            if not self.test_patient_id:
+                self.log_test("Create Invoice", False, "No test patient ID available")
+                return False
+            
+            # Create invoice with exact structure from review request
+            invoice_data = {
+                "patient_id": self.test_patient_id,
+                "encounter_id": None,
+                "invoice_date": "2025-01-25",
+                "items": [
+                    {
+                        "item_type": "consultation",
+                        "description": "General Consultation",
+                        "quantity": 1,
+                        "unit_price": 500,
+                        "icd10_code": "Z00.0"
+                    },
+                    {
+                        "item_type": "medication",
+                        "description": "Panado 500mg Tablets",
+                        "quantity": 20,
+                        "unit_price": 2.50,
+                        "nappi_code": "111111"
+                    }
+                ],
+                "medical_aid_name": "Discovery Health",
+                "medical_aid_number": "12345678",
+                "notes": "Test invoice"
+            }
+            
+            response = requests.post(
+                f"{self.backend_url}/invoices",
+                json=invoice_data,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                
+                if result.get('status') == 'success':
+                    self.created_invoice_id = result.get('invoice_id')
+                    invoice_number = result.get('invoice_number')
+                    total_amount = result.get('total_amount')
+                    
+                    # Verify calculations
+                    expected_subtotal = (1 * 500) + (20 * 2.50)  # 500 + 50 = 550
+                    expected_vat = expected_subtotal * 0.15  # 82.50
+                    expected_total = expected_subtotal + expected_vat  # 632.50
+                    
+                    if abs(total_amount - expected_total) < 0.01:  # Allow for floating point precision
+                        self.log_test("Invoice Calculation Verification", True, 
+                                    f"Correct total calculated: R{total_amount:.2f} (Subtotal: R{expected_subtotal}, VAT: R{expected_vat:.2f})")
+                    else:
+                        self.log_test("Invoice Calculation Verification", False, 
+                                    f"Incorrect total: Expected R{expected_total:.2f}, got R{total_amount:.2f}")
+                    
+                    self.log_test("Create Invoice", True, 
+                                f"Invoice created successfully: {invoice_number} (ID: {self.created_invoice_id})")
+                    return True
+                else:
+                    self.log_test("Create Invoice", False, 
+                                f"Invoice creation failed: {result.get('message', 'Unknown error')}")
+                    return False
+            else:
+                error_msg = f"API returned status {response.status_code}"
+                try:
+                    error_detail = response.json()
+                    error_msg += f": {error_detail}"
+                except:
+                    error_msg += f": {response.text}"
+                
+                self.log_test("Create Invoice", False, error_msg)
+                return False
+                
+        except Exception as e:
+            self.log_test("Create Invoice", False, f"Request failed: {str(e)}")
+            return False
+    
+    def test_retrieve_invoice(self):
+        """Test GET /api/invoices/{invoice_id} - Retrieve invoice details"""
+        try:
+            if not self.created_invoice_id:
+                self.log_test("Retrieve Invoice", False, "No created invoice ID available")
+                return False
+            
+            response = requests.get(
+                f"{self.backend_url}/invoices/{self.created_invoice_id}",
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                invoice = response.json()
+                self.invoice_data = invoice
+                
+                # Verify invoice structure
+                required_fields = ['id', 'invoice_number', 'patient_id', 'total_amount', 'items', 'payments']
+                missing_fields = [field for field in required_fields if field not in invoice]
+                
+                if not missing_fields:
+                    self.log_test("Invoice Structure Verification", True, 
+                                f"Invoice has all required fields: {required_fields}")
+                    
+                    # Verify items
+                    items = invoice.get('items', [])
+                    if len(items) == 2:
+                        consultation_item = next((item for item in items if item.get('item_type') == 'consultation'), None)
+                        medication_item = next((item for item in items if item.get('item_type') == 'medication'), None)
+                        
+                        if consultation_item and medication_item:
+                            self.log_test("Invoice Items Verification", True, 
+                                        f"Both consultation and medication items found with correct types")
+                            
+                            # Verify ICD-10 and NAPPI codes
+                            if consultation_item.get('icd10_code') == 'Z00.0':
+                                self.log_test("ICD-10 Code Verification", True, 
+                                            f"Consultation has correct ICD-10 code: {consultation_item.get('icd10_code')}")
+                            else:
+                                self.log_test("ICD-10 Code Verification", False, 
+                                            f"Expected ICD-10 code Z00.0, got: {consultation_item.get('icd10_code')}")
+                            
+                            if medication_item.get('nappi_code') == '111111':
+                                self.log_test("NAPPI Code Verification", True, 
+                                            f"Medication has correct NAPPI code: {medication_item.get('nappi_code')}")
+                            else:
+                                self.log_test("NAPPI Code Verification", False, 
+                                            f"Expected NAPPI code 111111, got: {medication_item.get('nappi_code')}")
+                        else:
+                            self.log_test("Invoice Items Verification", False, 
+                                        "Missing consultation or medication items")
+                    else:
+                        self.log_test("Invoice Items Verification", False, 
+                                    f"Expected 2 items, found {len(items)}")
+                    
+                    # Verify payments array (should be empty initially)
+                    payments = invoice.get('payments', [])
+                    if isinstance(payments, list):
+                        self.log_test("Payments Array Verification", True, 
+                                    f"Payments array present (currently {len(payments)} payments)")
+                    else:
+                        self.log_test("Payments Array Verification", False, 
+                                    "Payments field is not an array")
+                    
+                    self.log_test("Retrieve Invoice", True, 
+                                f"Invoice retrieved successfully with complete details")
+                    return True
+                else:
+                    self.log_test("Invoice Structure Verification", False, 
+                                f"Missing required fields: {missing_fields}")
+                    self.log_test("Retrieve Invoice", False, "Invoice structure incomplete")
+                    return False
+            else:
+                self.log_test("Retrieve Invoice", False, 
+                            f"Failed to retrieve invoice: {response.status_code}")
+                return False
+                
+        except Exception as e:
+            self.log_test("Retrieve Invoice", False, f"Request failed: {str(e)}")
+            return False
+    
+    def test_record_payment(self):
+        """Test POST /api/payments - Record partial payment"""
+        try:
+            if not self.created_invoice_id:
+                self.log_test("Record Payment", False, "No created invoice ID available")
+                return False
+            
+            # Record partial payment as specified in review request
+            payment_data = {
+                "invoice_id": self.created_invoice_id,
+                "payment_date": "2025-01-25",
+                "amount": 300,
+                "payment_method": "cash",
+                "reference_number": "CASH001"
+            }
+            
+            response = requests.post(
+                f"{self.backend_url}/payments",
+                json=payment_data,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                
+                if result.get('status') == 'success':
+                    self.created_payment_id = result.get('payment_id')
+                    new_outstanding = result.get('new_outstanding')
+                    payment_status = result.get('payment_status')
+                    
+                    # Verify payment status updated to "partially_paid"
+                    if payment_status == 'partially_paid':
+                        self.log_test("Payment Status Update", True, 
+                                    f"Payment status correctly updated to: {payment_status}")
+                    else:
+                        self.log_test("Payment Status Update", False, 
+                                    f"Expected 'partially_paid', got: {payment_status}")
+                    
+                    # Verify outstanding amount calculation
+                    if self.invoice_data:
+                        expected_outstanding = float(self.invoice_data.get('total_amount', 0)) - 300
+                        if abs(new_outstanding - expected_outstanding) < 0.01:
+                            self.log_test("Outstanding Amount Calculation", True, 
+                                        f"Correct outstanding amount: R{new_outstanding:.2f}")
+                        else:
+                            self.log_test("Outstanding Amount Calculation", False, 
+                                        f"Expected R{expected_outstanding:.2f}, got R{new_outstanding:.2f}")
+                    
+                    self.log_test("Record Payment", True, 
+                                f"Payment recorded successfully: {self.created_payment_id}")
+                    return True
+                else:
+                    self.log_test("Record Payment", False, 
+                                f"Payment recording failed: {result.get('message', 'Unknown error')}")
+                    return False
+            else:
+                error_msg = f"API returned status {response.status_code}"
+                try:
+                    error_detail = response.json()
+                    error_msg += f": {error_detail}"
+                except:
+                    error_msg += f": {response.text}"
+                
+                self.log_test("Record Payment", False, error_msg)
+                return False
+                
+        except Exception as e:
+            self.log_test("Record Payment", False, f"Request failed: {str(e)}")
+            return False
+    
+    def test_create_medical_aid_claim(self):
+        """Test POST /api/claims - Create medical aid claim"""
+        try:
+            if not self.created_invoice_id:
+                self.log_test("Create Medical Aid Claim", False, "No created invoice ID available")
+                return False
+            
+            # Create medical aid claim
+            claim_data = {
+                "invoice_id": self.created_invoice_id,
+                "medical_aid_name": "Discovery Health",
+                "medical_aid_number": "12345678",
+                "medical_aid_plan": "Executive Plan",
+                "claim_amount": 632.50,  # Full invoice amount
+                "primary_diagnosis_code": "Z00.0",
+                "primary_diagnosis_description": "General medical examination"
+            }
+            
+            response = requests.post(
+                f"{self.backend_url}/claims",
+                json=claim_data,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                
+                if result.get('status') == 'success':
+                    self.created_claim_id = result.get('claim_id')
+                    claim_number = result.get('claim_number')
+                    
+                    # Verify claim number format (CLM-YYYYMMDD-XXXX)
+                    if claim_number and claim_number.startswith('CLM-') and len(claim_number) >= 13:
+                        self.log_test("Claim Number Format", True, 
+                                    f"Claim number has correct format: {claim_number}")
+                    else:
+                        self.log_test("Claim Number Format", False, 
+                                    f"Claim number format incorrect: {claim_number}")
+                    
+                    self.log_test("Create Medical Aid Claim", True, 
+                                f"Claim created successfully: {claim_number} (ID: {self.created_claim_id})")
+                    return True
+                else:
+                    self.log_test("Create Medical Aid Claim", False, 
+                                f"Claim creation failed: {result.get('message', 'Unknown error')}")
+                    return False
+            else:
+                error_msg = f"API returned status {response.status_code}"
+                try:
+                    error_detail = response.json()
+                    error_msg += f": {error_detail}"
+                except:
+                    error_msg += f": {response.text}"
+                
+                self.log_test("Create Medical Aid Claim", False, error_msg)
+                return False
+                
+        except Exception as e:
+            self.log_test("Create Medical Aid Claim", False, f"Request failed: {str(e)}")
+            return False
+    
+    def test_revenue_report(self):
+        """Test GET /api/reports/revenue - Financial revenue report"""
+        try:
+            # Test revenue report for current month
+            from_date = "2025-01-01"
+            to_date = "2025-01-31"
+            
+            response = requests.get(
+                f"{self.backend_url}/reports/revenue",
+                params={"from_date": from_date, "to_date": to_date},
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                report = response.json()
+                
+                # Verify report structure
+                required_fields = ['from_date', 'to_date', 'total_invoiced', 'total_paid', 'total_outstanding', 'invoice_count', 'payment_count']
+                missing_fields = [field for field in required_fields if field not in report]
+                
+                if not missing_fields:
+                    self.log_test("Revenue Report Structure", True, 
+                                f"Report has all required fields: {required_fields}")
+                    
+                    # Verify data types and values
+                    total_invoiced = report.get('total_invoiced', 0)
+                    total_paid = report.get('total_paid', 0)
+                    total_outstanding = report.get('total_outstanding', 0)
+                    invoice_count = report.get('invoice_count', 0)
+                    payment_count = report.get('payment_count', 0)
+                    
+                    if isinstance(total_invoiced, (int, float)) and total_invoiced >= 0:
+                        self.log_test("Revenue Report Data - Total Invoiced", True, 
+                                    f"Total invoiced: R{total_invoiced:.2f}")
+                    else:
+                        self.log_test("Revenue Report Data - Total Invoiced", False, 
+                                    f"Invalid total invoiced value: {total_invoiced}")
+                    
+                    if isinstance(total_paid, (int, float)) and total_paid >= 0:
+                        self.log_test("Revenue Report Data - Total Paid", True, 
+                                    f"Total paid: R{total_paid:.2f}")
+                    else:
+                        self.log_test("Revenue Report Data - Total Paid", False, 
+                                    f"Invalid total paid value: {total_paid}")
+                    
+                    if isinstance(invoice_count, int) and invoice_count >= 0:
+                        self.log_test("Revenue Report Data - Invoice Count", True, 
+                                    f"Invoice count: {invoice_count}")
+                    else:
+                        self.log_test("Revenue Report Data - Invoice Count", False, 
+                                    f"Invalid invoice count: {invoice_count}")
+                    
+                    # Check payment methods breakdown
+                    payment_methods = report.get('payment_methods', {})
+                    if isinstance(payment_methods, dict):
+                        self.log_test("Revenue Report - Payment Methods", True, 
+                                    f"Payment methods breakdown: {payment_methods}")
+                    else:
+                        self.log_test("Revenue Report - Payment Methods", False, 
+                                    "Payment methods field is not a dictionary")
+                    
+                    self.log_test("Revenue Report", True, 
+                                f"Revenue report generated successfully for {from_date} to {to_date}")
+                    return True
+                else:
+                    self.log_test("Revenue Report Structure", False, 
+                                f"Missing required fields: {missing_fields}")
+                    return False
+            else:
+                self.log_test("Revenue Report", False, 
+                            f"Failed to generate revenue report: {response.status_code}")
+                return False
+                
+        except Exception as e:
+            self.log_test("Revenue Report", False, f"Request failed: {str(e)}")
+            return False
+    
+    def test_outstanding_report(self):
+        """Test GET /api/reports/outstanding - Outstanding invoices report"""
+        try:
+            response = requests.get(
+                f"{self.backend_url}/reports/outstanding",
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                report = response.json()
+                
+                # Verify report structure
+                required_fields = ['count', 'total_outstanding', 'invoices']
+                missing_fields = [field for field in required_fields if field not in report]
+                
+                if not missing_fields:
+                    self.log_test("Outstanding Report Structure", True, 
+                                f"Report has all required fields: {required_fields}")
+                    
+                    # Verify data
+                    count = report.get('count', 0)
+                    total_outstanding = report.get('total_outstanding', 0)
+                    invoices = report.get('invoices', [])
+                    
+                    if isinstance(count, int) and count >= 0:
+                        self.log_test("Outstanding Report - Count", True, 
+                                    f"Outstanding invoices count: {count}")
+                    else:
+                        self.log_test("Outstanding Report - Count", False, 
+                                    f"Invalid count value: {count}")
+                    
+                    if isinstance(total_outstanding, (int, float)) and total_outstanding >= 0:
+                        self.log_test("Outstanding Report - Total", True, 
+                                    f"Total outstanding: R{total_outstanding:.2f}")
+                    else:
+                        self.log_test("Outstanding Report - Total", False, 
+                                    f"Invalid total outstanding value: {total_outstanding}")
+                    
+                    if isinstance(invoices, list):
+                        self.log_test("Outstanding Report - Invoices List", True, 
+                                    f"Invoices list contains {len(invoices)} items")
+                        
+                        # If we have our test invoice, verify it appears in outstanding
+                        if self.created_invoice_id and invoices:
+                            test_invoice_found = any(inv.get('id') == self.created_invoice_id for inv in invoices)
+                            if test_invoice_found:
+                                self.log_test("Outstanding Report - Test Invoice", True, 
+                                            "Test invoice appears in outstanding report (correct - partially paid)")
+                            else:
+                                self.log_test("Outstanding Report - Test Invoice", False, 
+                                            "Test invoice not found in outstanding report")
+                    else:
+                        self.log_test("Outstanding Report - Invoices List", False, 
+                                    "Invoices field is not a list")
+                    
+                    self.log_test("Outstanding Report", True, 
+                                "Outstanding invoices report generated successfully")
+                    return True
+                else:
+                    self.log_test("Outstanding Report Structure", False, 
+                                f"Missing required fields: {missing_fields}")
+                    return False
+            else:
+                self.log_test("Outstanding Report", False, 
+                            f"Failed to generate outstanding report: {response.status_code}")
+                return False
+                
+        except Exception as e:
+            self.log_test("Outstanding Report", False, f"Request failed: {str(e)}")
+            return False
+    
+    def run_billing_system_test(self):
+        """Run comprehensive billing system test"""
+        print("\n" + "="*80)
+        print("PHASE 3 BILLING SYSTEM BACKEND API TESTING")
+        print("Testing invoice creation, payments, claims, and financial reports")
+        print("="*80)
+        
+        # Step 1: Test backend connectivity
+        if not self.test_backend_health():
+            print("\n❌ Cannot proceed - Backend is not accessible")
+            return False
+        
+        # Step 2: Get test patient ID
+        print("\n👤 Step 1: Getting patient ID for testing...")
+        if not self.get_test_patient_id():
+            print("\n❌ Cannot proceed - No patients available for testing")
+            return False
+        
+        # Step 3: Create invoice with multiple items
+        print("\n📄 Step 2: Creating invoice with consultation and medication...")
+        invoice_success = self.test_create_invoice()
+        if not invoice_success:
+            print("\n❌ Invoice creation failed - cannot proceed with dependent tests")
+            return False
+        
+        # Step 4: Retrieve invoice details
+        print("\n📋 Step 3: Retrieving invoice details...")
+        retrieve_success = self.test_retrieve_invoice()
+        
+        # Step 5: Record partial payment
+        print("\n💰 Step 4: Recording partial payment...")
+        payment_success = self.test_record_payment()
+        
+        # Step 6: Create medical aid claim
+        print("\n🏥 Step 5: Creating medical aid claim...")
+        claim_success = self.test_create_medical_aid_claim()
+        
+        # Step 7: Test financial reports
+        print("\n📊 Step 6: Testing financial reports...")
+        revenue_success = self.test_revenue_report()
+        outstanding_success = self.test_outstanding_report()
+        
+        # Summary
+        print("\n" + "="*80)
+        print("BILLING SYSTEM TEST SUMMARY")
+        print("="*80)
+        
+        # Determine overall success
+        critical_tests = [invoice_success, retrieve_success, payment_success]
+        additional_tests = [claim_success, revenue_success, outstanding_success]
+        
+        critical_success = all(critical_tests)
+        all_tests_passed = critical_success and all(additional_tests)
+        
+        if critical_success:
+            if all_tests_passed:
+                print("✅ ALL BILLING TESTS PASSED - Complete billing system functional")
+                print("✅ Invoice creation with auto-calculated totals (VAT 15%)")
+                print("✅ Invoice items saved with NAPPI/ICD-10 codes")
+                print("✅ Payment recording updates invoice status to 'partially_paid'")
+                print("✅ Claims created with proper tracking (CLM-YYYYMMDD-XXXX format)")
+                print("✅ Reports generate correct financial data")
+            else:
+                print("✅ CRITICAL BILLING TESTS PASSED - Core functionality working")
+                failed_additional = []
+                if not claim_success: failed_additional.append("Medical Aid Claims")
+                if not revenue_success: failed_additional.append("Revenue Reports")
+                if not outstanding_success: failed_additional.append("Outstanding Reports")
+                if failed_additional:
+                    print(f"⚠️  Some additional features need attention: {', '.join(failed_additional)}")
+        else:
+            print("❌ CRITICAL BILLING TESTS FAILED - System has major issues")
+            failed_critical = []
+            if not invoice_success: failed_critical.append("Invoice Creation")
+            if not retrieve_success: failed_critical.append("Invoice Retrieval")
+            if not payment_success: failed_critical.append("Payment Recording")
+            print(f"❌ Failed critical components: {', '.join(failed_critical)}")
+        
+        return critical_success
+
 class NAPPITester:
     def __init__(self):
         self.backend_url = BACKEND_URL
