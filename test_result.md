@@ -333,6 +333,18 @@ backend:
         agent: "testing"
         comment: "COMPREHENSIVE NAPPI INTEGRATION TESTING COMPLETE - ALL SCENARIOS PASSED: ✅ CRITICAL SUCCESS: Database migration completed successfully and NAPPI integration is fully functional. ✅ TEST 1 - Get Patient ID: Successfully obtained patient ID for prescription testing. ✅ TEST 2 - Search NAPPI for Paracetamol: Found 5 paracetamol medications with proper structure (nappi_code, brand_name, generic_name, strength, dosage_form, schedule). Database contains 1637 NAPPI codes. ✅ TEST 3 - Create Prescription with Complete NAPPI Data: Successfully created prescription with medication_name='Panado 500mg Tablets', nappi_code='111111', generic_name='Paracetamol', dosage='500mg', frequency='Three times daily', duration='5 days', quantity='15 tablets', instructions='Take with food'. ✅ TEST 4 - Retrieve Prescription with NAPPI Data: All NAPPI fields (nappi_code, generic_name, medication_name) correctly retrieved and verified. ✅ TEST 5 - Multiple Medications (Mixed NAPPI Data): Successfully created and retrieved prescription with 2 medications - Item 1 with NAPPI code (111111, Paracetamol), Item 2 without NAPPI code (null values). Optional fields work correctly. ✅ TEST 6 - End-to-End NAPPI Workflow: Complete integration verified from Search → Select → Create → Retrieve. ✅ SCHEMA RESOLUTION: prescription_items table now includes nappi_code and generic_name columns. Backend code updated to save and retrieve NAPPI data correctly. All review request scenarios completed successfully."
 
+  - task: "Phase 3 Billing System Backend APIs"
+    implemented: true
+    working: true
+    file: "/app/backend/api/billing.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "COMPREHENSIVE BILLING SYSTEM TESTING COMPLETE - ALL CRITICAL FUNCTIONALITY WORKING: ✅ INVOICE CREATION: Successfully created invoice with multiple items (consultation + medication) with auto-calculated totals (VAT 15%). Subtotal R550.00, VAT R82.50, Total R632.50. Invoice number format INV-YYYYMMDD-XXXX working correctly. ✅ INVOICE RETRIEVAL: GET /api/invoices/{invoice_id} returns complete invoice details with items array and payments array. ICD-10 codes (Z00.0) and NAPPI codes (111111) properly saved and retrieved. ✅ PAYMENT RECORDING: POST /api/payments successfully records partial payment (R300.00) and updates invoice status to 'partially_paid'. Outstanding amount calculation correct (R332.50). ✅ MEDICAL AID CLAIMS: POST /api/claims creates claims with proper tracking number format CLM-YYYYMMDD-XXXX. Claim linked to invoice with medical aid details (Discovery Health, member 12345678). ✅ FINANCIAL REPORTS: GET /api/reports/revenue generates correct revenue report with totals, payment methods breakdown. GET /api/reports/outstanding shows unpaid/partially paid invoices correctly. ✅ DATABASE INTEGRATION: All billing tables (invoices, invoice_items, payments, medical_aid_claims) working with proper relationships. Router integrated into server.py. All Phase 3 billing requirements met successfully."
+
 frontend:
   - task: "Document Extract Button - Frontend UI"
     implemented: true
