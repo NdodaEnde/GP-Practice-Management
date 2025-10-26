@@ -436,6 +436,28 @@ const InvoiceView = ({ invoice: initialInvoice, open, onClose, onPaymentRecorded
             {/* Payment Recording Section (Print Hidden) */}
             {parseFloat(invoice.amount_outstanding) > 0 && (
               <div className="border-t pt-6 mt-8 print:hidden">
+                {/* Online Payment Option */}
+                <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                    💳 Pay Online with PayFast
+                  </h4>
+                  <p className="text-sm text-gray-600 mb-3">
+                    Secure online payment via credit card, debit card, or instant EFT
+                  </p>
+                  <PayFastPaymentButton
+                    invoice={invoice}
+                    customerEmail="patient@example.com"
+                    customerPhone="0123456789"
+                    onPaymentInitiated={(paymentId) => {
+                      console.log('Payment initiated:', paymentId);
+                    }}
+                  />
+                </div>
+
+                <div className="text-center text-sm text-gray-500 mb-4">
+                  <span className="px-3 py-1 bg-gray-100 rounded">OR</span>
+                </div>
+
                 <div className="flex gap-3 justify-center">
                   {!showPaymentForm && !showSplitPayment && (
                     <>
@@ -450,7 +472,7 @@ const InvoiceView = ({ invoice: initialInvoice, open, onClose, onPaymentRecorded
                         className="bg-green-600 hover:bg-green-700"
                       >
                         <DollarSign className="w-4 h-4 mr-2" />
-                        Record Payment
+                        Record Manual Payment
                       </Button>
                       {invoice.medical_aid_name && (
                         <Button 
