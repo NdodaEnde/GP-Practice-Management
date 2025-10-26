@@ -57,6 +57,7 @@ function App() {
             <Route path="lab-test" element={<LabTestPage />} />
             <Route path="immunizations-test" element={<ImmunizationsTestPage />} />
             <Route path="billing-test" element={<BillingTestPage />} />
+            <Route path="financial-dashboard" element={<FinancialDashboard />} />
           </Route>
         </Routes>
       </BrowserRouter>
