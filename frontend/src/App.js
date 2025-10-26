@@ -24,6 +24,7 @@ import LabTestPage from './pages/LabTestPage';
 import ImmunizationsTestPage from './pages/ImmunizationsTestPage';
 import BillingTestPage from './pages/BillingTestPage';
 import FinancialDashboard from './pages/FinancialDashboard';
+import ClaimsManagement from './pages/ClaimsManagement';
 import Layout from './components/Layout';
 import '@/App.css';
 
