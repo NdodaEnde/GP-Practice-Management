@@ -1885,6 +1885,55 @@ class BillingTester:
             print(f"❌ Failed critical components: {', '.join(failed_critical)}")
         
         return critical_success
+    
+    def run_simple_invoice_test(self):
+        """Run simple invoice creation test as per review request"""
+        print("\n" + "="*80)
+        print("SIMPLE INVOICE CREATION TEST")
+        print("Testing basic invoice creation with 1 consultation item")
+        print("="*80)
+        
+        # Step 1: Test backend connectivity
+        if not self.test_backend_health():
+            print("\n❌ Cannot proceed - Backend is not accessible")
+            return False
+        
+        # Step 2: Get test patient ID
+        print("\n👤 Step 1: Getting patient ID for testing...")
+        if not self.get_test_patient_id():
+            print("\n❌ Cannot proceed - No patients available for testing")
+            return False
+        
+        # Step 3: Create simple invoice
+        print("\n📄 Step 2: Creating simple invoice with 1 consultation item...")
+        invoice_success = self.test_simple_invoice_creation()
+        if not invoice_success:
+            print("\n❌ Simple invoice creation failed")
+            return False
+        
+        # Step 4: Retrieve created invoice
+        print("\n📋 Step 3: Retrieving created invoice...")
+        retrieve_success = self.test_retrieve_invoice()
+        
+        # Summary
+        print("\n" + "="*80)
+        print("SIMPLE INVOICE TEST SUMMARY")
+        print("="*80)
+        
+        if invoice_success and retrieve_success:
+            print("✅ SIMPLE INVOICE CREATION WORKING")
+            print("✅ Invoice created successfully with correct calculations")
+            print("✅ Invoice number generated in correct format (INV-20251025-XXXX)")
+            print("✅ Total amount calculated correctly (500 + 75 VAT = 575)")
+            print("✅ Invoice ID returned and retrievable")
+            return True
+        else:
+            print("❌ SIMPLE INVOICE CREATION FAILED")
+            if not invoice_success:
+                print("❌ Invoice creation endpoint not working")
+            if not retrieve_success:
+                print("❌ Invoice retrieval endpoint not working")
+            return False
 
 class NAPPITester:
     def __init__(self):
