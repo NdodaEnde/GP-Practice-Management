@@ -1799,16 +1799,16 @@ async def get_dispense_events(encounter_id: str):
 # @api_router.put("/invoices/{invoice_id}/status")
 # async def update_invoice_status(invoice_id: str, status: str):
 #     """Update invoice status"""
-    try:
-        result = supabase.table('gp_invoices').update({'status': status}).eq('id', invoice_id).execute()
-        if not result.data:
-            raise HTTPException(status_code=404, detail="Invoice not found")
-        return result.data[0]
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error updating invoice: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+#     try:
+#         result = supabase.table('gp_invoices').update({'status': status}).eq('id', invoice_id).execute()
+#         if not result.data:
+#             raise HTTPException(status_code=404, detail="Invoice not found")
+#         return result.data[0]
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         logger.error(f"Error updating invoice: {e}")
+#         raise HTTPException(status_code=500, detail=str(e))
 
 # ==================== Analytics ====================
 
