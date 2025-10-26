@@ -176,35 +176,35 @@ CREATE TABLE IF NOT EXISTS medical_aid_claims (
 -- =============================================
 
 -- Invoices Indexes
-CREATE INDEX idx_invoices_patient ON invoices(patient_id);
-CREATE INDEX idx_invoices_encounter ON invoices(encounter_id);
-CREATE INDEX idx_invoices_invoice_number ON invoices(invoice_number);
-CREATE INDEX idx_invoices_status ON invoices(status);
-CREATE INDEX idx_invoices_payment_status ON invoices(payment_status);
-CREATE INDEX idx_invoices_date ON invoices(invoice_date);
-CREATE INDEX idx_invoices_workspace ON invoices(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_patient ON invoices(patient_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_encounter ON invoices(encounter_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_invoice_number ON invoices(invoice_number);
+CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
+CREATE INDEX IF NOT EXISTS idx_invoices_payment_status ON invoices(payment_status);
+CREATE INDEX IF NOT EXISTS idx_invoices_date ON invoices(invoice_date);
+CREATE INDEX IF NOT EXISTS idx_invoices_workspace ON invoices(workspace_id);
 
 -- Invoice Items Indexes
-CREATE INDEX idx_invoice_items_invoice ON invoice_items(invoice_id);
-CREATE INDEX idx_invoice_items_type ON invoice_items(item_type);
-CREATE INDEX idx_invoice_items_nappi ON invoice_items(nappi_code) WHERE nappi_code IS NOT NULL;
-CREATE INDEX idx_invoice_items_icd10 ON invoice_items(icd10_code) WHERE icd10_code IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice ON invoice_items(invoice_id);
+CREATE INDEX IF NOT EXISTS idx_invoice_items_type ON invoice_items(item_type);
+CREATE INDEX IF NOT EXISTS idx_invoice_items_nappi ON invoice_items(nappi_code) WHERE nappi_code IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_invoice_items_icd10 ON invoice_items(icd10_code) WHERE icd10_code IS NOT NULL;
 
 -- Payments Indexes
-CREATE INDEX idx_payments_invoice ON payments(invoice_id);
-CREATE INDEX idx_payments_patient ON payments(patient_id);
-CREATE INDEX idx_payments_date ON payments(payment_date);
-CREATE INDEX idx_payments_method ON payments(payment_method);
-CREATE INDEX idx_payments_workspace ON payments(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_payments_invoice ON payments(invoice_id);
+CREATE INDEX IF NOT EXISTS idx_payments_patient ON payments(patient_id);
+CREATE INDEX IF NOT EXISTS idx_payments_date ON payments(payment_date);
+CREATE INDEX IF NOT EXISTS idx_payments_method ON payments(payment_method);
+CREATE INDEX IF NOT EXISTS idx_payments_workspace ON payments(workspace_id);
 
 -- Claims Indexes
-CREATE INDEX idx_claims_invoice ON medical_aid_claims(invoice_id);
-CREATE INDEX idx_claims_patient ON medical_aid_claims(patient_id);
-CREATE INDEX idx_claims_number ON medical_aid_claims(claim_number);
-CREATE INDEX idx_claims_status ON medical_aid_claims(status);
-CREATE INDEX idx_claims_medical_aid ON medical_aid_claims(medical_aid_name);
-CREATE INDEX idx_claims_date ON medical_aid_claims(claim_date);
-CREATE INDEX idx_claims_workspace ON medical_aid_claims(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_claims_invoice ON medical_aid_claims(invoice_id);
+CREATE INDEX IF NOT EXISTS idx_claims_patient ON medical_aid_claims(patient_id);
+CREATE INDEX IF NOT EXISTS idx_claims_number ON medical_aid_claims(claim_number);
+CREATE INDEX IF NOT EXISTS idx_claims_status ON medical_aid_claims(status);
+CREATE INDEX IF NOT EXISTS idx_claims_medical_aid ON medical_aid_claims(medical_aid_name);
+CREATE INDEX IF NOT EXISTS idx_claims_date ON medical_aid_claims(claim_date);
+CREATE INDEX IF NOT EXISTS idx_claims_workspace ON medical_aid_claims(workspace_id);
 
 -- =============================================
 -- COMMENTS FOR DOCUMENTATION
