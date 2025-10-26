@@ -70,34 +70,47 @@ class PaymentInitiationRequest(BaseModel):
 # UTILITY FUNCTIONS
 # =============================================
 
-def generate_payfast_signature(data_dict: dict, passphrase: str) -> str:
+def generate_payfast_signature(data_dict: dict, passphrase: str = None) -> str:
     """
     Generate MD5 signature for PayFast transactions.
-    Variables must be in correct order and blank values removed.
+    PayFast is very strict about signature generation:
+    1. Remove signature field if present
+    2. Remove empty values
+    3. Sort by keys alphabetically
+    4. URL encode values
+    5. Create parameter string
+    6. Add passphrase at the end
+    7. Generate MD5 hash
     """
-    # Filter out empty values
-    filtered_data = {}
-    for key, value in data_dict.items():
-        if value and str(value).strip():
-            filtered_data[key] = str(value).strip()
+    # Remove signature if present
+    filtered_data = {k: v for k, v in data_dict.items() if k != 'signature'}
     
-    # Order keys according to PayFast specification
-    ordered_keys = [k for k in SIGNATURE_FIELD_ORDER if k in filtered_data]
+    # Remove empty values
+    filtered_data = {k: v for k, v in filtered_data.items() if v is not None and str(v).strip() != ''}
     
-    # Build parameter string
-    payfast_string = "&".join([
-        f"{key}={urllib.parse.quote_plus(str(filtered_data[key])).replace('+', '%20')}"
-        for key in ordered_keys
-    ])
+    # Sort by keys alphabetically (PayFast requirement)
+    sorted_keys = sorted(filtered_data.keys())
     
-    # Add passphrase
+    # Build parameter string with URL encoding
+    param_string = ""
+    for key in sorted_keys:
+        value = str(filtered_data[key]).strip()
+        # URL encode the value, but PayFast wants specific encoding
+        encoded_value = urllib.parse.quote_plus(value)
+        param_string += f"{key}={encoded_value}&"
+    
+    # Remove trailing '&'
+    param_string = param_string.rstrip('&')
+    
+    # Add passphrase if provided
     if passphrase:
-        payfast_string += f"&passphrase={urllib.parse.quote_plus(passphrase)}"
+        param_string += f"&passphrase={urllib.parse.quote_plus(passphrase)}"
     
-    logger.info(f"Signature string: {payfast_string}")
+    logger.info(f"Signature string: {param_string}")
     
     # Generate MD5 hash
-    signature = md5(payfast_string.encode()).hexdigest()
+    signature = md5(param_string.encode()).hexdigest()
+    logger.info(f"Generated signature: {signature}")
     
     return signature
 
