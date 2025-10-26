@@ -22,6 +22,7 @@ import ICD10TestPage from './pages/ICD10TestPage';
 import NAPPITestPage from './pages/NAPPITestPage';
 import LabTestPage from './pages/LabTestPage';
 import ImmunizationsTestPage from './pages/ImmunizationsTestPage';
+import BillingTestPage from './pages/BillingTestPage';
 import Layout from './components/Layout';
 import '@/App.css';
 
