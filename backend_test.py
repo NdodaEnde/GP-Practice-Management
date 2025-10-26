@@ -1284,6 +1284,87 @@ class BillingTester:
             self.log_test("Get Test Patient ID", False, f"Error getting patient ID: {str(e)}")
             return False
     
+    def test_simple_invoice_creation(self):
+        """Test simple invoice creation as per review request"""
+        try:
+            if not self.test_patient_id:
+                self.log_test("Simple Invoice Creation", False, "No test patient ID available")
+                return False
+            
+            # Create simple invoice with 1 consultation item as per review request
+            invoice_data = {
+                "patient_id": self.test_patient_id,
+                "invoice_date": "2025-10-25",
+                "items": [
+                    {
+                        "item_type": "consultation",
+                        "description": "General Consultation",
+                        "quantity": 1,
+                        "unit_price": 500
+                    }
+                ]
+            }
+            
+            response = requests.post(
+                f"{self.backend_url}/invoices",
+                json=invoice_data,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                
+                if result.get('status') == 'success':
+                    self.created_invoice_id = result.get('invoice_id')
+                    invoice_number = result.get('invoice_number')
+                    total_amount = result.get('total_amount')
+                    
+                    # Verify expected response structure
+                    if invoice_number and invoice_number.startswith('INV-20251025-'):
+                        self.log_test("Invoice Number Generation", True, 
+                                    f"Invoice number generated correctly: {invoice_number}")
+                    else:
+                        self.log_test("Invoice Number Generation", False, 
+                                    f"Invoice number format incorrect: {invoice_number}")
+                    
+                    # Verify total calculation (500 + 75 VAT = 575)
+                    expected_total = 575.00
+                    if abs(total_amount - expected_total) < 0.01:
+                        self.log_test("Total Amount Calculation", True, 
+                                    f"Correct total calculated: {total_amount} (500 + 75 VAT)")
+                    else:
+                        self.log_test("Total Amount Calculation", False, 
+                                    f"Expected {expected_total}, got {total_amount}")
+                    
+                    # Verify invoice_id is returned
+                    if self.created_invoice_id:
+                        self.log_test("Invoice ID Generation", True, 
+                                    f"Invoice ID returned: {self.created_invoice_id}")
+                    else:
+                        self.log_test("Invoice ID Generation", False, "No invoice_id in response")
+                    
+                    self.log_test("Simple Invoice Creation", True, 
+                                f"Invoice created successfully: {invoice_number}")
+                    return True
+                else:
+                    self.log_test("Simple Invoice Creation", False, 
+                                f"Invoice creation failed: {result.get('message', 'Unknown error')}")
+                    return False
+            else:
+                error_msg = f"API returned status {response.status_code}"
+                try:
+                    error_detail = response.json()
+                    error_msg += f": {error_detail}"
+                except:
+                    error_msg += f": {response.text}"
+                
+                self.log_test("Simple Invoice Creation", False, error_msg)
+                return False
+                
+        except Exception as e:
+            self.log_test("Simple Invoice Creation", False, f"Request failed: {str(e)}")
+            return False
+
     def test_create_invoice(self):
         """Test POST /api/invoices - Create invoice with multiple items"""
         try:
