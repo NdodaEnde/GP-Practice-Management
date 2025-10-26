@@ -62,6 +62,21 @@ const Billing = () => {
     }
   };
 
+  const handleViewInvoice = async (invoiceId) => {
+    try {
+      const response = await axios.get(`${BACKEND_URL}/api/invoices/${invoiceId}`);
+      setSelectedInvoice(response.data);
+      setInvoiceViewOpen(true);
+    } catch (error) {
+      console.error('Error loading invoice details:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load invoice details',
+        variant: 'destructive'
+      });
+    }
+  };
+
   const addInvoiceItem = () => {
     setInvoiceData(prev => ({
       ...prev,
