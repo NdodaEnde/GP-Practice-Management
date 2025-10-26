@@ -3533,24 +3533,21 @@ def main():
             return 1
     
     else:
-        # Run NAPPI integration tests by default (as per review request)
-        nappi_tester = NAPPITester()
+        # Run Billing System tests by default (as per review request - Phase 3 focus)
+        billing_tester = BillingTester()
         
         try:
-            # Run the comprehensive NAPPI integration test from review request
-            success = nappi_tester.run_nappi_integration_test()
+            # Run the comprehensive billing system test from review request
+            success = billing_tester.run_billing_system_test()
             
             # Print detailed results
             print("\n" + "="*80)
-            print("DETAILED NAPPI INTEGRATION TEST RESULTS")
+            print("DETAILED BILLING SYSTEM TEST RESULTS")
             print("="*80)
             
-            for result in nappi_tester.test_results:
+            for result in billing_tester.test_results:
                 status = "✅" if result['success'] else "❌"
                 print(f"{status} {result['test']}: {result['message']}")
-            
-            # Cleanup
-            nappi_tester.cleanup_test_data()
             
             return 0 if success else 1
             
