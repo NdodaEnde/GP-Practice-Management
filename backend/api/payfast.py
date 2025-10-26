@@ -145,7 +145,7 @@ async def initiate_payment(request: PaymentInitiationRequest):
         # Generate unique payment ID
         payment_id = str(uuid.uuid4())
         
-        # Build payment data
+        # Build payment data - only include non-empty values
         payment_data = {
             "merchant_id": PAYFAST_MERCHANT_ID,
             "merchant_key": PAYFAST_MERCHANT_KEY,
@@ -155,21 +155,26 @@ async def initiate_payment(request: PaymentInitiationRequest):
             "name_first": "Medical",
             "name_last": "Patient",
             "email_address": request.customer_email,
-            "cell_number": request.customer_phone,
             "m_payment_id": payment_id,
             "amount": f"{request.amount:.2f}",
             "item_name": f"Medical Invoice {request.invoice_number}",
-            "item_description": "Medical Billing Payment",
-            "custom_str1": request.invoice_id,
-            "custom_str2": request.invoice_number,
-            "email_confirmation": "1",
-            "confirmation_address": request.customer_email
+            "item_description": "Medical Services Payment",
         }
         
-        # Generate signature
-        payment_data["signature"] = generate_payfast_signature(payment_data, PAYFAST_PASSPHRASE)
+        # Add optional fields only if they have values
+        if request.customer_phone and request.customer_phone.strip():
+            payment_data["cell_number"] = request.customer_phone
+        
+        # Add custom fields for tracking
+        payment_data["custom_str1"] = request.invoice_id
+        payment_data["custom_str2"] = request.invoice_number
+        
+        # Generate signature (passphrase will be added inside the function)
+        signature = generate_payfast_signature(payment_data, PAYFAST_PASSPHRASE)
+        payment_data["signature"] = signature
         
         logger.info(f"Payment initiated for invoice {request.invoice_number}, payment_id: {payment_id}")
+        logger.info(f"Payment data: {payment_data}")
         
         return {
             "success": True,
