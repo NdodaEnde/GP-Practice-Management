@@ -4198,6 +4198,7 @@ from api.lab import router as lab_router
 from api.procedures import router as procedures_router
 from api.immunizations import router as immunizations_router
 from api.billing import router as billing_router
+from api.payfast import router as payfast_router
 
 api_router.include_router(allergies_router, tags=["Allergies"])
 api_router.include_router(icd10_router, tags=["ICD-10"])
@@ -4209,6 +4210,7 @@ api_router.include_router(lab_router, tags=["Lab Orders & Results"])
 api_router.include_router(procedures_router, tags=["Procedures"])
 api_router.include_router(immunizations_router, tags=["Immunizations"])
 api_router.include_router(billing_router, tags=["Billing & Payments"])
+api_router.include_router(payfast_router, prefix="/payfast", tags=["PayFast Payment Gateway"])
 
 app.include_router(api_router)
 
