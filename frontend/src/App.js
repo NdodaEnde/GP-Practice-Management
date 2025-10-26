@@ -23,6 +23,7 @@ import NAPPITestPage from './pages/NAPPITestPage';
 import LabTestPage from './pages/LabTestPage';
 import ImmunizationsTestPage from './pages/ImmunizationsTestPage';
 import BillingTestPage from './pages/BillingTestPage';
+import FinancialDashboard from './pages/FinancialDashboard';
 import Layout from './components/Layout';
 import '@/App.css';
 
