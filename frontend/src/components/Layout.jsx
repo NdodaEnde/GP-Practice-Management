@@ -1,6 +1,6 @@
 import React from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Activity, Users, FileText, DollarSign, ClipboardCheck, LayoutDashboard, BarChart3, Stethoscope, UserCheck, HeartPulse, Code, Package, Syringe } from 'lucide-react';
+import { Activity, Users, FileText, DollarSign, ClipboardCheck, LayoutDashboard, BarChart3, Stethoscope, UserCheck, HeartPulse, Code, Package, Syringe, Receipt } from 'lucide-react';
 
 const Layout = () => {
   const location = useLocation();
@@ -17,6 +17,7 @@ const Layout = () => {
     { name: 'NAPPI Test', path: '/nappi-test', icon: Package },
     { name: 'Lab Test', path: '/lab-test', icon: Activity },
     { name: 'Immunizations', path: '/immunizations-test', icon: Syringe },
+    { name: 'Billing Test', path: '/billing-test', icon: Receipt },
     { name: 'Billing', path: '/billing', icon: DollarSign },
     { name: 'Analytics', path: '/analytics', icon: BarChart3 },
   ];
