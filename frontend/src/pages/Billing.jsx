@@ -283,7 +283,8 @@ const Billing = () => {
               {invoices.map((invoice) => (
                 <div
                   key={invoice.id}
-                  className="p-5 bg-gradient-to-r from-slate-50 to-violet-50 rounded-lg border border-slate-200 hover:shadow-md transition-all duration-200"
+                  onClick={() => handleViewInvoice(invoice.id)}
+                  className="p-5 bg-gradient-to-r from-slate-50 to-violet-50 rounded-lg border border-slate-200 hover:shadow-md hover:border-violet-300 transition-all duration-200 cursor-pointer"
                   data-testid={`invoice-card-${invoice.id}`}
                 >
                   <div className="flex items-center justify-between">
@@ -293,21 +294,23 @@ const Billing = () => {
                       </div>
                       <div>
                         <h3 className="text-lg font-semibold text-slate-800">
-                          Invoice #{invoice.id.slice(0, 8)}
+                          {invoice.invoice_number || `Invoice #${invoice.id.slice(0, 8)}`}
                         </h3>
                         <p className="text-sm text-slate-600">
-                          {new Date(invoice.created_at).toLocaleDateString()}
+                          {new Date(invoice.invoice_date || invoice.created_at).toLocaleDateString()}
                         </p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-2xl font-bold text-violet-600">R{invoice.total_amount.toFixed(2)}</p>
+                      <p className="text-2xl font-bold text-violet-600">R{parseFloat(invoice.total_amount).toFixed(2)}</p>
                       <span className={`inline-block px-3 py-1 text-xs font-medium rounded-full mt-1 ${
-                        invoice.status === 'paid'
+                        invoice.payment_status === 'paid'
                           ? 'bg-emerald-100 text-emerald-700'
+                          : invoice.payment_status === 'partially_paid'
+                          ? 'bg-yellow-100 text-yellow-700'
                           : 'bg-amber-100 text-amber-700'
                       }`}>
-                        {invoice.status}
+                        {invoice.payment_status ? invoice.payment_status.replace('_', ' ').toUpperCase() : invoice.status}
                       </span>
                     </div>
                   </div>
