@@ -9,6 +9,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { invoiceAPI } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
+import InvoiceView from '@/components/InvoiceView';
+import axios from 'axios';
+
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || import.meta.env.REACT_APP_BACKEND_URL;
 
 const Billing = () => {
   const [searchParams] = useSearchParams();
@@ -17,6 +21,8 @@ const Billing = () => {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState(null);
+  const [invoiceViewOpen, setInvoiceViewOpen] = useState(false);
 
   const encounterId = searchParams.get('encounter');
 
