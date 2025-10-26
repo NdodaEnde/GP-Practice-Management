@@ -417,11 +417,12 @@ metadata:
 
 test_plan:
   current_focus:
+    - "Diagnoses API Backend"
+    - "Vitals API Backend"
+    - "Auto-Population Workflow - Document to Structured EHR"
     - "Allergy Checks in Prescription Workflow"
     - "Diagnoses Management Frontend"
     - "Vitals Table Frontend"
-    - "Diagnoses API Backend"
-    - "Vitals API Backend"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
