@@ -1744,59 +1744,61 @@ async def get_dispense_events(encounter_id: str):
 
 # ==================== Billing (OLD - REPLACED BY api/billing.py) ====================
 
+# OLD BILLING ENDPOINTS COMMENTED OUT - REPLACED BY api/billing.py
+# 
 # @api_router.post("/invoices")
 # async def create_invoice(invoice: InvoiceCreate):
-    """Create an invoice for an encounter"""
-    try:
-        invoice_id = str(uuid.uuid4())
-        invoice_data = {
-            'id': invoice_id,
-            'encounter_id': invoice.encounter_id,
-            'payer_type': invoice.payer_type,
-            'items_json': [item.model_dump() for item in invoice.items],
-            'total_amount': invoice.total_amount,
-            'notes': invoice.notes,
-            'status': 'pending',
-            'created_at': datetime.now(timezone.utc).isoformat()
-        }
-        
-        supabase.table('gp_invoices').insert(invoice_data).execute()
-        
-        # Update encounter status
-        supabase.table('encounters').update({'status': 'completed'}).eq('id', invoice.encounter_id).execute()
-        
-        return {'status': 'success', 'invoice_id': invoice_id}
-    except Exception as e:
-        logger.error(f"Error creating invoice: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@api_router.get("/invoices")
-async def list_invoices():
-    """List all invoices"""
-    try:
-        result = supabase.table('gp_invoices').select('*').order('created_at', desc=True).limit(100).execute()
-        return result.data
-    except Exception as e:
-        logger.error(f"Error listing invoices: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@api_router.get("/invoices/{invoice_id}")
-async def get_invoice(invoice_id: str):
-    """Get invoice details"""
-    try:
-        result = supabase.table('gp_invoices').select('*').eq('id', invoice_id).execute()
-        if not result.data:
-            raise HTTPException(status_code=404, detail="Invoice not found")
-        return result.data[0]
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting invoice: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@api_router.put("/invoices/{invoice_id}/status")
-async def update_invoice_status(invoice_id: str, status: str):
-    """Update invoice status"""
+#     """Create an invoice for an encounter"""
+#     try:
+#         invoice_id = str(uuid.uuid4())
+#         invoice_data = {
+#             'id': invoice_id,
+#             'encounter_id': invoice.encounter_id,
+#             'payer_type': invoice.payer_type,
+#             'items_json': [item.model_dump() for item in invoice.items],
+#             'total_amount': invoice.total_amount,
+#             'notes': invoice.notes,
+#             'status': 'pending',
+#             'created_at': datetime.now(timezone.utc).isoformat()
+#         }
+#         
+#         supabase.table('gp_invoices').insert(invoice_data).execute()
+#         
+#         # Update encounter status
+#         supabase.table('encounters').update({'status': 'completed'}).eq('id', invoice.encounter_id).execute()
+#         
+#         return {'status': 'success', 'invoice_id': invoice_id}
+#     except Exception as e:
+#         logger.error(f"Error creating invoice: {e}")
+#         raise HTTPException(status_code=500, detail=str(e))
+# 
+# @api_router.get("/invoices")
+# async def list_invoices():
+#     """List all invoices"""
+#     try:
+#         result = supabase.table('gp_invoices').select('*').order('created_at', desc=True).limit(100).execute()
+#         return result.data
+#     except Exception as e:
+#         logger.error(f"Error listing invoices: {e}")
+#         raise HTTPException(status_code=500, detail=str(e))
+# 
+# @api_router.get("/invoices/{invoice_id}")
+# async def get_invoice(invoice_id: str):
+#     """Get invoice details"""
+#     try:
+#         result = supabase.table('gp_invoices').select('*').eq('id', invoice_id).execute()
+#         if not result.data:
+#             raise HTTPException(status_code=404, detail="Invoice not found")
+#         return result.data[0]
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         logger.error(f"Error getting invoice: {e}")
+#         raise HTTPException(status_code=500, detail=str(e))
+# 
+# @api_router.put("/invoices/{invoice_id}/status")
+# async def update_invoice_status(invoice_id: str, status: str):
+#     """Update invoice status"""
     try:
         result = supabase.table('gp_invoices').update({'status': status}).eq('id', invoice_id).execute()
         if not result.data:
