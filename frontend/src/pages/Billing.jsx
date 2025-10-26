@@ -39,9 +39,13 @@ const Billing = () => {
     try {
       setLoading(true);
       const response = await invoiceAPI.list();
-      setInvoices(response.data);
+      // Handle new API structure that returns {count, invoices}
+      const invoicesList = response.data?.invoices || response.data || [];
+      setInvoices(Array.isArray(invoicesList) ? invoicesList : []);
     } catch (error) {
       console.error('Error loading invoices:', error);
+      // Initialize as empty array to prevent map error
+      setInvoices([]);
       toast({
         title: 'Error',
         description: 'Failed to load invoices',
