@@ -3421,8 +3421,35 @@ def main():
     """Main test execution"""
     import sys
     
+    # Check if we should run billing tests specifically
+    if len(sys.argv) > 1 and sys.argv[1] == "billing":
+        # Run Billing System tests
+        billing_tester = BillingTester()
+        
+        try:
+            # Run the billing system test
+            success = billing_tester.run_billing_system_test()
+            
+            # Print detailed results
+            print("\n" + "="*80)
+            print("DETAILED BILLING SYSTEM TEST RESULTS")
+            print("="*80)
+            
+            for result in billing_tester.test_results:
+                status = "✅" if result['success'] else "❌"
+                print(f"{status} {result['test']}: {result['message']}")
+            
+            return 0 if success else 1
+            
+        except KeyboardInterrupt:
+            print("\n⚠️  Test interrupted by user")
+            return 1
+        except Exception as e:
+            print(f"\n💥 Unexpected error: {str(e)}")
+            return 1
+    
     # Check if we should run immunizations tests specifically
-    if len(sys.argv) > 1 and sys.argv[1] == "immunizations":
+    elif len(sys.argv) > 1 and sys.argv[1] == "immunizations":
         # Run Immunizations tests
         immunizations_tester = ImmunizationsTester()
         
