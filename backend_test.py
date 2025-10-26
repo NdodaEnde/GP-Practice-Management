@@ -3690,16 +3690,16 @@ def main():
             return 1
     
     else:
-        # Run Billing System tests by default (as per review request - Phase 3 focus)
+        # Run Simple Invoice Creation test by default (as per review request)
         billing_tester = BillingTester()
         
         try:
-            # Run the comprehensive billing system test from review request
-            success = billing_tester.run_billing_system_test()
+            # Run the simple invoice creation test as requested in review
+            success = billing_tester.run_simple_invoice_test()
             
             # Print detailed results
             print("\n" + "="*80)
-            print("DETAILED BILLING SYSTEM TEST RESULTS")
+            print("DETAILED SIMPLE INVOICE TEST RESULTS")
             print("="*80)
             
             for result in billing_tester.test_results:
