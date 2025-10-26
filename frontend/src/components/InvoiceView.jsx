@@ -1,17 +1,185 @@
-import React from 'react';
-import { X, Printer, Download } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, Printer, Download, DollarSign } from 'lucide-react';
 import { Dialog, DialogContent } from '../components/ui/dialog';
 import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import { Textarea } from '../components/ui/textarea';
+import { Card, CardContent } from '../components/ui/card';
+import axios from 'axios';
+import { useToast } from '../hooks/use-toast';
+import PaymentReceipt from './PaymentReceipt';
 
-const InvoiceView = ({ invoice, open, onClose }) => {
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || import.meta.env.REACT_APP_BACKEND_URL;
+
+const InvoiceView = ({ invoice: initialInvoice, open, onClose, onPaymentRecorded }) => {
+  const { toast } = useToast();
+  const [invoice, setInvoice] = useState(initialInvoice);
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [showSplitPayment, setShowSplitPayment] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [receiptData, setReceiptData] = useState(null);
+  const [showReceipt, setShowReceipt] = useState(false);
+
+  // Single payment form
+  const [paymentForm, setPaymentForm] = useState({
+    payment_date: new Date().toISOString().split('T')[0],
+    amount: '',
+    payment_method: 'cash',
+    reference_number: '',
+    notes: ''
+  });
+
+  // Split payment form
+  const [splitPaymentForm, setSplitPaymentForm] = useState({
+    payment_date: new Date().toISOString().split('T')[0],
+    patient_amount: '',
+    patient_method: 'cash',
+    patient_reference: '',
+    medical_aid_amount: '',
+    medical_aid_reference: '',
+    notes: ''
+  });
+
+  // Update invoice state when prop changes
+  React.useEffect(() => {
+    setInvoice(initialInvoice);
+  }, [initialInvoice]);
+
   if (!invoice) return null;
+
+  const refreshInvoice = async () => {
+    try {
+      const response = await axios.get(`${BACKEND_URL}/api/invoices/${invoice.id}`);
+      setInvoice(response.data);
+      if (onPaymentRecorded) {
+        onPaymentRecorded(response.data);
+      }
+    } catch (error) {
+      console.error('Error refreshing invoice:', error);
+    }
+  };
+
+  const handleSinglePayment = async (e) => {
+    e.preventDefault();
+    setProcessing(true);
+
+    try {
+      const paymentData = {
+        invoice_id: invoice.id,
+        payment_date: paymentForm.payment_date,
+        amount: parseFloat(paymentForm.amount),
+        payment_method: paymentForm.payment_method,
+        reference_number: paymentForm.reference_number || null,
+        notes: paymentForm.notes || null
+      };
+
+      const response = await axios.post(`${BACKEND_URL}/api/payments`, paymentData);
+
+      toast({
+        title: "Success",
+        description: "Payment recorded successfully"
+      });
+
+      // Show receipt
+      await refreshInvoice();
+      const updatedInvoice = await axios.get(`${BACKEND_URL}/api/invoices/${invoice.id}`);
+      const lastPayment = updatedInvoice.data.payments[updatedInvoice.data.payments.length - 1];
+      
+      setReceiptData({ payment: lastPayment, invoice: updatedInvoice.data });
+      setShowReceipt(true);
+
+      // Reset form
+      setPaymentForm({
+        payment_date: new Date().toISOString().split('T')[0],
+        amount: '',
+        payment_method: 'cash',
+        reference_number: '',
+        notes: ''
+      });
+      setShowPaymentForm(false);
+    } catch (error) {
+      console.error('Error recording payment:', error);
+      toast({
+        title: "Error",
+        description: error.response?.data?.detail || "Failed to record payment",
+        variant: "destructive"
+      });
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleSplitPayment = async (e) => {
+    e.preventDefault();
+    setProcessing(true);
+
+    try {
+      // Record patient payment
+      if (splitPaymentForm.patient_amount && parseFloat(splitPaymentForm.patient_amount) > 0) {
+        await axios.post(`${BACKEND_URL}/api/payments`, {
+          invoice_id: invoice.id,
+          payment_date: splitPaymentForm.payment_date,
+          amount: parseFloat(splitPaymentForm.patient_amount),
+          payment_method: splitPaymentForm.patient_method,
+          reference_number: splitPaymentForm.patient_reference || `Patient Co-pay`,
+          notes: `Patient portion - ${splitPaymentForm.notes || ''}`
+        });
+      }
+
+      // Record medical aid payment
+      if (splitPaymentForm.medical_aid_amount && parseFloat(splitPaymentForm.medical_aid_amount) > 0) {
+        const medAidResponse = await axios.post(`${BACKEND_URL}/api/payments`, {
+          invoice_id: invoice.id,
+          payment_date: splitPaymentForm.payment_date,
+          amount: parseFloat(splitPaymentForm.medical_aid_amount),
+          payment_method: 'medical_aid',
+          reference_number: splitPaymentForm.medical_aid_reference || `Medical Aid Payment`,
+          notes: `Medical aid portion - ${splitPaymentForm.notes || ''}`
+        });
+      }
+
+      toast({
+        title: "Success",
+        description: "Split payment recorded successfully"
+      });
+
+      // Refresh and show receipt for combined payment
+      await refreshInvoice();
+      const updatedInvoice = await axios.get(`${BACKEND_URL}/api/invoices/${invoice.id}`);
+      const lastPayment = updatedInvoice.data.payments[updatedInvoice.data.payments.length - 1];
+      
+      setReceiptData({ payment: lastPayment, invoice: updatedInvoice.data });
+      setShowReceipt(true);
+
+      // Reset form
+      setSplitPaymentForm({
+        payment_date: new Date().toISOString().split('T')[0],
+        patient_amount: '',
+        patient_method: 'cash',
+        patient_reference: '',
+        medical_aid_amount: '',
+        medical_aid_reference: '',
+        notes: ''
+      });
+      setShowSplitPayment(false);
+    } catch (error) {
+      console.error('Error recording split payment:', error);
+      toast({
+        title: "Error",
+        description: error.response?.data?.detail || "Failed to record split payment",
+        variant: "destructive"
+      });
+    } finally {
+      setProcessing(false);
+    }
+  };
 
   const handlePrint = () => {
     window.print();
   };
 
   const handleDownload = () => {
-    // In a real app, this would generate a PDF
     window.print();
   };
 
