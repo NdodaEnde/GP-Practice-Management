@@ -79,7 +79,7 @@ def generate_payfast_signature(data_dict: dict, passphrase: str = None) -> str:
     3. Sort by keys alphabetically
     4. URL encode values
     5. Create parameter string
-    6. Add passphrase at the end (NOT URL encoded!)
+    6. Add passphrase at the end ONLY if one is set (NOT URL encoded!)
     7. Generate MD5 hash
     """
     # Remove signature if present
@@ -102,9 +102,12 @@ def generate_payfast_signature(data_dict: dict, passphrase: str = None) -> str:
     # Remove trailing '&'
     param_string = param_string.rstrip('&')
     
-    # Add passphrase if provided (CRITICAL: NOT URL encoded!)
-    if passphrase:
+    # Add passphrase ONLY if provided and not empty (CRITICAL: NOT URL encoded!)
+    if passphrase and passphrase.strip():
         param_string += f"&passphrase={passphrase}"
+        logger.info(f"Signature string WITH passphrase")
+    else:
+        logger.info(f"Signature string WITHOUT passphrase")
     
     logger.info(f"Signature string: {param_string}")
     
