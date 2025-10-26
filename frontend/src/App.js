@@ -63,6 +63,10 @@ function App() {
             <Route path="financial-dashboard" element={<FinancialDashboard />} />
             <Route path="claims-management" element={<ClaimsManagement />} />
           </Route>
+          
+          {/* Payment routes (outside Layout for clean pages) */}
+          <Route path="payment/success" element={<PaymentSuccess />} />
+          <Route path="payment/cancelled" element={<PaymentCancelled />} />
         </Routes>
       </BrowserRouter>
     </div>
