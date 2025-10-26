@@ -1742,10 +1742,10 @@ async def get_dispense_events(encounter_id: str):
         logger.error(f"Error getting dispense events: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# ==================== Billing ====================
+# ==================== Billing (OLD - REPLACED BY api/billing.py) ====================
 
-@api_router.post("/invoices")
-async def create_invoice(invoice: InvoiceCreate):
+# @api_router.post("/invoices")
+# async def create_invoice(invoice: InvoiceCreate):
     """Create an invoice for an encounter"""
     try:
         invoice_id = str(uuid.uuid4())
