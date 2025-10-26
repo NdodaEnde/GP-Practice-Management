@@ -9,6 +9,7 @@ import { Card, CardContent } from '../components/ui/card';
 import axios from 'axios';
 import { useToast } from '../hooks/use-toast';
 import PaymentReceipt from './PaymentReceipt';
+import PayFastPaymentButton from './PayFastPaymentButton';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || import.meta.env.REACT_APP_BACKEND_URL;
 
