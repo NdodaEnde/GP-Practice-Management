@@ -431,9 +431,260 @@ const InvoiceView = ({ invoice: initialInvoice, open, onClose, onPaymentRecorded
                 </p>
               </div>
             </div>
+
+            {/* Payment Recording Section (Print Hidden) */}
+            {parseFloat(invoice.amount_outstanding) > 0 && (
+              <div className="border-t pt-6 mt-8 print:hidden">
+                <div className="flex gap-3 justify-center">
+                  {!showPaymentForm && !showSplitPayment && (
+                    <>
+                      <Button 
+                        onClick={() => {
+                          setShowPaymentForm(true);
+                          setPaymentForm({
+                            ...paymentForm,
+                            amount: invoice.amount_outstanding.toString()
+                          });
+                        }}
+                        className="bg-green-600 hover:bg-green-700"
+                      >
+                        <DollarSign className="w-4 h-4 mr-2" />
+                        Record Payment
+                      </Button>
+                      {invoice.medical_aid_name && (
+                        <Button 
+                          onClick={() => {
+                            setShowSplitPayment(true);
+                            setSplitPaymentForm({
+                              ...splitPaymentForm,
+                              patient_amount: invoice.patient_portion ? invoice.patient_portion.toString() : '',
+                              medical_aid_amount: invoice.medical_aid_portion ? invoice.medical_aid_portion.toString() : ''
+                            });
+                          }}
+                          variant="outline"
+                          className="border-green-600 text-green-600 hover:bg-green-50"
+                        >
+                          <DollarSign className="w-4 h-4 mr-2" />
+                          Split Payment
+                        </Button>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* Single Payment Form */}
+                {showPaymentForm && (
+                  <Card className="mt-4 border-green-200">
+                    <CardContent className="pt-6">
+                      <form onSubmit={handleSinglePayment} className="space-y-4">
+                        <h3 className="font-semibold text-lg mb-4">Record Payment</h3>
+                        
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <Label>Payment Date *</Label>
+                            <Input
+                              type="date"
+                              required
+                              value={paymentForm.payment_date}
+                              onChange={(e) => setPaymentForm({...paymentForm, payment_date: e.target.value})}
+                            />
+                          </div>
+                          <div>
+                            <Label>Amount (R) *</Label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              required
+                              value={paymentForm.amount}
+                              onChange={(e) => setPaymentForm({...paymentForm, amount: e.target.value})}
+                              max={invoice.amount_outstanding}
+                            />
+                            <p className="text-xs text-gray-500 mt-1">Outstanding: R {parseFloat(invoice.amount_outstanding).toFixed(2)}</p>
+                          </div>
+                          <div>
+                            <Label>Payment Method *</Label>
+                            <select
+                              required
+                              value={paymentForm.payment_method}
+                              onChange={(e) => setPaymentForm({...paymentForm, payment_method: e.target.value})}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                            >
+                              <option value="cash">Cash</option>
+                              <option value="card">Card</option>
+                              <option value="eft">EFT</option>
+                              <option value="medical_aid">Medical Aid</option>
+                            </select>
+                          </div>
+                          <div>
+                            <Label>Reference Number</Label>
+                            <Input
+                              value={paymentForm.reference_number}
+                              onChange={(e) => setPaymentForm({...paymentForm, reference_number: e.target.value})}
+                              placeholder="Transaction ref"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <Label>Notes</Label>
+                          <Textarea
+                            rows={2}
+                            value={paymentForm.notes}
+                            onChange={(e) => setPaymentForm({...paymentForm, notes: e.target.value})}
+                            placeholder="Payment notes..."
+                          />
+                        </div>
+
+                        <div className="flex justify-end gap-3">
+                          <Button 
+                            type="button" 
+                            variant="outline" 
+                            onClick={() => setShowPaymentForm(false)}
+                            disabled={processing}
+                          >
+                            Cancel
+                          </Button>
+                          <Button 
+                            type="submit" 
+                            className="bg-green-600 hover:bg-green-700"
+                            disabled={processing}
+                          >
+                            {processing ? 'Processing...' : 'Record Payment'}
+                          </Button>
+                        </div>
+                      </form>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Split Payment Form */}
+                {showSplitPayment && (
+                  <Card className="mt-4 border-green-200">
+                    <CardContent className="pt-6">
+                      <form onSubmit={handleSplitPayment} className="space-y-4">
+                        <h3 className="font-semibold text-lg mb-4">Record Split Payment</h3>
+                        
+                        <div>
+                          <Label>Payment Date *</Label>
+                          <Input
+                            type="date"
+                            required
+                            value={splitPaymentForm.payment_date}
+                            onChange={(e) => setSplitPaymentForm({...splitPaymentForm, payment_date: e.target.value})}
+                          />
+                        </div>
+
+                        {/* Patient Payment */}
+                        <div className="border-t pt-4">
+                          <h4 className="font-medium text-gray-700 mb-3">Patient Co-pay</h4>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <Label>Patient Amount (R)</Label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={splitPaymentForm.patient_amount}
+                                onChange={(e) => setSplitPaymentForm({...splitPaymentForm, patient_amount: e.target.value})}
+                                placeholder="0.00"
+                              />
+                            </div>
+                            <div>
+                              <Label>Payment Method</Label>
+                              <select
+                                value={splitPaymentForm.patient_method}
+                                onChange={(e) => setSplitPaymentForm({...splitPaymentForm, patient_method: e.target.value})}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                              >
+                                <option value="cash">Cash</option>
+                                <option value="card">Card</option>
+                                <option value="eft">EFT</option>
+                              </select>
+                            </div>
+                            <div className="col-span-2">
+                              <Label>Reference</Label>
+                              <Input
+                                value={splitPaymentForm.patient_reference}
+                                onChange={(e) => setSplitPaymentForm({...splitPaymentForm, patient_reference: e.target.value})}
+                                placeholder="Patient payment ref"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Medical Aid Payment */}
+                        <div className="border-t pt-4">
+                          <h4 className="font-medium text-gray-700 mb-3">Medical Aid Payment</h4>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <Label>Medical Aid Amount (R)</Label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={splitPaymentForm.medical_aid_amount}
+                                onChange={(e) => setSplitPaymentForm({...splitPaymentForm, medical_aid_amount: e.target.value})}
+                                placeholder="0.00"
+                              />
+                            </div>
+                            <div>
+                              <Label>Reference</Label>
+                              <Input
+                                value={splitPaymentForm.medical_aid_reference}
+                                onChange={(e) => setSplitPaymentForm({...splitPaymentForm, medical_aid_reference: e.target.value})}
+                                placeholder="Medical aid payment ref"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <Label>Notes</Label>
+                          <Textarea
+                            rows={2}
+                            value={splitPaymentForm.notes}
+                            onChange={(e) => setSplitPaymentForm({...splitPaymentForm, notes: e.target.value})}
+                            placeholder="Payment notes..."
+                          />
+                        </div>
+
+                        <div className="flex justify-end gap-3">
+                          <Button 
+                            type="button" 
+                            variant="outline" 
+                            onClick={() => setShowSplitPayment(false)}
+                            disabled={processing}
+                          >
+                            Cancel
+                          </Button>
+                          <Button 
+                            type="submit" 
+                            className="bg-green-600 hover:bg-green-700"
+                            disabled={processing}
+                          >
+                            {processing ? 'Processing...' : 'Record Split Payment'}
+                          </Button>
+                        </div>
+                      </form>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </DialogContent>
+
+      {/* Payment Receipt Dialog */}
+      {receiptData && (
+        <PaymentReceipt
+          payment={receiptData.payment}
+          invoice={receiptData.invoice}
+          open={showReceipt}
+          onClose={() => {
+            setShowReceipt(false);
+            setReceiptData(null);
+          }}
+        />
+      )}
     </Dialog>
   );
 };
