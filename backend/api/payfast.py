@@ -79,7 +79,7 @@ def generate_payfast_signature(data_dict: dict, passphrase: str = None) -> str:
     3. Sort by keys alphabetically
     4. URL encode values
     5. Create parameter string
-    6. Add passphrase at the end
+    6. Add passphrase at the end (NOT URL encoded!)
     7. Generate MD5 hash
     """
     # Remove signature if present
@@ -95,16 +95,16 @@ def generate_payfast_signature(data_dict: dict, passphrase: str = None) -> str:
     param_string = ""
     for key in sorted_keys:
         value = str(filtered_data[key]).strip()
-        # URL encode the value, but PayFast wants specific encoding
+        # URL encode the value
         encoded_value = urllib.parse.quote_plus(value)
         param_string += f"{key}={encoded_value}&"
     
     # Remove trailing '&'
     param_string = param_string.rstrip('&')
     
-    # Add passphrase if provided
+    # Add passphrase if provided (CRITICAL: NOT URL encoded!)
     if passphrase:
-        param_string += f"&passphrase={urllib.parse.quote_plus(passphrase)}"
+        param_string += f"&passphrase={passphrase}"
     
     logger.info(f"Signature string: {param_string}")
     
