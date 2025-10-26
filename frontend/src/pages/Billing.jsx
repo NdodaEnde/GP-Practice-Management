@@ -320,6 +320,16 @@ const Billing = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Invoice View Dialog */}
+      <InvoiceView 
+        invoice={selectedInvoice}
+        open={invoiceViewOpen}
+        onClose={() => {
+          setInvoiceViewOpen(false);
+          setSelectedInvoice(null);
+        }}
+      />
     </div>
   );
 };
