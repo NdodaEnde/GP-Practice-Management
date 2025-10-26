@@ -59,6 +59,7 @@ function App() {
             <Route path="immunizations-test" element={<ImmunizationsTestPage />} />
             <Route path="billing-test" element={<BillingTestPage />} />
             <Route path="financial-dashboard" element={<FinancialDashboard />} />
+            <Route path="claims-management" element={<ClaimsManagement />} />
           </Route>
         </Routes>
       </BrowserRouter>
