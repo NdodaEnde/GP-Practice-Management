@@ -589,9 +589,10 @@ const DocumentUpload = () => {
                     </Button>
                   )}
                 </div>
-              </CardContent>
-            </Card>
-          )}
+              </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
         {/* Progress/Status Panel */}
