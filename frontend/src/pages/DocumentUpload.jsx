@@ -496,31 +496,10 @@ const DocumentUpload = () => {
                     </Button>
                   )}
                 </div>
-              </CardContent>
-            </Card>
-          ) : (
-            // === BATCH MODE === //
-            <Card>
-              <CardHeader>
-                <CardTitle>Batch Upload</CardTitle>
-                <CardDescription>
-                  Upload and process up to 50 files simultaneously
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Patient ID */}
-                <div className="space-y-2">
-                  <Label htmlFor="patient-id-batch">Patient ID (Optional)</Label>
-                  <Input
-                    id="patient-id-batch"
-                    placeholder="Enter patient ID for all files"
-                    value={patientId}
-                    onChange={(e) => setPatientId(e.target.value)}
-                    disabled={batchProcessing}
-                  />
-                </div>
-
-                {/* Dropzone */}
+              ) : (
+                // === BATCH MODE === //
+                <div className="space-y-4">
+                  {/* Dropzone */}
                 <div
                   {...getRootProps()}
                   className={`
