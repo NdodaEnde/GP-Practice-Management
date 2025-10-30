@@ -69,6 +69,7 @@ function App() {
             <Route path="extraction-config" element={<ExtractionConfiguration />} />
             <Route path="batch-upload" element={<BatchUpload />} />
             <Route path="validation-queue" element={<ValidationQueue />} />
+            <Route path="document-upload" element={<DocumentUpload />} />
           </Route>
           
           {/* Payment routes (outside Layout for clean pages) */}
