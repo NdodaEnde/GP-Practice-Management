@@ -9,7 +9,7 @@
 
 ### 1. Get Patient ID for Testing
 ```bash
-curl -X GET "https://surgiscan-billing.preview.emergentagent.com/api/patients"
+curl -X GET "https://docwise-health.preview.emergentagent.com/api/patients"
 ```
 **Expected:** List of patients
 **Pick a patient_id** from the response for the following tests.
@@ -20,7 +20,7 @@ curl -X GET "https://surgiscan-billing.preview.emergentagent.com/api/patients"
 **Test Case:** Create invoice with consultation + medication
 
 ```bash
-curl -X POST "https://surgiscan-billing.preview.emergentagent.com/api/invoices" \
+curl -X POST "https://docwise-health.preview.emergentagent.com/api/invoices" \
   -H "Content-Type: application/json" \
   -d '{
     "patient_id": "YOUR_PATIENT_ID_HERE",
@@ -72,7 +72,7 @@ curl -X POST "https://surgiscan-billing.preview.emergentagent.com/api/invoices" 
 
 ### 3. Retrieve Invoice Details
 ```bash
-curl -X GET "https://surgiscan-billing.preview.emergentagent.com/api/invoices/YOUR_INVOICE_ID_HERE"
+curl -X GET "https://docwise-health.preview.emergentagent.com/api/invoices/YOUR_INVOICE_ID_HERE"
 ```
 
 **Expected Response:**
@@ -119,7 +119,7 @@ curl -X GET "https://surgiscan-billing.preview.emergentagent.com/api/invoices/YO
 
 ### 4. Record Partial Payment (Cash)
 ```bash
-curl -X POST "https://surgiscan-billing.preview.emergentagent.com/api/payments" \
+curl -X POST "https://docwise-health.preview.emergentagent.com/api/payments" \
   -H "Content-Type: application/json" \
   -d '{
     "invoice_id": "YOUR_INVOICE_ID_HERE",
@@ -150,7 +150,7 @@ curl -X POST "https://surgiscan-billing.preview.emergentagent.com/api/payments" 
 
 ### 5. Verify Payment Recorded
 ```bash
-curl -X GET "https://surgiscan-billing.preview.emergentagent.com/api/invoices/YOUR_INVOICE_ID_HERE"
+curl -X GET "https://docwise-health.preview.emergentagent.com/api/invoices/YOUR_INVOICE_ID_HERE"
 ```
 
 **Verify:**
@@ -163,7 +163,7 @@ curl -X GET "https://surgiscan-billing.preview.emergentagent.com/api/invoices/YO
 
 ### 6. Record Second Payment (Complete Payment)
 ```bash
-curl -X POST "https://surgiscan-billing.preview.emergentagent.com/api/payments" \
+curl -X POST "https://docwise-health.preview.emergentagent.com/api/payments" \
   -H "Content-Type: application/json" \
   -d '{
     "invoice_id": "YOUR_INVOICE_ID_HERE",
@@ -183,7 +183,7 @@ curl -X POST "https://surgiscan-billing.preview.emergentagent.com/api/payments" 
 
 ### 7. Get Patient Invoices
 ```bash
-curl -X GET "https://surgiscan-billing.preview.emergentagent.com/api/invoices/patient/YOUR_PATIENT_ID_HERE"
+curl -X GET "https://docwise-health.preview.emergentagent.com/api/invoices/patient/YOUR_PATIENT_ID_HERE"
 ```
 
 **Verify:**
@@ -196,10 +196,10 @@ curl -X GET "https://surgiscan-billing.preview.emergentagent.com/api/invoices/pa
 ### 8. Get All Invoices (with filters)
 ```bash
 # Get unpaid invoices
-curl -X GET "https://surgiscan-billing.preview.emergentagent.com/api/invoices?payment_status=unpaid"
+curl -X GET "https://docwise-health.preview.emergentagent.com/api/invoices?payment_status=unpaid"
 
 # Get invoices for date range
-curl -X GET "https://surgiscan-billing.preview.emergentagent.com/api/invoices?from_date=2025-10-01&to_date=2025-10-31"
+curl -X GET "https://docwise-health.preview.emergentagent.com/api/invoices?from_date=2025-10-01&to_date=2025-10-31"
 ```
 
 **Verify:**
@@ -210,7 +210,7 @@ curl -X GET "https://surgiscan-billing.preview.emergentagent.com/api/invoices?fr
 
 ### 9. Create Medical Aid Claim
 ```bash
-curl -X POST "https://surgiscan-billing.preview.emergentagent.com/api/claims" \
+curl -X POST "https://docwise-health.preview.emergentagent.com/api/claims" \
   -H "Content-Type: application/json" \
   -d '{
     "invoice_id": "YOUR_INVOICE_ID_HERE",
@@ -245,7 +245,7 @@ curl -X POST "https://surgiscan-billing.preview.emergentagent.com/api/claims" \
 
 ### 10. Retrieve Claim Details
 ```bash
-curl -X GET "https://surgiscan-billing.preview.emergentagent.com/api/claims/YOUR_CLAIM_ID_HERE"
+curl -X GET "https://docwise-health.preview.emergentagent.com/api/claims/YOUR_CLAIM_ID_HERE"
 ```
 
 **Verify:**
@@ -257,7 +257,7 @@ curl -X GET "https://surgiscan-billing.preview.emergentagent.com/api/claims/YOUR
 
 ### 11. Update Claim Status to Submitted
 ```bash
-curl -X PATCH "https://surgiscan-billing.preview.emergentagent.com/api/claims/YOUR_CLAIM_ID_HERE/status?status=submitted"
+curl -X PATCH "https://docwise-health.preview.emergentagent.com/api/claims/YOUR_CLAIM_ID_HERE/status?status=submitted"
 ```
 
 **Expected:**
@@ -277,7 +277,7 @@ curl -X PATCH "https://surgiscan-billing.preview.emergentagent.com/api/claims/YO
 
 ### 12. Update Claim Status to Approved
 ```bash
-curl -X PATCH "https://surgiscan-billing.preview.emergentagent.com/api/claims/YOUR_CLAIM_ID_HERE/status?status=approved&approved_amount=632.50"
+curl -X PATCH "https://docwise-health.preview.emergentagent.com/api/claims/YOUR_CLAIM_ID_HERE/status?status=approved&approved_amount=632.50"
 ```
 
 **Verify:**
@@ -290,13 +290,13 @@ curl -X PATCH "https://surgiscan-billing.preview.emergentagent.com/api/claims/YO
 ### 13. Get All Claims
 ```bash
 # All claims
-curl -X GET "https://surgiscan-billing.preview.emergentagent.com/api/claims"
+curl -X GET "https://docwise-health.preview.emergentagent.com/api/claims"
 
 # Filter by status
-curl -X GET "https://surgiscan-billing.preview.emergentagent.com/api/claims?status=submitted"
+curl -X GET "https://docwise-health.preview.emergentagent.com/api/claims?status=submitted"
 
 # Filter by medical aid
-curl -X GET "https://surgiscan-billing.preview.emergentagent.com/api/claims?medical_aid=Discovery%20Health"
+curl -X GET "https://docwise-health.preview.emergentagent.com/api/claims?medical_aid=Discovery%20Health"
 ```
 
 **Verify:**
@@ -307,7 +307,7 @@ curl -X GET "https://surgiscan-billing.preview.emergentagent.com/api/claims?medi
 
 ### 14. Get Revenue Report
 ```bash
-curl -X GET "https://surgiscan-billing.preview.emergentagent.com/api/reports/revenue?from_date=2025-10-01&to_date=2025-10-31"
+curl -X GET "https://docwise-health.preview.emergentagent.com/api/reports/revenue?from_date=2025-10-01&to_date=2025-10-31"
 ```
 
 **Expected Response:**
@@ -336,7 +336,7 @@ curl -X GET "https://surgiscan-billing.preview.emergentagent.com/api/reports/rev
 
 ### 15. Get Outstanding Invoices Report
 ```bash
-curl -X GET "https://surgiscan-billing.preview.emergentagent.com/api/reports/outstanding"
+curl -X GET "https://docwise-health.preview.emergentagent.com/api/reports/outstanding"
 ```
 
 **Expected:**
@@ -350,7 +350,7 @@ curl -X GET "https://surgiscan-billing.preview.emergentagent.com/api/reports/out
 ### Scenario A: Medical Aid Split Billing
 Create invoice with medical aid covering 80%, patient 20%:
 ```bash
-curl -X POST "https://surgiscan-billing.preview.emergentagent.com/api/invoices" \
+curl -X POST "https://docwise-health.preview.emergentagent.com/api/invoices" \
   -H "Content-Type: application/json" \
   -d '{
     "patient_id": "YOUR_PATIENT_ID",
@@ -388,7 +388,7 @@ Create invoice with multiple medications:
 
 ### Scenario C: Claim Rejection
 ```bash
-curl -X PATCH "https://surgiscan-billing.preview.emergentagent.com/api/claims/YOUR_CLAIM_ID/status?status=rejected&rejection_reason=Invalid%20ICD10%20code&rejection_code=ERR001"
+curl -X PATCH "https://docwise-health.preview.emergentagent.com/api/claims/YOUR_CLAIM_ID/status?status=rejected&rejection_reason=Invalid%20ICD10%20code&rejection_code=ERR001"
 ```
 
 **Verify:**

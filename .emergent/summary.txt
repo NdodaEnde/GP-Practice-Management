@@ -1,31 +1,19 @@
 <analysis>
-The previous AI engineer successfully implemented several critical features. Work began by resolving display issues within the Immunizations module, ensuring accurate dose tracking and status updates. This was followed by a comprehensive integration of the NAPPI code system into prescription workflows, including backend model updates, database schema migration, and a new frontend builder. A significant portion of the trajectory focused on developing a full Phase 3 Billing system, encompassing invoice generation (with NAPPI/ICD-10), payment recording (including split payments and receipts), financial reporting, and claims management, culminating in a functional PayFast payment gateway integration. The PayFast integration involved multiple debugging steps to resolve signature and passphrase issues. The trajectory concludes with the user raising a strategic question about enhancing the digitization module to be client-agnostic and handle diverse medical record types, indicating a shift in focus towards improving core data extraction capabilities.
+The previous AI engineer successfully transitioned from implementing a comprehensive Phase 3 Billing system with PayFast integration to a strategic focus on enhancing the core Digitization Module. The trajectory details the iterative development of a client-agnostic, template-driven document extraction system (Phase 1). This involved creating a flexible field mapping system with dedicated backend APIs, database migrations, and a frontend configuration UI. Subsequent work extended this to an Enhanced Extraction System that dynamically applies these templates, integrates ICD-10 and NAPPI lookups, and supports batch uploads. The process included debugging frontend display issues, addressing critical user feedback on page consolidation for production, and creating dedicated documentation for each phase. The current work is focused on resolving a frontend JSX syntax error in the newly merged  page.
 </analysis>
 
 <product_requirements>
-SurgiScan is a multi-tenant healthcare SaaS for Occupational Health and GP Practices, designed for Patient & Encounter Management and Document Digitization. It uses a LandingAI microservice for document extraction, storing raw documents in MongoDB and structured data in Supabase. The core problem is to provide a comprehensive EHR system that can be efficiently populated, managed, and billed.
+SurgiScan is a multi-tenant healthcare SaaS for Occupational Health and GP practices, providing Patient & Encounter Management and Document Digitization. It uses LandingAI for document extraction, storing raw documents in MongoDB and structured data in Supabase. The primary goal is to offer a comprehensive EHR system that is efficiently populated, managed, and billed.
 
-The application includes:
-1.  **Patient Safety Features**: Allergies system, structured Diagnoses with ICD-10 codes, and a Vitals table, with a strong emphasis on auto-populating these from digitized documents.
-2.  **Clinical Workflow Enhancements (Phase 2)**:
-    *   NAPPI code system for South African medications (integrated into Prescription Module).
-    *   Structured Clinical Notes (SOAP) for AI Scribe output.
-    *   Lab Orders & Results.
-    *   Procedures.
-    *   Immunizations tracking.
-3.  **Billing System (Phase 3)**: A robust billing system based on South African healthcare practices to handle the financial workflow.
-    *   Invoice Generation: Auto-generate invoices from encounters with line items (consultation, medications with NAPPI, procedures, lab tests, immunizations), VAT calculation, and professional format.
-    *   Payment Recording: Support various methods (Cash, Card, EFT, Medical Aid), split payments, payment status tracking, and receipt generation.
-    *   Basic Financial Reporting: Daily/monthly revenue, outstanding payments, payment method breakdown.
-    *   Claim Generation: Generate claims with ICD-10 diagnosis and NAPPI codes, procedure codes, and export to CSV/PDF.
-    *   Claim Status Tracking: Workflow from submitted to paid/rejected, outstanding claims, rejection reasons.
-    *   Integrate Payment Gateway (PayFast) for automated card processing.
-    *   Potential future: Medical Aid Switch integration for electronic claims.
-4.  **Digitization Module Improvement**: User explicitly requests a client-agnostic way of capturing diverse medical records (immunizations, lab results, etc.) from digitized documents, ensuring allocation to structured tables without custom development per client. Also, batch uploading.
+Key features include:
+1.  **Patient Safety**: Allergies, structured Diagnoses (ICD-10), Vitals, with an emphasis on auto-populating from digitized documents.
+2.  **Clinical Workflow (Phase 2)**: NAPPI codes for medications, Structured Clinical Notes (SOAP), Lab Orders & Results, Procedures, and Immunizations tracking.
+3.  **Billing System (Phase 3)**: Robust system for South African practices, including invoice generation (NAPPI/ICD-10), payment recording (split payments, receipts), basic financial reporting, claims management (ICD-10/NAPPI codes, export), claim status tracking, and PayFast payment gateway integration.
+4.  **Digitization Module Improvement**: This is the current focus, aiming for a client-agnostic system to capture diverse medical records (immunizations, lab results) from digitized documents and allocate them to structured tables without custom coding per client. It also includes batch uploading capabilities. The implementation so far includes a template-driven extraction system for flexible field mapping, an enhanced extraction engine, batch upload functionality, and a validation queue.
 </product_requirements>
 
 <key_technical_concepts>
-- **Backend**: FastAPI for APIs, Supabase (Postgres) for relational data, MongoDB for unstructured documents,  for PDF generation, , usage: openai [-h] [-v] [-b API_BASE] [-k API_KEY] [-p PROXY [PROXY ...]]
+-   **Backend**: FastAPI, Supabase (Postgres), MongoDB,  (PDF), , usage: openai [-h] [-v] [-b API_BASE] [-k API_KEY] [-p PROXY [PROXY ...]]
               [-o ORGANIZATION] [-t {openai,azure}]
               [--api-version API_VERSION] [--azure-endpoint AZURE_ENDPOINT]
               [--azure-ad-token AZURE_AD_TOKEN] [-V]
@@ -63,105 +51,100 @@ options:
                         us/security/business/identity-access/microsoft-entra-
                         id
   -V, --version         show program's version number and exit.
-- **Frontend**: React, React Router DOM, Axios, Shadcn UI components.
-- **Data Handling**: UUIDs for IDs, ISO datetime strings for MongoDB, environment variables for sensitive info.
-- **Integrations**: PayFast Payment Gateway, focus on secure signature generation and webhook handling.
-- **Core Workflows**: Automated document data extraction for EHR population, API-driven CRUD.
+-   **Frontend**: React, React Router DOM, Axios, Shadcn UI components.
+-   **Data Handling**: UUIDs for IDs, ISO datetime strings, environment variables.
+-   **Integrations**: PayFast Payment Gateway, LandingAI (ADE DPT-2) for document extraction.
+-   **Core Workflows**: Template-driven data extraction, batch processing, validation queues, ICD-10 and NAPPI lookup transformations.
 </key_technical_concepts>
 
 <code_architecture>
-The application employs a React frontend, a FastAPI backend, and a hybrid database approach utilizing Supabase (Postgres) for structured, relational data and MongoDB for unstructured documents. Document processing is handled by a separate FastAPI/Flask microservice.
+The application uses a React frontend, a FastAPI backend, and a hybrid database approach with Supabase (Postgres) for relational data and MongoDB for unstructured documents. Document processing is handled by a FastAPI/Flask microservice.
 
 
 
--   **/app/backend/server.py**: Main FastAPI application.
+-   ****: Main FastAPI application.
     -   **Importance**: Central API router.
-    -   **Changes**: Immunization response model updated with , Kernel IP routing table
-Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
-default         10.64.136.1     0.0.0.0         UG    0      0        0 eth0
-10.64.136.0     10.64.136.1     255.255.255.192 UG    0      0        0 eth0
-10.64.136.1     0.0.0.0         255.255.255.255 UH    0      0        0 eth0, .  model updated with . Integrated  and  API routers. Logic added to save NAPPI codes with prescriptions.
--   **/app/backend/api/immunizations.py**: FastAPI router.
-    -   **Importance**: Manages immunization data.
-    -   **Changes**: Response model updated to include all necessary fields for frontend display.
--   **/app/backend/api/nappi.py**: FastAPI router.
-    -   **Importance**: Provides access to South African medication codes.
-    -   **Changes**: Used for searching NAPPI codes, integrated with prescription builder flow.
--   **/app/backend/database/nappi_codes_migration.sql**: SQL schema for .
-    -   **Importance**: Defines structure for medication data.
-    -   **Changes**: Applied to database during NAPPI integration.
--   **/app/frontend/src/pages/ImmunizationsTestPage.jsx**: Frontend test page.
-    -   **Importance**: UI for verifying immunization functionality.
-    -   **Changes**: Fixed quick vaccine buttons to reset dose numbers, improved labels, and corrected summary card/history display logic (showing highest dose number, Series Complete status, and next due date).
--   **/app/frontend/src/components/PrescriptionBuilder.jsx**: Component for building prescriptions.
-    -   **Importance**: Enables prescription creation.
-    -   **Changes**: Replaced with . Fixed allergy checking to handle null  values gracefully.
--   **/app/frontend/src/components/PrescriptionBuilderNAPPI.jsx (new)**: NAPPI-integrated prescription builder.
-    -   **Importance**: New component for selecting and saving NAPPI codes with prescriptions.
-    -   **Changes**: Newly created, replacing the old .
--   **/app/backend/database/billing_migration.sql (new)**: SQL schema for billing.
-    -   **Importance**: Defines tables for invoices, invoice items, payments, medical aid claims.
-    -   **Changes**: Newly created, later updated to be idempotent with .
--   **/app/backend/api/billing.py (new)**: FastAPI router for billing.
-    -   **Importance**: Provides CRUD for invoices, payments, and claims.
+    -   **Changes**: Integrated , , and a new template-driven  endpoint, and  endpoints.
+-   ** (new)**: SQL schema for  and .
+    -   **Importance**: Defines structure for the flexible data extraction system.
+    -   **Changes**: Newly created to store templates and their field mappings.
+-   ** (new)**: FastAPI router.
+    -   **Importance**: Manages CRUD operations for extraction templates and field mappings.
     -   **Changes**: Newly created.
--   **/app/frontend/src/pages/Billing.jsx**: Main billing page.
-    -   **Importance**: Displays and manages invoices.
-    -   **Changes**: Fixed to work with the new backend API structure, made invoices clickable, and integrated .
--   **/app/frontend/src/components/InvoiceView.jsx (new)**: Component for professional invoice display and payment recording.
-    -   **Importance**: Displays detailed invoices, enables payment recording, split payments, and receipt generation.
-    -   **Changes**: Newly created, integrated into .
--   **/app/frontend/src/components/PaymentReceipt.jsx (new)**: Component for generating payment receipts.
-    -   **Importance**: Generates printable receipts.
-    -   **Changes**: Newly created, used by .
--   **/app/frontend/src/pages/FinancialDashboard.jsx (new)**: Frontend page for financial analytics.
-    -   **Importance**: Provides reports on revenue, payments, outstanding amounts.
-    -   **Changes**: Newly created, includes key metrics and charts.
--   **/app/frontend/src/pages/ClaimsManagement.jsx (new)**: Frontend page for managing medical aid claims.
-    -   **Importance**: Handles claim creation, status tracking, and export.
-    -   **Changes**: Newly created, includes claim submission and status updates.
--   **/app/backend/api/payfast.py (new)**: FastAPI router for PayFast integration.
-    -   **Importance**: Handles PayFast payment initiation and webhooks (ITN).
-    -   **Changes**: Newly created, implemented signature generation and ITN verification. Debugged for passphrase and URL encoding issues.
--   **/app/frontend/src/components/PayFastPaymentButton.jsx (new)**: Component for PayFast payments.
-    -   **Importance**: Provides a UI button to initiate PayFast payments.
-    -   **Changes**: Newly created, integrated into .
--   **/app/frontend/src/pages/PaymentSuccess.jsx (new)**, **/app/frontend/src/pages/PaymentCancelled.jsx (new)**: Frontend pages for PayFast payment redirects.
-    -   **Importance**: Handle post-payment user experience.
+-   ** (new)**: Script to apply .
+    -   **Importance**: Initializes database tables for extraction configuration.
     -   **Changes**: Newly created.
--   **/app/frontend/src/App.js**: React router configuration.
+-   ** (new)**: Service for dynamic data extraction.
+    -   **Importance**: Implements the core logic for template-driven extraction, transformations, and auto-population.
+    -   **Changes**: Newly created, then updated to include ICD-10 and NAPPI lookup transformations.
+-   ****: GP Document Processor.
+    -   **Importance**: Orchestrates document parsing and data extraction.
+    -   **Changes**: Enhanced with a  method to utilize the new .
+-   ** (new)**: Script to seed initial extraction templates.
+    -   **Importance**: Provides out-of-the-box templates for common document types.
+    -   **Changes**: Newly created, includes logic to avoid re-seeding if templates exist.
+-   ** (new)**: Service for batch document processing.
+    -   **Importance**: Manages the queuing and processing of multiple document uploads.
+    -   **Changes**: Newly created.
+-   ** (new)**: FastAPI router.
+    -   **Importance**: Provides API for managing document validation queues.
+    -   **Changes**: Newly created.
+-   ****: React router configuration.
     -   **Importance**: Defines application routes.
-    -   **Changes**: Added routes for , , , , , , , .
--   **/app/frontend/src/components/Layout.jsx**: Main application layout.
+    -   **Changes**: Added routes for , , , and the new . Old upload routes were commented out.
+-   ****: Main application layout.
     -   **Importance**: Provides consistent navigation.
-    -   **Changes**: Added navigation links for new pages like NAPPI Test, Lab Test, Immunizations Test, Billing, Financial Dashboard, Claims Management.
+    -   **Changes**: Added navigation links for Extraction Configuration, Batch Upload, Validation Queue, and Document Upload. Old upload links were commented out. Also fixed an import for the  icon.
+-   ** (new)**: Frontend page.
+    -   **Importance**: UI for administrators to create and manage extraction templates and field mappings.
+    -   **Changes**: Newly created.
+-   ****: Frontend page.
+    -   **Importance**: Original single file upload page.
+    -   **Changes**: Not directly modified recently, but its role has been superseded by .
+-   ****: Component for single file upload.
+    -   **Importance**: Handles the single file upload process.
+    -   **Changes**: Modified to include a toggle for template-driven extraction and display auto-population results.
+-   ****: Frontend API service.
+    -   **Importance**: Handles API calls to the GP backend endpoints.
+    -   **Changes**: Added new functions for template-driven upload and batch upload.
+-   ** (new)**: Frontend page.
+    -   **Importance**: UI for uploading multiple documents.
+    -   **Changes**: Newly created.
+-   ** (new)**: Frontend page.
+    -   **Importance**: UI for reviewing and validating extracted data.
+    -   **Changes**: Newly created, and subsequently fixed for a  runtime error.
+-   ** (new)**: Unified frontend page.
+    -   **Importance**: Merges single and batch document upload functionality into one interface.
+    -   **Changes**: Newly created, configured to handle both single and batch uploads, integrated the template-driven extraction toggle for both modes, and is currently experiencing a JSX syntax error.
+-   ****: Roadmap document.
+    -   **Importance**: Outlines the project's development path.
+    -   **Changes**: Updated to reflect completed digitization module phases and new priorities.
 </code_architecture>
 
 <pending_tasks>
-- Complete Phase 1.6: Access Audit Trail (full testing with processed documents)
-- Fine-tune analytics displays and metrics (partially done with Financial Dashboard, but could be enhanced).
-- Implement human validation for AI Scribe notes (doctor review).
-- Implement the Workstation Dashboard (full testing).
-- Add Empty State Messages and Extraction Summary Banner for UI feedback.
-- Further testing of the EHR integration with various medical records.
-- Implement batch upload support for documents.
-- Implement a background job system (async parse/extract).
-- Automated EDI submission to medical aids.
-- Patient SMS/Email invoices.
-- Automated payment reminders.
-- Advanced analytics beyond current dashboard.
-- **Critical Next Focus**: Enhance the digitization module for client-agnostic processing and allocation of diverse medical record data (immunizations, labs, etc.) to structured tables.
+-   Complete Phase 1.6: Access Audit Trail.
+-   Fine-tune analytics displays and metrics.
+-   Implement human validation for AI Scribe notes.
+-   Implement the Workstation Dashboard.
+-   Add Empty State Messages and Extraction Summary Banner for UI feedback.
+-   Further testing of the EHR integration with various medical records (user waiting for files).
+-   Automated EDI submission to medical aids.
+-   Patient SMS/Email invoices.
+-   Automated payment reminders.
+-   Advanced analytics.
+-   Implement **Document Preview with PDF Viewer**.
+-   Add **Dashboard Integration** (Pending validations, Recent uploads widgets).
 </pending_tasks>
 
 <current_work>
-Immediately before this summary request, the AI engineer successfully integrated the PayFast payment gateway into the SurgiScan application. This included:
-1.  **Backend Implementation**: Installing the  library (for PDF generation, likely receipts), adding PayFast sandbox credentials (, , ) to , creating  for payment initiation and webhook (ITN) handling, and integrating this router into .
-2.  **Frontend Implementation**: Creating , , . Routes for these pages were added to . The  was integrated into the  component, specifically within the payment recording section.
-3.  **Debugging & Resolution**: The integration faced a persistent  error with the message signature: Generated signature does not match submitted signature. This was initially attempted to be fixed by checking URL encoding. The root cause was discovered to be an incorrect handling of the PayFast passphrase: the passphrase should *not* be URL encoded, and critically, if the user didn't set a passphrase in PayFast's sandbox account, then it should *not* be included in the signature generation at all. This was resolved by updating the signature generation logic in  to correctly handle the absence of a passphrase.
+Immediately before this summary request, the AI engineer was consolidating the document upload process into a single, unified  page. This involved:
+1.  Creating the new  component to replace  and .
+2.  Updating  and  to route to  and comment out the old upload page links.
+3.  Ensuring the  toggle functionality, previously only in single-file mode, is now applicable to both single and batch upload modes within the new  component.
 
-The PayFast payment processing was confirmed to be working successfully. The user then shifted focus, asking about the digitization module's ability to handle diverse medical records in an agnostic way and requesting a roadmap update for this.
+The current work is paused due to a  in  at line 594:12, as reported by the compiler in Chat Message 335. This indicates a structural issue in the JSX within the newly merged component.
 </current_work>
 
 <optional_next_step>
-Update the roadmap to address the user's request for an agnostic and comprehensive digitization module capable of processing diverse medical record types.
+Fix the  in .
 </optional_next_step>
