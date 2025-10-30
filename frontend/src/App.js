@@ -65,6 +65,7 @@ function App() {
             <Route path="financial-dashboard" element={<FinancialDashboard />} />
             <Route path="claims-management" element={<ClaimsManagement />} />
             <Route path="extraction-config" element={<ExtractionConfiguration />} />
+            <Route path="batch-upload" element={<BatchUpload />} />
           </Route>
           
           {/* Payment routes (outside Layout for clean pages) */}
