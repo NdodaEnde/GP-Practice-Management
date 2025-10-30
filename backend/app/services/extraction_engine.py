@@ -518,28 +518,28 @@ class ExtractionEngine:
             # e.g., "Atenolol 50mg" -> "Atenolol"
             search_term = re.sub(r'\d+\s*(mg|ml|g|mcg|iu|units?)', '', search_term, flags=re.IGNORECASE).strip()
             
-            # Try exact match on product name
+            # Try exact match on brand name
             response = supabase.table('nappi_codes')\
-                .select('nappi_code, product_name, active_ingredient')\
-                .ilike('product_name', f'%{search_term}%')\
+                .select('nappi_code, brand_name, generic_name')\
+                .ilike('brand_name', f'%{search_term}%')\
                 .limit(5)\
                 .execute()
             
             if response.data and len(response.data) > 0:
                 best_match = response.data[0]
-                logger.info(f"✅ NAPPI match: '{value}' → {best_match['nappi_code']} ({best_match['product_name']})")
+                logger.info(f"✅ NAPPI match: '{value}' → {best_match['nappi_code']} ({best_match['brand_name']})")
                 return best_match['nappi_code']
             
-            # Try matching on active ingredient
+            # Try matching on generic name
             response = supabase.table('nappi_codes')\
-                .select('nappi_code, product_name, active_ingredient')\
-                .ilike('active_ingredient', f'%{search_term}%')\
+                .select('nappi_code, brand_name, generic_name')\
+                .ilike('generic_name', f'%{search_term}%')\
                 .limit(5)\
                 .execute()
             
             if response.data and len(response.data) > 0:
                 best_match = response.data[0]
-                logger.info(f"⚠️ NAPPI ingredient match: '{value}' → {best_match['nappi_code']} ({best_match['product_name']})")
+                logger.info(f"⚠️ NAPPI generic match: '{value}' → {best_match['nappi_code']} ({best_match['generic_name']})")
                 return best_match['nappi_code']
             
             logger.warning(f"❌ No NAPPI match found for: '{value}'")
