@@ -2113,8 +2113,9 @@ async def proxy_gp_upload(
                 'created_at': datetime.now(timezone.utc).isoformat()
             }
             
-            # Store in MongoDB
-            mongo_result = await db.parsed_documents.insert_one(parsed_data_record)
+            # Store in MongoDB (surgiscan_documents database)
+            surgiscan_docs_db = mongo_client['surgiscan_documents']
+            mongo_result = await surgiscan_docs_db.gp_parsed_documents.insert_one(parsed_data_record)
             mongo_id = str(mongo_result.inserted_id)
             
             logger.info(f"Stored parsed data in MongoDB: {mongo_id}")
