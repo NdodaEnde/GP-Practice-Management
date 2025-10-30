@@ -3237,14 +3237,16 @@ async def extract_from_parsed_document(
         
         logger.info(f"📄 Reading parsed document from MongoDB: {parsed_doc_id}")
         
-        # Get parsed document from MongoDB
+        # Get parsed document from MongoDB (surgiscan_documents database)
+        surgiscan_docs_db = mongo_client['surgiscan_documents']
+        
         from bson import ObjectId
         try:
             query = {'_id': ObjectId(parsed_doc_id)}
         except:
             query = {'document_id': parsed_doc_id}
         
-        parsed_doc = await db.parsed_documents.find_one(query)
+        parsed_doc = await surgiscan_docs_db.gp_parsed_documents.find_one(query)
         
         if not parsed_doc:
             raise HTTPException(status_code=404, detail="Parsed document not found in MongoDB")
