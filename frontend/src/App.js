@@ -63,6 +63,7 @@ function App() {
             <Route path="billing-test" element={<BillingTestPage />} />
             <Route path="financial-dashboard" element={<FinancialDashboard />} />
             <Route path="claims-management" element={<ClaimsManagement />} />
+            <Route path="extraction-config" element={<ExtractionConfiguration />} />
           </Route>
           
           {/* Payment routes (outside Layout for clean pages) */}
