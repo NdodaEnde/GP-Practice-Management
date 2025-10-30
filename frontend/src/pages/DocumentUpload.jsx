@@ -516,6 +516,22 @@ const DocumentUpload = () => {
                   </Alert>
                 )}
 
+                {/* Parsed Message - Ready for Extraction */}
+                {singleResult && singleStatus === 'parsed' && useTemplates && (
+                  <Alert className="border-blue-200 bg-blue-50">
+                    <FileText className="h-4 w-4 text-blue-600" />
+                    <AlertDescription className="text-blue-800">
+                      <div className="space-y-2">
+                        <p><strong>Document Parsed Successfully! 📄</strong></p>
+                        <p className="text-sm">
+                          The document has been parsed and is ready for template-driven extraction.
+                          Click "Extract Data" to auto-populate structured tables with ICD-10 and NAPPI codes.
+                        </p>
+                      </div>
+                    </AlertDescription>
+                  </Alert>
+                )}
+
                 {/* Error Message */}
                 {singleStatus === 'error' && (
                   <Alert className="border-red-200 bg-red-50">
