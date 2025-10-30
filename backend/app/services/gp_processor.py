@@ -18,6 +18,7 @@ from landingai_ade.lib import pydantic_to_json_schema
 from app.schemas.gp_demographics import PatientDemographics
 from app.schemas.gp_chronic_summary import ChronicPatientSummary
 from app.schemas.gp_vitals import VitalSignsExtraction
+from app.services.extraction_engine import ExtractionEngine
 import logging
 logger = logging.getLogger(__name__)
 
