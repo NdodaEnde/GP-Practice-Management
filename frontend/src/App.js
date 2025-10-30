@@ -67,6 +67,7 @@ function App() {
             <Route path="claims-management" element={<ClaimsManagement />} />
             <Route path="extraction-config" element={<ExtractionConfiguration />} />
             <Route path="batch-upload" element={<BatchUpload />} />
+            <Route path="validation-queue" element={<ValidationQueue />} />
           </Route>
           
           {/* Payment routes (outside Layout for clean pages) */}
