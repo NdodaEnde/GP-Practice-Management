@@ -12,6 +12,7 @@ const Layout = () => {
     { name: 'Digitize Documents', path: '/digitize', icon: FileText },
     { name: 'GP Patient Digitization', path: '/gp-digitize', icon: Stethoscope },
     { name: 'Digitised Documents', path: '/gp/documents', icon: FileText },
+    { name: 'Extraction Config', path: '/extraction-config', icon: Settings },
     { name: 'Patients', path: '/patients', icon: Users },
     { name: 'ICD-10 Test', path: '/icd10-test', icon: Code },
     { name: 'NAPPI Test', path: '/nappi-test', icon: Package },
