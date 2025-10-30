@@ -3173,6 +3173,201 @@ async def upload_gp_document_with_template(
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
 
 
+
+@api_router.post("/gp/batch-upload")
+async def batch_upload_documents(
+    files: List[UploadFile] = File(...),
+    patient_id: Optional[str] = Form(None),
+    template_id: Optional[str] = Form(None),
+    encounter_id: Optional[str] = Form(None)
+):
+    """
+    BATCH UPLOAD: Upload multiple GP documents for processing
+    
+    Processes multiple documents asynchronously with progress tracking.
+    Returns a batch_id that can be used to track progress.
+    
+    Args:
+        files: List of PDF files to upload (up to 50)
+        patient_id: Optional patient ID for all files
+        template_id: Optional template ID (uses default if not specified)
+        encounter_id: Optional encounter ID
+    
+    Returns:
+        {
+            'batch_id': str,
+            'total_files': int,
+            'status': 'processing',
+            'message': str
+        }
+    """
+    
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided")
+    
+    if len(files) > 50:
+        raise HTTPException(status_code=400, detail="Maximum 50 files per batch")
+    
+    batch_id = str(uuid.uuid4())
+    
+    try:
+        logger.info(f"📦 Batch upload started: {len(files)} files")
+        
+        # Get batch service
+        from app.services.batch_upload_service import get_batch_service
+        batch_service = get_batch_service(
+            db_manager=type('obj', (object,), {'db': db}),
+            supabase_client=supabase
+        )
+        
+        # Prepare file info for batch creation
+        files_info = [
+            {
+                'filename': file.filename,
+                'size': file.size if hasattr(file, 'size') else 0
+            }
+            for file in files
+        ]
+        
+        # Create batch record
+        batch_id = batch_service.create_batch(
+            workspace_id=DEMO_WORKSPACE_ID,
+            tenant_id=DEMO_TENANT_ID,
+            files_info=files_info,
+            patient_id=patient_id,
+            template_id=template_id
+        )
+        
+        # Save files temporarily and prepare for processing
+        temp_dir = Path("storage/temp")
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        
+        files_data = []
+        
+        for idx, file in enumerate(files):
+            # Read file content
+            file_content = await file.read()
+            
+            # Generate unique file_id
+            file_id = batch_service.get_batch_status(batch_id)['files'][idx]['file_id']
+            
+            # Save temporarily
+            temp_file_path = temp_dir / f"{batch_id}_{file_id}_{file.filename}"
+            with open(temp_file_path, "wb") as f:
+                f.write(file_content)
+            
+            files_data.append({
+                'file_id': file_id,
+                'filename': file.filename,
+                'file_path': str(temp_file_path),
+                'file_content': file_content
+            })
+        
+        logger.info(f"✅ All files saved temporarily for batch {batch_id}")
+        
+        # Initialize processor
+        from app.services.gp_processor import GPDocumentProcessor
+        processor = GPDocumentProcessor(db_manager=type('obj', (object,), {
+            'db': db,
+            'connected': True
+        }))
+        
+        # Start background processing (fire and forget)
+        asyncio.create_task(
+            batch_service.process_batch(
+                batch_id=batch_id,
+                files_data=files_data,
+                processor=processor,
+                workspace_id=DEMO_WORKSPACE_ID,
+                tenant_id=DEMO_TENANT_ID,
+                patient_id=patient_id,
+                template_id=template_id,
+                encounter_id=encounter_id
+            )
+        )
+        
+        logger.info(f"🚀 Background processing started for batch {batch_id}")
+        
+        return JSONResponse(content={
+            'status': 'success',
+            'batch_id': batch_id,
+            'total_files': len(files),
+            'message': f'Batch upload initiated. Processing {len(files)} files in background.',
+            'tracking_url': f'/api/gp/batch-status/{batch_id}'
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Batch upload failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Batch upload failed: {str(e)}")
+
+
+@api_router.get("/gp/batch-status/{batch_id}")
+async def get_batch_status(batch_id: str):
+    """
+    Get current status of a batch upload
+    
+    Returns real-time progress including:
+    - Overall batch status
+    - Progress counts (pending, processing, completed, failed)
+    - Individual file statuses
+    - Results for completed files
+    """
+    try:
+        from app.services.batch_upload_service import get_batch_service
+        batch_service = get_batch_service()
+        
+        if not batch_service:
+            raise HTTPException(status_code=500, detail="Batch service not initialized")
+        
+        batch_status = batch_service.get_batch_status(batch_id)
+        
+        if not batch_status:
+            # Try to fetch from database
+            batch_record = await db['batch_uploads'].find_one({'id': batch_id})
+            if batch_record:
+                return JSONResponse(content={
+                    'status': 'success',
+                    'batch': batch_record
+                })
+            else:
+                raise HTTPException(status_code=404, detail="Batch not found")
+        
+        return JSONResponse(content={
+            'status': 'success',
+            'batch': batch_status
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get batch status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.get("/gp/batch-history")
+async def get_batch_history(workspace_id: str = DEMO_WORKSPACE_ID, limit: int = 20):
+    """
+    Get recent batch uploads for a workspace
+    """
+    try:
+        from app.services.batch_upload_service import get_batch_service
+        batch_service = get_batch_service()
+        
+        if not batch_service:
+            raise HTTPException(status_code=500, detail="Batch service not initialized")
+        
+        batches = await batch_service.get_batch_history(workspace_id, limit)
+        
+        return JSONResponse(content={
+            'status': 'success',
+            'batches': batches
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to get batch history: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @api_router.get("/documents/patient/{patient_id}")
 async def get_patient_documents(patient_id: str):
     """Get all documents for a specific patient"""
