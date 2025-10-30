@@ -148,17 +148,29 @@ class ExtractionEngine:
                 
                 return value
             
-            # Lookup (match against reference data - placeholder for now)
+            # Lookup (match against reference data)
             elif transformation_type == 'lookup':
-                # TODO: Implement lookup against reference tables
-                # For now, return as-is
-                return value
+                lookup_type = transformation_config.get('lookup_type', 'icd10')
+                
+                if lookup_type == 'icd10':
+                    return self._lookup_icd10(value, transformation_config)
+                elif lookup_type == 'nappi':
+                    return self._lookup_nappi(value, transformation_config)
+                else:
+                    logger.warning(f"Unknown lookup type: {lookup_type}")
+                    return value
             
-            # AI Match (use AI to match/suggest codes - placeholder for now)
+            # AI Match (use AI to match/suggest codes)
             elif transformation_type == 'ai_match':
-                # TODO: Implement AI matching (ICD-10, NAPPI)
-                # For now, return as-is
-                return value
+                match_type = transformation_config.get('match_type', 'icd10')
+                
+                if match_type == 'icd10':
+                    return self._ai_match_icd10(value, transformation_config)
+                elif match_type == 'nappi':
+                    return self._ai_match_nappi(value, transformation_config)
+                else:
+                    logger.warning(f"Unknown match type: {match_type}")
+                    return value
             
             # Calculation (calculate from formula)
             elif transformation_type == 'calculation':
