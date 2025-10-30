@@ -30,6 +30,7 @@ import PaymentCancelled from './pages/PaymentCancelled';
 import ExtractionConfiguration from './pages/ExtractionConfiguration';
 import BatchUpload from './pages/BatchUpload';
 import ValidationQueue from './pages/ValidationQueue';
+import ValidationReview from './pages/ValidationReview';
 import DocumentUpload from './pages/DocumentUpload';
 import Layout from './components/Layout';
 import '@/App.css';
