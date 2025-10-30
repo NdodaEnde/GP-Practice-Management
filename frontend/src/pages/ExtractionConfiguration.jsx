@@ -6,10 +6,10 @@ import {
   CardHeader, 
   CardTitle,
   CardDescription 
-} from './ui/card';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
+} from '../components/ui/card';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
 import { 
   Plus, 
   Edit, 
@@ -22,7 +22,7 @@ import {
   CheckCircle,
   AlertCircle
 } from 'lucide-react';
-import { useToast } from './ui/use-toast';
+import { useToast } from '../components/ui/use-toast';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
 const DEMO_WORKSPACE = 'demo-gp-workspace-001';
