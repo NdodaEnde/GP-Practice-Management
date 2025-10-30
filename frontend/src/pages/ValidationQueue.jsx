@@ -42,9 +42,10 @@ const ValidationQueue = () => {
       const response = await axios.get(
         `${BACKEND_URL}/api/validation/queue?workspace_id=${DEMO_WORKSPACE}&limit=50`
       );
-      setQueue(response.data.extractions);
+      setQueue(response.data.extractions || []);
     } catch (error) {
       console.error('Failed to load validation queue:', error);
+      setQueue([]); // Set to empty array on error
       toast({
         variant: "destructive",
         title: "Error",
