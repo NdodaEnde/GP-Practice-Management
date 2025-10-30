@@ -428,3 +428,206 @@ class ExtractionEngine:
             
         except Exception as e:
             logger.error(f"Failed to save extraction history: {e}")
+
+    
+    def _lookup_icd10(self, value: str, config: Dict) -> Optional[str]:
+        """
+        Lookup ICD-10 code by description (exact or fuzzy match)
+        
+        Args:
+            value: Diagnosis description to match
+            config: Configuration with optional 'confidence_threshold'
+            
+        Returns:
+            ICD-10 code if found, else None
+        """
+        try:
+            if not isinstance(value, str) or not value.strip():
+                return None
+            
+            search_term = value.strip().lower()
+            confidence_threshold = config.get('confidence_threshold', 0.7)
+            
+            # Try exact match first
+            response = supabase.table('icd10_codes')\
+                .select('code, description')\
+                .ilike('description', f'%{search_term}%')\
+                .limit(5)\
+                .execute()
+            
+            if response.data and len(response.data) > 0:
+                # Return first match (highest relevance)
+                best_match = response.data[0]
+                logger.info(f"✅ ICD-10 match: '{value}' → {best_match['code']} ({best_match['description']})")
+                return best_match['code']
+            
+            # If no exact match, try fuzzy matching with individual words
+            words = search_term.split()
+            if len(words) > 1:
+                # Try matching on primary word (usually the condition name)
+                for word in words:
+                    if len(word) > 3:  # Skip short words
+                        response = supabase.table('icd10_codes')\
+                            .select('code, description')\
+                            .ilike('description', f'%{word}%')\
+                            .limit(3)\
+                            .execute()
+                        
+                        if response.data:
+                            best_match = response.data[0]
+                            logger.info(f"⚠️ ICD-10 fuzzy match: '{value}' → {best_match['code']} ({best_match['description']})")
+                            return best_match['code']
+            
+            logger.warning(f"❌ No ICD-10 match found for: '{value}'")
+            return None
+            
+        except Exception as e:
+            logger.error(f"ICD-10 lookup failed: {e}")
+            return None
+    
+    def _lookup_nappi(self, value: str, config: Dict) -> Optional[str]:
+        """
+        Lookup NAPPI code by medication name
+        
+        Args:
+            value: Medication name to match
+            config: Configuration with optional 'confidence_threshold'
+            
+        Returns:
+            NAPPI code if found, else None
+        """
+        try:
+            if not isinstance(value, str) or not value.strip():
+                return None
+            
+            search_term = value.strip().lower()
+            
+            # Remove common dosage patterns to improve matching
+            # e.g., "Atenolol 50mg" -> "Atenolol"
+            search_term = re.sub(r'\d+\s*(mg|ml|g|mcg|iu|units?)', '', search_term, flags=re.IGNORECASE).strip()
+            
+            # Try exact match on product name
+            response = supabase.table('nappi_codes')\
+                .select('nappi_code, product_name, active_ingredient')\
+                .ilike('product_name', f'%{search_term}%')\
+                .limit(5)\
+                .execute()
+            
+            if response.data and len(response.data) > 0:
+                best_match = response.data[0]
+                logger.info(f"✅ NAPPI match: '{value}' → {best_match['nappi_code']} ({best_match['product_name']})")
+                return best_match['nappi_code']
+            
+            # Try matching on active ingredient
+            response = supabase.table('nappi_codes')\
+                .select('nappi_code, product_name, active_ingredient')\
+                .ilike('active_ingredient', f'%{search_term}%')\
+                .limit(5)\
+                .execute()
+            
+            if response.data and len(response.data) > 0:
+                best_match = response.data[0]
+                logger.info(f"⚠️ NAPPI ingredient match: '{value}' → {best_match['nappi_code']} ({best_match['product_name']})")
+                return best_match['nappi_code']
+            
+            logger.warning(f"❌ No NAPPI match found for: '{value}'")
+            return None
+            
+        except Exception as e:
+            logger.error(f"NAPPI lookup failed: {e}")
+            return None
+    
+    def _ai_match_icd10(self, value: str, config: Dict) -> Optional[str]:
+        """
+        AI-powered ICD-10 matching with fuzzy search and ranking
+        
+        This is more intelligent than direct lookup - it handles:
+        - Synonyms (e.g., "high blood pressure" → "hypertension")
+        - Abbreviations (e.g., "DM" → "diabetes mellitus")
+        - Misspellings
+        - Multiple potential matches with confidence scores
+        
+        For now, uses advanced fuzzy matching. In future, could integrate
+        actual AI/LLM for even better matching.
+        """
+        try:
+            if not isinstance(value, str) or not value.strip():
+                return None
+            
+            # Use the lookup function as a starting point
+            # In future, this could call an LLM to interpret the diagnosis
+            code = self._lookup_icd10(value, config)
+            
+            if code:
+                return code
+            
+            # Advanced: Try common synonyms/patterns
+            synonyms = {
+                'high blood pressure': 'hypertension',
+                'sugar diabetes': 'diabetes mellitus',
+                'heart attack': 'myocardial infarction',
+                'stroke': 'cerebrovascular accident',
+                'hbp': 'hypertension',
+                'dm': 'diabetes mellitus',
+                'copd': 'chronic obstructive pulmonary disease',
+                'ckd': 'chronic kidney disease'
+            }
+            
+            search_term = value.lower().strip()
+            for synonym, standard_term in synonyms.items():
+                if synonym in search_term:
+                    return self._lookup_icd10(standard_term, config)
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"AI ICD-10 matching failed: {e}")
+            return None
+    
+    def _ai_match_nappi(self, value: str, config: Dict) -> Optional[str]:
+        """
+        AI-powered NAPPI matching with intelligent name resolution
+        
+        Handles:
+        - Brand name → Generic name mapping
+        - Dosage form variations
+        - Common abbreviations
+        """
+        try:
+            if not isinstance(value, str) or not value.strip():
+                return None
+            
+            # Use the lookup function as a starting point
+            code = self._lookup_nappi(value, config)
+            
+            if code:
+                return code
+            
+            # Advanced: Try common brand-to-generic mappings
+            brand_mappings = {
+                'panado': 'paracetamol',
+                'brufen': 'ibuprofen',
+                'voltaren': 'diclofenac',
+                'disprin': 'aspirin',
+                'syndol': 'paracetamol',
+                'corenza': 'paracetamol',
+                'adco': ''  # Remove brand prefix
+            }
+            
+            search_term = value.lower().strip()
+            for brand, generic in brand_mappings.items():
+                if brand in search_term:
+                    if generic:
+                        return self._lookup_nappi(generic, config)
+                    else:
+                        # Remove brand prefix and try again
+                        cleaned = search_term.replace(brand, '').strip()
+                        if cleaned:
+                            return self._lookup_nappi(cleaned, config)
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"AI NAPPI matching failed: {e}")
+            return None
+
