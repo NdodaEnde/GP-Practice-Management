@@ -3173,6 +3173,146 @@ async def upload_gp_document_with_template(
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
 
 
+@api_router.post("/gp/documents/{document_id}/extract")
+async def extract_from_parsed_document(
+    document_id: str,
+    template_id: Optional[str] = Form(None),
+    patient_id: Optional[str] = Form(None),
+    encounter_id: Optional[str] = Form(None)
+):
+    """
+    Phase 2: Extract on Demand from Parsed Document
+    
+    This endpoint extracts structured data from an already-parsed document:
+    - Reads parsed document from MongoDB (no API call needed)
+    - Applies template-driven extraction
+    - Auto-populates structured tables (ICD-10, NAPPI, immunizations, etc.)
+    - Can be run multiple times with different templates
+    
+    Args:
+        document_id: ID of the digitised document
+        template_id: Optional template ID for extraction
+        patient_id: Optional patient ID override
+        encounter_id: Optional encounter ID to link records
+        
+    Returns:
+        Extraction results with auto-population summary
+    """
+    try:
+        logger.info(f"🔍 Phase 2: Extracting from document {document_id}")
+        
+        # Get document record
+        doc_result = supabase.table('digitised_documents').select('*').eq('id', document_id).execute()
+        
+        if not doc_result.data:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        doc = doc_result.data[0]
+        
+        # Check if document is parsed
+        if doc['status'] not in ['parsed', 'extracted', 'extraction_failed']:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Document must be parsed first. Current status: {doc['status']}"
+            )
+        
+        parsed_doc_id = doc.get('parsed_doc_id')
+        if not parsed_doc_id:
+            raise HTTPException(status_code=400, detail="No parsed document ID found")
+        
+        # Update status to extracting
+        supabase.table('digitised_documents').update({
+            'status': 'extracting',
+            'updated_at': datetime.now(timezone.utc).isoformat()
+        }).eq('id', document_id).execute()
+        
+        logger.info(f"📄 Reading parsed document from MongoDB: {parsed_doc_id}")
+        
+        # Get parsed document from MongoDB
+        from bson import ObjectId
+        try:
+            query = {'_id': ObjectId(parsed_doc_id)}
+        except:
+            query = {'document_id': parsed_doc_id}
+        
+        parsed_doc = await db.parsed_documents.find_one(query)
+        
+        if not parsed_doc:
+            raise HTTPException(status_code=404, detail="Parsed document not found in MongoDB")
+        
+        logger.info(f"✅ Found parsed document in MongoDB")
+        
+        # Extract with template-driven extraction
+        from app.services.extraction_engine import ExtractionEngine
+        
+        engine = ExtractionEngine(db)
+        
+        # Use patient_id from request or fallback to document record
+        final_patient_id = patient_id or doc.get('patient_id')
+        
+        extraction_result = await engine.extract_from_parsed_data(
+            parsed_data=parsed_doc,
+            template_id=template_id,
+            patient_id=final_patient_id,
+            encounter_id=encounter_id,
+            workspace_id=doc['workspace_id'],
+            document_id=document_id
+        )
+        
+        if extraction_result.get('success'):
+            # Update with extraction results
+            update_data = {
+                'status': 'extracted',
+                'template_id': template_id,
+                'template_used': True,
+                'records_created': extraction_result.get('auto_population', {}).get('records_created', 0),
+                'tables_populated': extraction_result.get('auto_population', {}).get('tables_populated', {}),
+                'updated_at': datetime.now(timezone.utc).isoformat()
+            }
+            
+            supabase.table('digitised_documents').update(update_data).eq('id', document_id).execute()
+            
+            logger.info(f"✅ Extraction complete: {document_id}")
+            logger.info(f"📊 Records created: {extraction_result.get('auto_population', {}).get('records_created', 0)}")
+            logger.info(f"📊 Tables populated: {list(extraction_result.get('auto_population', {}).get('tables_populated', {}).keys())}")
+            
+            return JSONResponse(content={
+                'status': 'success',
+                'message': 'Extraction completed successfully',
+                'data': {
+                    'document_id': document_id,
+                    'template_used': template_id is not None,
+                    'auto_population': extraction_result.get('auto_population', {}),
+                    'extracted_data': extraction_result.get('extracted_data', {})
+                }
+            })
+        else:
+            # Update to extraction failed
+            supabase.table('digitised_documents').update({
+                'status': 'extraction_failed',
+                'error_message': extraction_result.get('error', 'Unknown error'),
+                'updated_at': datetime.now(timezone.utc).isoformat()
+            }).eq('id', document_id).execute()
+            
+            raise HTTPException(status_code=500, detail=extraction_result.get('error', 'Extraction failed'))
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Extraction failed: {e}", exc_info=True)
+        
+        # Update status to error
+        try:
+            supabase.table('digitised_documents').update({
+                'status': 'extraction_failed',
+                'error_message': str(e),
+                'updated_at': datetime.now(timezone.utc).isoformat()
+            }).eq('id', document_id).execute()
+        except:
+            pass
+        
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @api_router.post("/gp/batch-upload")
 async def batch_upload_documents(
