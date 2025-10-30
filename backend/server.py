@@ -3245,7 +3245,7 @@ async def extract_from_parsed_document(
         # Extract with template-driven extraction
         from app.services.extraction_engine import ExtractionEngine
         
-        engine = ExtractionEngine(db)
+        engine = ExtractionEngine(workspace_id=doc['workspace_id'], tenant_id=DEMO_TENANT_ID)
         
         # Use patient_id from request or fallback to document record
         final_patient_id = patient_id or doc.get('patient_id')
