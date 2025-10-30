@@ -471,10 +471,14 @@ const DocumentUpload = () => {
                   </div>
 
                 {/* Progress */}
-                {(singleStatus === 'uploading' || singleStatus === 'processing') && (
+                {(singleStatus === 'uploading' || singleStatus === 'processing' || singleStatus === 'extracting') && (
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span>{singleStatus === 'uploading' ? 'Uploading...' : 'Processing...'}</span>
+                      <span>
+                        {singleStatus === 'uploading' ? 'Uploading...' : 
+                         singleStatus === 'extracting' ? 'Extracting data...' : 
+                         'Processing...'}
+                      </span>
                       <span>{singleProgress}%</span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2">
