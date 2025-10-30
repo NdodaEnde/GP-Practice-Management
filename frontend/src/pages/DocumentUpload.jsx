@@ -589,7 +589,7 @@ const DocumentUpload = () => {
                     </Button>
                   )}
                 </div>
-              </div>
+                </div>
               )}
             </CardContent>
           </Card>
