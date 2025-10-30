@@ -224,7 +224,7 @@ const ValidationQueue = () => {
       {/* Validation Queue */}
       <Card>
         <CardHeader>
-          <CardTitle>Pending Validations ({queue.length})</CardTitle>
+          <CardTitle>Pending Validations ({queue?.length || 0})</CardTitle>
           <CardDescription>
             Documents awaiting human review
           </CardDescription>
