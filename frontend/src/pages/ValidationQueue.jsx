@@ -232,7 +232,7 @@ const ValidationQueue = () => {
         <CardContent>
           {loading ? (
             <div className="text-center py-8 text-gray-500">Loading...</div>
-          ) : queue.length === 0 ? (
+          ) : !queue || queue.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
               <CheckCircle className="w-16 h-16 mx-auto mb-4 opacity-30" />
               <p className="text-lg font-medium">No pending validations</p>
