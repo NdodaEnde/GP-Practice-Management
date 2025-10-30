@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { 
   Card, 
@@ -25,11 +26,10 @@ const DEMO_WORKSPACE = 'demo-gp-workspace-001';
 
 const ValidationQueue = () => {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [queue, setQueue] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [selectedExtraction, setSelectedExtraction] = useState(null);
-  const [showReviewModal, setShowReviewModal] = useState(false);
 
   useEffect(() => {
     loadQueue();
