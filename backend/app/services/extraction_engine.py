@@ -448,17 +448,29 @@ class ExtractionEngine:
             search_term = value.strip().lower()
             confidence_threshold = config.get('confidence_threshold', 0.7)
             
-            # Try exact match first
+            # Try exact match on WHO full description
             response = supabase.table('icd10_codes')\
-                .select('code, description')\
-                .ilike('description', f'%{search_term}%')\
+                .select('code, who_full_desc')\
+                .ilike('who_full_desc', f'%{search_term}%')\
                 .limit(5)\
                 .execute()
             
             if response.data and len(response.data) > 0:
                 # Return first match (highest relevance)
                 best_match = response.data[0]
-                logger.info(f"✅ ICD-10 match: '{value}' → {best_match['code']} ({best_match['description']})")
+                logger.info(f"✅ ICD-10 match: '{value}' → {best_match['code']} ({best_match['who_full_desc']})")
+                return best_match['code']
+            
+            # Try matching on 3-char code description
+            response = supabase.table('icd10_codes')\
+                .select('code, code_3char_desc')\
+                .ilike('code_3char_desc', f'%{search_term}%')\
+                .limit(5)\
+                .execute()
+            
+            if response.data and len(response.data) > 0:
+                best_match = response.data[0]
+                logger.info(f"✅ ICD-10 match (3char): '{value}' → {best_match['code']} ({best_match.get('code_3char_desc')})")
                 return best_match['code']
             
             # If no exact match, try fuzzy matching with individual words
@@ -468,14 +480,14 @@ class ExtractionEngine:
                 for word in words:
                     if len(word) > 3:  # Skip short words
                         response = supabase.table('icd10_codes')\
-                            .select('code, description')\
-                            .ilike('description', f'%{word}%')\
+                            .select('code, who_full_desc')\
+                            .ilike('who_full_desc', f'%{word}%')\
                             .limit(3)\
                             .execute()
                         
                         if response.data:
                             best_match = response.data[0]
-                            logger.info(f"⚠️ ICD-10 fuzzy match: '{value}' → {best_match['code']} ({best_match['description']})")
+                            logger.info(f"⚠️ ICD-10 fuzzy match: '{value}' → {best_match['code']} ({best_match['who_full_desc']})")
                             return best_match['code']
             
             logger.warning(f"❌ No ICD-10 match found for: '{value}'")
