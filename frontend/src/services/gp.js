@@ -104,6 +104,53 @@ export const gpAPI = {
   },
 
   /**
+   * Extract structured data from already-parsed document (Phase 2)
+   * @param {string} documentId - Document ID
+   * @param {string} templateId - Optional template ID
+   * @param {string} patientId - Optional patient ID
+   * @param {string} encounterId - Optional encounter ID
+   */
+  extractFromParsedDocument: async (documentId, templateId = null, patientId = null, encounterId = null) => {
+    const formData = new FormData();
+    
+    if (templateId) {
+      formData.append('template_id', templateId);
+    }
+    if (patientId) {
+      formData.append('patient_id', patientId);
+    }
+    if (encounterId) {
+      formData.append('encounter_id', encounterId);
+    }
+
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/api/gp/documents/${documentId}/extract`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+          timeout: 120000, // 2 minute timeout
+        }
+      );
+
+      return {
+        success: response.data.status === 'success',
+        data: response.data.data,
+        message: response.data.message || 'Extraction completed successfully'
+      };
+    } catch (error) {
+      console.error('Extraction error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.detail || error.message || 'Extraction failed',
+        error: error
+      };
+    }
+  },
+
+  /**
    * Validate and save extracted data
    * @param {string} patientId - Patient ID
    * @param {object} validatedData - The validated/corrected data
