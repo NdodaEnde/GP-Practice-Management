@@ -2932,6 +2932,46 @@ async def get_parsed_document_from_mongo(mongo_id: str):
         logger.error(f"Error retrieving parsed document: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@api_router.get("/gp/document/{document_id}/view")
+async def view_document_pdf(document_id: str):
+    """
+    Serve PDF file for viewing in browser
+    Used by GPValidationInterface to display documents
+    """
+    try:
+        # Get document metadata from Supabase
+        doc_result = supabase.table('digitised_documents').select('*').eq('id', document_id).execute()
+        
+        if not doc_result.data:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        doc = doc_result.data[0]
+        file_path = doc.get('file_path')
+        
+        if not file_path:
+            raise HTTPException(status_code=404, detail="File path not found")
+        
+        # Check if file exists
+        from pathlib import Path
+        full_path = Path(file_path)
+        
+        if not full_path.exists():
+            raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+        
+        # Return the PDF file
+        from fastapi.responses import FileResponse
+        return FileResponse(
+            path=str(full_path),
+            media_type='application/pdf',
+            filename=doc.get('filename', 'document.pdf')
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error serving document: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @api_router.put("/gp/documents/{document_id}/status")
 async def update_document_status(document_id: str, update: DocumentStatusUpdate):
     """Update the status of a digitised document"""
