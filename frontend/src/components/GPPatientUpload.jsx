@@ -218,6 +218,24 @@ const GPPatientUpload = ({ onProcessingComplete }) => {
             />
           </div>
 
+          {/* Template-Driven Extraction Toggle */}
+          <div className="flex items-center space-x-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
+            <input
+              type="checkbox"
+              id="use-templates"
+              checked={useTemplates}
+              onChange={(e) => setUseTemplates(e.target.checked)}
+              disabled={uploadState.status === 'uploading' || uploadState.status === 'processing'}
+              className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+            />
+            <Label htmlFor="use-templates" className="text-sm font-medium text-blue-900 cursor-pointer">
+              Use Template-Driven Extraction (Phase 1.2)
+              <span className="block text-xs font-normal text-blue-700 mt-1">
+                Automatically populates immunizations, prescriptions, lab results, and more based on your configured templates
+              </span>
+            </Label>
+          </div>
+
           {/* File Drop Zone */}
           <div
             {...getRootProps()}
