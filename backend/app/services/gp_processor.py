@@ -470,7 +470,7 @@ class GPDocumentProcessor:
             "updated_at": datetime.utcnow()
         }
         
-        collection = self.db_manager.db["gp_validation_sessions"]
+        collection = self.db_manager.db["validation_sessions"]
         result = await collection.insert_one(doc)
         return str(result.inserted_id)
     
