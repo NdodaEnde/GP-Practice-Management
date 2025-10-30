@@ -122,21 +122,9 @@ const ValidationQueue = () => {
     }
   };
 
-  const handleReview = async (extraction) => {
-    try {
-      const response = await axios.get(
-        `${BACKEND_URL}/api/validation/extraction/${extraction.id}`
-      );
-      setSelectedExtraction(response.data);
-      setShowReviewModal(true);
-    } catch (error) {
-      console.error('Failed to load extraction details:', error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to load extraction details"
-      });
-    }
+  const handleReview = (extraction) => {
+    // Navigate to the validation review page
+    navigate(`/validation/${extraction.id}`);
   };
 
   const formatDate = (dateString) => {
