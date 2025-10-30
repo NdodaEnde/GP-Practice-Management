@@ -343,47 +343,62 @@ const DocumentUpload = () => {
       {/* Upload Interface */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
-          {uploadMode === 'single' ? (
-            // === SINGLE FILE MODE === //
-            <Card>
-              <CardHeader>
-                <CardTitle>Single File Upload</CardTitle>
-                <CardDescription>
-                  Upload and process one document at a time with detailed progress
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                {uploadMode === 'single' ? 'Single File Upload' : 'Batch Upload'}
+              </CardTitle>
+              <CardDescription>
+                {uploadMode === 'single' 
+                  ? 'Upload and process one document at a time with detailed progress'
+                  : 'Upload and process up to 50 files simultaneously'
+                }
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Common Settings - Patient ID & Template Toggle */}
+              <div className="space-y-4 pb-4 border-b">
                 {/* Patient ID */}
                 <div className="space-y-2">
-                  <Label htmlFor="patient-id">Patient ID (Optional)</Label>
+                  <Label htmlFor="patient-id-common">Patient ID (Optional)</Label>
                   <Input
-                    id="patient-id"
-                    placeholder="Enter existing patient ID"
+                    id="patient-id-common"
+                    placeholder={uploadMode === 'single' ? "Enter existing patient ID" : "Enter patient ID for all files"}
                     value={patientId}
                     onChange={(e) => setPatientId(e.target.value)}
-                    disabled={singleStatus === 'uploading' || singleStatus === 'processing'}
+                    disabled={
+                      singleStatus === 'uploading' || 
+                      singleStatus === 'processing' || 
+                      batchProcessing
+                    }
                   />
                 </div>
 
-                {/* Template Toggle */}
+                {/* Template Toggle - Common for both modes */}
                 <div className="flex items-center space-x-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
                   <input
                     type="checkbox"
-                    id="use-templates-single"
+                    id="use-templates-common"
                     checked={useTemplates}
                     onChange={(e) => setUseTemplates(e.target.checked)}
-                    disabled={singleStatus === 'uploading' || singleStatus === 'processing'}
+                    disabled={
+                      singleStatus === 'uploading' || 
+                      singleStatus === 'processing' || 
+                      batchProcessing
+                    }
                     className="w-4 h-4 text-blue-600 rounded"
                   />
-                  <Label htmlFor="use-templates-single" className="text-sm font-medium text-blue-900 cursor-pointer">
+                  <Label htmlFor="use-templates-common" className="text-sm font-medium text-blue-900 cursor-pointer">
                     Use Template-Driven Extraction
                     <span className="block text-xs font-normal text-blue-700 mt-1">
                       Auto-populate immunizations, prescriptions, lab results with ICD-10/NAPPI codes
                     </span>
                   </Label>
                 </div>
+              </div>
 
-                {/* File Input */}
+              {/* Mode-Specific Upload Interface */}
+              {uploadMode === 'single' ? (
                 <div className="space-y-2">
                   <Label>Select File</Label>
                   <Input
