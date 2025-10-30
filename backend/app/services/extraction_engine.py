@@ -402,6 +402,91 @@ class ExtractionEngine:
         
         return result
     
+    async def extract_from_parsed_data(self, parsed_data: Dict, template_id: Optional[str],
+                                      patient_id: Optional[str], encounter_id: Optional[str],
+                                      workspace_id: str, document_id: str) -> Dict:
+        """
+        Extract structured data from already-parsed document
+        
+        This method is Phase 2 of the two-phase workflow:
+        1. Reads parsed data from MongoDB
+        2. Applies template-driven extraction
+        3. Auto-populates structured tables
+        
+        Args:
+            parsed_data: Parsed document from MongoDB
+            template_id: Template ID for extraction
+            patient_id: Patient ID
+            encounter_id: Optional encounter ID
+            workspace_id: Workspace ID
+            document_id: Document ID
+            
+        Returns:
+            {
+                'success': bool,
+                'auto_population': {...},
+                'extracted_data': {...}
+            }
+        """
+        try:
+            logger.info(f"🔍 Extracting from parsed data with template: {template_id}")
+            
+            # Get extracted data from parsed document
+            # Priority: structured_extraction > extracted_data > extractions
+            extracted_data = (
+                parsed_data.get('structured_extraction') or 
+                parsed_data.get('extracted_data') or
+                parsed_data.get('extractions') or
+                {}
+            )
+            
+            if not extracted_data:
+                return {
+                    'success': False,
+                    'error': 'No extracted data found in parsed document'
+                }
+            
+            logger.info(f"✅ Found extracted data with {len(extracted_data)} sections")
+            
+            # If no template specified, use default or skip structured population
+            if not template_id:
+                logger.info("ℹ️  No template specified, skipping structured population")
+                return {
+                    'success': True,
+                    'extracted_data': extracted_data,
+                    'auto_population': {
+                        'records_created': 0,
+                        'tables_populated': {}
+                    }
+                }
+            
+            # Process extraction with template
+            population_result = await self.process_extraction(
+                extracted_data=extracted_data,
+                template_id=template_id,
+                patient_id=patient_id,
+                encounter_id=encounter_id,
+                document_id=document_id
+            )
+            
+            return {
+                'success': population_result.get('success', False),
+                'extracted_data': extracted_data,
+                'auto_population': {
+                    'records_created': population_result.get('records_created', 0),
+                    'tables_populated': population_result.get('tables_populated', {}),
+                    'errors': population_result.get('errors', []),
+                    'processing_time_ms': population_result.get('processing_time_ms', 0)
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ extract_from_parsed_data failed: {e}", exc_info=True)
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
     async def _save_extraction_history(self, document_id: str, template_id: str,
                                       patient_id: str, extracted_data: Dict, result: Dict):
         """Save extraction history for audit trail"""
