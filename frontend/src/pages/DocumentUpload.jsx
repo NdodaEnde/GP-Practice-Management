@@ -539,6 +539,25 @@ const DocumentUpload = () => {
                     </Button>
                   )}
                   
+                  {singleStatus === 'parsed' && useTemplates && (
+                    <>
+                      <Button
+                        onClick={handleExtraction}
+                        className="flex-1 bg-green-600 hover:bg-green-700"
+                      >
+                        <CheckCircle className="w-4 h-4 mr-2" />
+                        Extract Data
+                      </Button>
+                      <Button
+                        onClick={resetSingleUpload}
+                        variant="outline"
+                        className="flex-1"
+                      >
+                        Upload Another
+                      </Button>
+                    </>
+                  )}
+                  
                   {(singleStatus === 'success' || singleStatus === 'error') && (
                     <Button
                       onClick={resetSingleUpload}
