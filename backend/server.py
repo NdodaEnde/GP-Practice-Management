@@ -2893,13 +2893,16 @@ async def get_parsed_document_from_mongo(mongo_id: str):
     try:
         from bson import ObjectId
         
+        # Use surgiscan_documents database (where documents actually are)
+        surgiscan_docs_db = mongo_client['surgiscan_documents']
+        
         # Try as ObjectId first, then as string
         try:
             query = {'_id': ObjectId(mongo_id)}
         except:
             query = {'document_id': mongo_id}
         
-        parsed_doc = await db.parsed_documents.find_one(query)
+        parsed_doc = await surgiscan_docs_db.gp_parsed_documents.find_one(query)
         
         if not parsed_doc:
             raise HTTPException(status_code=404, detail="Parsed document not found")
@@ -2908,13 +2911,19 @@ async def get_parsed_document_from_mongo(mongo_id: str):
         if '_id' in parsed_doc:
             parsed_doc['_id'] = str(parsed_doc['_id'])
         
-        # Prioritize structured_extraction if it exists (from Extract API)
-        # Otherwise use extracted_data (from initial Parse+Extract microservice call)
-        data = parsed_doc.get('structured_extraction') or parsed_doc.get('extracted_data', {})
+        # Extract data from parsed_data structure
+        parsed_data = parsed_doc.get('parsed_data', {})
+        chunks = parsed_data.get('chunks', [])
+        
+        # For GPValidationInterface, we need extractions
+        # Check if we have extractions stored separately or need to build them
+        extractions = parsed_doc.get('extractions', {})
         
         return {
             'status': 'success',
-            'data': data,
+            'data': extractions or {},
+            'chunks': chunks,
+            'parsed_data': parsed_data,
             'microservice_response': parsed_doc.get('microservice_response', {})
         }
     except HTTPException:
