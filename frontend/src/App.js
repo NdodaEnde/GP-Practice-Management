@@ -27,6 +27,7 @@ import FinancialDashboard from './pages/FinancialDashboard';
 import ClaimsManagement from './pages/ClaimsManagement';
 import PaymentSuccess from './pages/PaymentSuccess';
 import PaymentCancelled from './pages/PaymentCancelled';
+import ExtractionConfiguration from './pages/ExtractionConfiguration';
 import Layout from './components/Layout';
 import '@/App.css';
 
