@@ -299,11 +299,35 @@ const GPPatientUpload = ({ onProcessingComplete }) => {
                 {/* Success Message */}
                 {uploadState.result && (
                   <Alert className="border-green-200 bg-green-50">
-                    <CheckCircle className="h-4 w-4 text-green-600" />
+                    <CheckCircle className="h-4 h-4 text-green-600" />
                     <AlertDescription className="text-green-800">
-                      <div className="space-y-1">
+                      <div className="space-y-2">
                         <p><strong>Processing Complete!</strong></p>
                         <p className="text-sm">File processed successfully</p>
+                        
+                        {/* Show auto-population results if templates were used */}
+                        {useTemplates && uploadState.result.data?.auto_population && (
+                          <div className="mt-3 pt-3 border-t border-green-200">
+                            <p className="text-sm font-semibold mb-2">📊 Auto-Population Results:</p>
+                            {uploadState.result.data.auto_population.records_created > 0 ? (
+                              <div className="space-y-1 text-xs">
+                                <p>✅ Created <strong>{uploadState.result.data.auto_population.records_created}</strong> records</p>
+                                {Object.entries(uploadState.result.data.auto_population.tables_populated || {}).map(([table, ids]) => (
+                                  <p key={table} className="ml-4">
+                                    • <span className="font-medium capitalize">{table.replace('_', ' ')}</span>: {ids.length} record(s)
+                                  </p>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-xs">ℹ️ No additional records created (template mappings may need configuration)</p>
+                            )}
+                            {uploadState.result.data.auto_population.errors?.length > 0 && (
+                              <p className="text-xs text-orange-700 mt-2">
+                                ⚠️ {uploadState.result.data.auto_population.errors.length} warning(s) during processing
+                              </p>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </AlertDescription>
                   </Alert>
