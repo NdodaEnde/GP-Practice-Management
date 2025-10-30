@@ -70,6 +70,7 @@ function App() {
             <Route path="extraction-config" element={<ExtractionConfiguration />} />
             <Route path="batch-upload" element={<BatchUpload />} />
             <Route path="validation-queue" element={<ValidationQueue />} />
+            <Route path="validation/:extractionId" element={<ValidationReview />} />
             <Route path="document-upload" element={<DocumentUpload />} />
           </Route>
           
