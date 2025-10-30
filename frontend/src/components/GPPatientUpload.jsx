@@ -27,6 +27,7 @@ const GPPatientUpload = ({ onProcessingComplete }) => {
     result: null
   });
   const [patientIdInput, setPatientIdInput] = useState('');
+  const [useTemplates, setUseTemplates] = useState(true); // NEW: Enable template-driven extraction by default
   const { toast } = useToast();
 
   const onDrop = useCallback((acceptedFiles) => {
