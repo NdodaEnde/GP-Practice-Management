@@ -28,6 +28,7 @@ import ClaimsManagement from './pages/ClaimsManagement';
 import PaymentSuccess from './pages/PaymentSuccess';
 import PaymentCancelled from './pages/PaymentCancelled';
 import ExtractionConfiguration from './pages/ExtractionConfiguration';
+import BatchUpload from './pages/BatchUpload';
 import Layout from './components/Layout';
 import '@/App.css';
 
