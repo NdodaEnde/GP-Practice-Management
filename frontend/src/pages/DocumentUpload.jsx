@@ -496,6 +496,7 @@ const DocumentUpload = () => {
                     </Button>
                   )}
                 </div>
+                </div>
               ) : (
                 // === BATCH MODE === //
                 <div className="space-y-4">
