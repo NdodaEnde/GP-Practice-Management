@@ -521,3 +521,169 @@ class GPDocumentProcessor:
         
         logger.info(f"✅ Saved validated patient: {patient_id}")
         return patient_id
+
+    
+    async def process_with_template(
+        self,
+        file_path: str,
+        filename: str,
+        organization_id: str,
+        workspace_id: str,
+        tenant_id: str,
+        template_id: Optional[str] = None,
+        patient_id: Optional[str] = None,
+        encounter_id: Optional[str] = None,
+        file_data: bytes = None
+    ) -> Dict:
+        """
+        Enhanced processing with template-driven extraction and auto-population
+        
+        This is the NEW WORKFLOW that combines:
+        - Layer 1: Core demographics extraction (always)
+        - Layer 2: Template-driven flexible extraction (based on mappings)
+        - Auto-population to structured tables
+        """
+        
+        logger.info(f"📄 Processing patient file with templates: {filename}")
+        start_time = datetime.utcnow()
+        
+        try:
+            # Generate unique IDs
+            document_id = str(uuid.uuid4())
+            session_id = str(uuid.uuid4())
+            
+            # STEP 1: Save original scanned document
+            scanned_doc_id = await self._save_scanned_document(
+                document_id=document_id,
+                organization_id=organization_id,
+                filename=filename,
+                file_path=file_path,
+                file_data=file_data
+            )
+            logger.info(f"✅ Saved scanned document: {scanned_doc_id}")
+            
+            # STEP 2: Parse document with LandingAI
+            logger.info("🔍 Parsing document with LandingAI...")
+            parsed_doc = self._parse_document(file_path)
+            
+            # STEP 3: Save parsed document to MongoDB
+            parsed_doc_id = await self._save_parsed_document(
+                document_id=document_id,
+                organization_id=organization_id,
+                parsed_data=parsed_doc,
+                filename=filename
+            )
+            logger.info(f"✅ Saved parsed document: {parsed_doc_id}")
+            
+            # STEP 4: LAYER 1 - Extract core demographics (always)
+            logger.info("🎯 LAYER 1: Extracting core demographics...")
+            core_extractions = await self._extract_all_schemas(parsed_doc, file_path)
+            
+            # STEP 5: LAYER 2 - Template-driven extraction
+            logger.info("🎯 LAYER 2: Template-driven extraction...")
+            
+            # Initialize extraction engine
+            extraction_engine = ExtractionEngine(workspace_id, tenant_id)
+            
+            # Get active template (if not specified, get default)
+            if not template_id:
+                templates = await extraction_engine.get_workspace_templates(document_type='medical_record')
+                if templates:
+                    # Use first active template or default template
+                    template = next((t for t in templates if t.get('is_default')), templates[0])
+                    template_id = template['id']
+                    logger.info(f"📝 Using template: {template.get('template_name')}")
+                else:
+                    logger.warning("⚠️ No templates configured for this workspace")
+                    template_id = None
+            
+            # Combine core extractions with any additional data from document
+            all_extracted_data = {
+                **core_extractions,
+                # Add raw markdown for template-based extraction
+                '_raw_markdown': parsed_doc.markdown if hasattr(parsed_doc, 'markdown') else None
+            }
+            
+            # STEP 6: Apply template mappings and auto-populate
+            population_result = {'success': True, 'tables_populated': {}, 'records_created': 0}
+            
+            if template_id and patient_id:
+                logger.info("🔄 Applying template mappings and auto-populating tables...")
+                population_result = await extraction_engine.process_extraction(
+                    extracted_data=all_extracted_data,
+                    template_id=template_id,
+                    patient_id=patient_id,
+                    encounter_id=encounter_id,
+                    document_id=document_id
+                )
+                
+                logger.info(f"✅ Auto-population complete: {population_result['records_created']} records created")
+                logger.info(f"📊 Tables populated: {list(population_result['tables_populated'].keys())}")
+            else:
+                logger.info("ℹ️ Skipping auto-population (no template or patient_id)")
+            
+            # STEP 7: Calculate confidence scores
+            confidence_scores = self._calculate_confidence_scores(core_extractions)
+            
+            # STEP 8: Create validation session
+            validation_session_id = await self._create_validation_session(
+                session_id=session_id,
+                document_id=document_id,
+                organization_id=organization_id,
+                extractions=core_extractions,
+                confidence_scores=confidence_scores
+            )
+            logger.info(f"✅ Created validation session: {validation_session_id}")
+            
+            # STEP 9: Retrieve chunks for frontend
+            parsed_doc_from_db = await self.db_manager.db["gp_parsed_documents"].find_one({
+                "document_id": document_id
+            })
+            
+            chunks_list = parsed_doc_from_db["parsed_data"]["chunks"] if parsed_doc_from_db else []
+            pages_processed = parsed_doc_from_db["parsed_data"]["num_pages"] if parsed_doc_from_db else 1
+            
+            processing_time = (datetime.utcnow() - start_time).total_seconds()
+            
+            # 🎯 RETURN COMPLETE RESULT
+            result = {
+                'success': True,
+                'document_id': document_id,
+                'scanned_doc_id': scanned_doc_id,
+                'parsed_doc_id': parsed_doc_id,
+                'validation_session_id': validation_session_id,
+                'organization_id': organization_id,
+                'workspace_id': workspace_id,
+                'filename': filename,
+                'patient_id': patient_id or document_id,
+                'chunks': chunks_list,
+                'pages_processed': pages_processed,
+                'model_used': 'dpt-2-latest',
+                
+                # Layer 1: Core extractions
+                'extractions': core_extractions,
+                'confidence_scores': confidence_scores,
+                
+                # Layer 2: Template results
+                'template_id': template_id,
+                'template_used': template_id is not None,
+                'auto_population': population_result,
+                
+                'processing_time': processing_time,
+                'processed_at': datetime.utcnow().isoformat()
+            }
+            
+            logger.info(f"✅ Processing complete in {processing_time:.2f}s")
+            logger.info(f"📊 Core extractions: {len(core_extractions)} sections")
+            logger.info(f"📊 Auto-populated: {population_result['records_created']} records across {len(population_result['tables_populated'])} tables")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Processing failed: {e}", exc_info=True)
+            return {
+                'success': False,
+                'error': str(e),
+                'document_id': document_id if 'document_id' in locals() else None
+            }
+
