@@ -435,9 +435,10 @@ class GPDocumentProcessor:
             "parser": "landingai_dpt2"
         }
         
-        collection = self.db_manager.db["gp_parsed_documents"]
+        # Use 'parsed_documents' collection (not 'gp_parsed_documents')
+        collection = self.db_manager.db["parsed_documents"]
         result = await collection.insert_one(doc)
-        logger.info(f"✅ Saved {len(chunks)} chunks with grounding data")
+        logger.info(f"✅ Saved {len(chunks)} chunks with grounding data to parsed_documents collection")
         return str(result.inserted_id)
     
     async def _create_validation_session(
