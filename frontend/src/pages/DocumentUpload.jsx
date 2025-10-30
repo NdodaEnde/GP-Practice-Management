@@ -399,20 +399,23 @@ const DocumentUpload = () => {
 
               {/* Mode-Specific Upload Interface */}
               {uploadMode === 'single' ? (
-                <div className="space-y-2">
-                  <Label>Select File</Label>
-                  <Input
-                    type="file"
-                    accept=".pdf,image/*"
-                    onChange={handleSingleFileSelect}
-                    disabled={singleStatus === 'uploading' || singleStatus === 'processing'}
-                  />
-                  {singleFile && (
-                    <p className="text-sm text-gray-600">
-                      Selected: {singleFile.name} ({(singleFile.size / 1024 / 1024).toFixed(2)} MB)
-                    </p>
-                  )}
-                </div>
+                // === SINGLE FILE MODE === //
+                <div className="space-y-4">
+                  {/* File Input */}
+                  <div className="space-y-2">
+                    <Label>Select File</Label>
+                    <Input
+                      type="file"
+                      accept=".pdf,image/*"
+                      onChange={handleSingleFileSelect}
+                      disabled={singleStatus === 'uploading' || singleStatus === 'processing'}
+                    />
+                    {singleFile && (
+                      <p className="text-sm text-gray-600">
+                        Selected: {singleFile.name} ({(singleFile.size / 1024 / 1024).toFixed(2)} MB)
+                      </p>
+                    )}
+                  </div>
 
                 {/* Progress */}
                 {(singleStatus === 'uploading' || singleStatus === 'processing') && (
