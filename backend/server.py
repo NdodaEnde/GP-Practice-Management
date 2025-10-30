@@ -3027,6 +3027,152 @@ async def bulk_extract_documents(document_ids: List[str]):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+
+@api_router.post("/gp/upload-with-template")
+async def upload_gp_document_with_template(
+    file: UploadFile = File(...),
+    patient_id: Optional[str] = Form(None),
+    template_id: Optional[str] = Form(None),
+    encounter_id: Optional[str] = Form(None)
+):
+    """
+    NEW ENDPOINT: Upload GP document with template-driven extraction and auto-population
+    
+    This endpoint uses the Phase 1.2 Enhanced Extraction:
+    - Layer 1: Always extracts core demographics
+    - Layer 2: Uses templates to extract additional sections
+    - Auto-populates structured tables based on field mappings
+    
+    Args:
+        file: PDF file to upload
+        patient_id: Optional patient ID (if known)
+        template_id: Optional template ID (will use default if not specified)
+        encounter_id: Optional encounter ID to link records
+    
+    Returns:
+        Complete extraction result with auto-population summary
+    """
+    document_id = str(uuid.uuid4())
+    
+    try:
+        logger.info(f"📄 Template-driven upload: {file.filename}")
+        
+        # Read file content
+        file_content = await file.read()
+        file_size = len(file_content)
+        
+        # Save file temporarily
+        temp_dir = Path("storage/temp")
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        temp_file_path = temp_dir / f"{document_id}_{file.filename}"
+        
+        with open(temp_file_path, "wb") as f:
+            f.write(file_content)
+        
+        logger.info(f"✅ File saved temporarily: {temp_file_path}")
+        
+        # Create digitised_documents record
+        digitised_doc_data = {
+            'id': document_id,
+            'workspace_id': DEMO_WORKSPACE_ID,
+            'patient_id': patient_id,
+            'filename': file.filename,
+            'file_path': str(temp_file_path),
+            'file_size': file_size,
+            'status': 'processing',
+            'template_id': template_id,
+            'created_at': datetime.now(timezone.utc).isoformat(),
+            'updated_at': datetime.now(timezone.utc).isoformat()
+        }
+        
+        supabase.table('digitised_documents').insert(digitised_doc_data).execute()
+        logger.info(f"✅ Created digitised_documents record: {document_id}")
+        
+        # Process with template-driven extraction
+        from app.services.gp_processor import GPDocumentProcessor
+        
+        # Initialize processor with MongoDB connection
+        processor = GPDocumentProcessor(db_manager=type('obj', (object,), {
+            'db': db,
+            'connected': True
+        }))
+        
+        # Process the document with templates
+        result = await processor.process_with_template(
+            file_path=str(temp_file_path),
+            filename=file.filename,
+            organization_id=DEMO_WORKSPACE_ID,
+            workspace_id=DEMO_WORKSPACE_ID,
+            tenant_id=DEMO_TENANT_ID,
+            template_id=template_id,
+            patient_id=patient_id,
+            encounter_id=encounter_id,
+            file_data=file_content
+        )
+        
+        # Update status based on result
+        if result.get('success'):
+            status = 'extracted' if result.get('template_used') else 'parsed'
+            
+            update_data = {
+                'status': status,
+                'parsed_doc_id': result.get('parsed_doc_id'),
+                'template_used': result.get('template_used', False),
+                'records_created': result.get('auto_population', {}).get('records_created', 0),
+                'tables_populated': result.get('auto_population', {}).get('tables_populated', {}),
+                'updated_at': datetime.now(timezone.utc).isoformat()
+            }
+            
+            supabase.table('digitised_documents')\
+                .update(update_data)\
+                .eq('id', document_id)\
+                .execute()
+            
+            logger.info(f"✅ Document processed successfully: {document_id}")
+            logger.info(f"📊 Template used: {result.get('template_used')}")
+            logger.info(f"📊 Records created: {result.get('auto_population', {}).get('records_created', 0)}")
+            logger.info(f"📊 Tables populated: {list(result.get('auto_population', {}).get('tables_populated', {}).keys())}")
+        else:
+            supabase.table('digitised_documents')\
+                .update({
+                    'status': 'error',
+                    'error_message': result.get('error', 'Unknown error'),
+                    'updated_at': datetime.now(timezone.utc).isoformat()
+                })\
+                .eq('id', document_id)\
+                .execute()
+        
+        # Clean up temp file
+        try:
+            temp_file_path.unlink()
+        except:
+            pass
+        
+        return JSONResponse(content={
+            'status': 'success' if result.get('success') else 'error',
+            'message': 'Document processed with template-driven extraction',
+            'data': result
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Template-driven upload failed: {e}", exc_info=True)
+        
+        # Update status to error
+        try:
+            supabase.table('digitised_documents')\
+                .update({
+                    'status': 'error',
+                    'error_message': str(e),
+                    'updated_at': datetime.now(timezone.utc).isoformat()
+                })\
+                .eq('id', document_id)\
+                .execute()
+        except:
+            pass
+        
+        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
+
+
 @api_router.get("/documents/patient/{patient_id}")
 async def get_patient_documents(patient_id: str):
     """Get all documents for a specific patient"""
