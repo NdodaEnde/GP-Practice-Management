@@ -56,6 +56,54 @@ export const gpAPI = {
   },
 
   /**
+   * Upload patient file with template-driven extraction (Phase 1.2)
+   * @param {File} file - The patient file to upload
+   * @param {string} patientId - Optional existing patient ID
+   * @param {string} templateId - Optional template ID (auto-selects if not provided)
+   * @param {string} encounterId - Optional encounter ID
+   */
+  uploadWithTemplate: async (file, patientId = undefined, templateId = undefined, encounterId = undefined) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    if (patientId) {
+      formData.append('patient_id', patientId);
+    }
+    if (templateId) {
+      formData.append('template_id', templateId);
+    }
+    if (encounterId) {
+      formData.append('encounter_id', encounterId);
+    }
+
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/api/gp/upload-with-template`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+          timeout: 180000, // 3 minute timeout
+        }
+      );
+
+      return {
+        success: response.data.status === 'success',
+        data: response.data.data,
+        message: response.data.message || 'File processed with templates'
+      };
+    } catch (error) {
+      console.error('Template-driven upload error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.detail || error.message || 'Upload failed',
+        error: error
+      };
+    }
+  },
+
+  /**
    * Validate and save extracted data
    * @param {string} patientId - Patient ID
    * @param {object} validatedData - The validated/corrected data
