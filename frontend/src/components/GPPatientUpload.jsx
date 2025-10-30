@@ -74,20 +74,25 @@ const GPPatientUpload = ({ onProcessingComplete }) => {
         setUploadState(prev => ({ ...prev, status: 'processing', progress: 95 }));
       }, 2000);
 
-      const result = await gpAPI.uploadPatientFile(
-        uploadState.file,
-        patientIdInput || undefined,
-        'full'
-      );
+      // Use template-driven API or legacy API based on user preference
+      const result = useTemplates 
+        ? await gpAPI.uploadWithTemplate(
+            uploadState.file,
+            patientIdInput || undefined
+          )
+        : await gpAPI.uploadPatientFile(
+            uploadState.file,
+            patientIdInput || undefined,
+            'full'
+          );
 
       clearInterval(progressInterval);
 
       if (result.success) {
         console.log('=== GPPatientUpload Debug ===');
         console.log('1. Upload result:', result);
-        console.log('2. result.data:', result.data);
-        console.log('3. result.data.chunks:', result.data?.chunks);
-        console.log('4. Chunks length:', result.data?.chunks?.length);
+        console.log('2. Template used:', result.data?.template_used);
+        console.log('3. Auto-population:', result.data?.auto_population);
         
         setUploadState(prev => ({
           ...prev,
@@ -96,9 +101,19 @@ const GPPatientUpload = ({ onProcessingComplete }) => {
           result
         }));
 
+        // Show success message with auto-population info
+        const autoPopulation = result.data?.auto_population;
+        const recordsCreated = autoPopulation?.records_created || 0;
+        const tablesPopulated = Object.keys(autoPopulation?.tables_populated || {});
+        
+        let description = `Patient file processed successfully`;
+        if (useTemplates && recordsCreated > 0) {
+          description = `✅ Created ${recordsCreated} records across ${tablesPopulated.length} tables: ${tablesPopulated.join(', ')}`;
+        }
+
         toast({
           title: "Processing Complete! 🎉",
-          description: `Patient file processed successfully`,
+          description,
         });
 
         // Call parent callback
