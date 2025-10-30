@@ -9,9 +9,10 @@ const Layout = () => {
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { name: 'Reception Check-In', path: '/reception', icon: UserCheck },
     { name: 'Vitals Station', path: '/vitals', icon: HeartPulse },
-    { name: 'Digitize Documents', path: '/digitize', icon: FileText },
-    { name: 'GP Patient Digitization', path: '/gp-digitize', icon: Stethoscope },
-    { name: 'Batch Upload', path: '/batch-upload', icon: Layers },
+    // { name: 'Digitize Documents', path: '/digitize', icon: FileText }, // OLD - Replaced
+    // { name: 'GP Patient Digitization', path: '/gp-digitize', icon: Stethoscope }, // OLD - Replaced
+    // { name: 'Batch Upload', path: '/batch-upload', icon: Layers }, // OLD - Replaced
+    { name: 'Document Upload', path: '/document-upload', icon: Upload }, // NEW - Unified
     { name: 'Validation Queue', path: '/validation-queue', icon: ClipboardList },
     { name: 'Digitised Documents', path: '/gp/documents', icon: FileText },
     { name: 'Extraction Config', path: '/extraction-config', icon: Settings },
