@@ -2658,12 +2658,12 @@ async def create_new_patient_from_document(create_request: CreateNewPatientReque
         logger.error(f"Error creating new patient: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# OLD EXTRACT ENDPOINT - DEPRECATED - USE LINE 3226 VERSION INSTEAD
+# OLD EXTRACT ENDPOINT - DEPRECATED - USE LINE 3113 VERSION INSTEAD
 # @api_router.post("/gp/documents/{document_id}/extract")
 # async def extract_document_data(document_id: str):
 #     """
 #     OLD VERSION - Deprecated
-#     Use the new extract endpoint at line 3226 which supports template-driven extraction
+#     Use the new extract endpoint at line 3113 which supports template-driven extraction
 #     """
 #     raise HTTPException(status_code=410, detail="This endpoint is deprecated. Use the new extract API.")
 
