@@ -432,40 +432,10 @@ const DocumentUpload = () => {
                     <CheckCircle className="h-4 w-4 text-green-600" />
                     <AlertDescription className="text-green-800">
                       <div className="space-y-2">
-                        <p><strong>Processing Complete!</strong></p>
-                        
-                        {useTemplates && singleResult.data?.auto_population && (
-                          <div className="mt-3 pt-3 border-t border-green-200">
-                            <p className="text-sm font-semibold mb-2">📊 Auto-Population Results:</p>
-                            {singleResult.data.auto_population.records_created > 0 ? (
-                              <div className="space-y-1 text-xs">
-                                <p>✅ Created <strong>{singleResult.data.auto_population.records_created}</strong> records</p>
-                                {Object.entries(singleResult.data.auto_population.tables_populated || {}).map(([table, ids]) => (
-                                  <p key={table} className="ml-4">
-                                    • <span className="font-medium capitalize">{table.replace('_', ' ')}</span>: {ids.length} record(s)
-                                  </p>
-                                ))}
-                              </div>
-                            ) : (
-                              <p className="text-xs">ℹ️ No additional records created</p>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                {/* Parsed Message - Ready for Extraction */}
-                {singleResult && singleStatus === 'parsed' && useTemplates && (
-                  <Alert className="border-blue-200 bg-blue-50">
-                    <FileText className="h-4 w-4 text-blue-600" />
-                    <AlertDescription className="text-blue-800">
-                      <div className="space-y-2">
                         <p><strong>Document Parsed Successfully! 📄</strong></p>
                         <p className="text-sm">
-                          The document has been parsed and is ready for template-driven extraction.
-                          Click "Extract Data" to auto-populate structured tables with ICD-10 and NAPPI codes.
+                          Your document has been parsed and is ready for review.
+                          Go to <strong>Validation Queue</strong> to review and extract data.
                         </p>
                       </div>
                     </AlertDescription>
