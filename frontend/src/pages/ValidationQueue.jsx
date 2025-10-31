@@ -291,7 +291,7 @@ const ValidationQueue = () => {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => handleReview(extraction)}
+                        onClick={() => handleReview(doc)}
                       >
                         <Eye className="w-4 h-4 mr-1" />
                         Review
@@ -299,7 +299,7 @@ const ValidationQueue = () => {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => handleApprove(extraction.id)}
+                        onClick={() => handleApprove(doc.id)}
                         className="text-green-600 hover:text-green-700"
                       >
                         <CheckCircle className="w-4 h-4 mr-1" />
@@ -308,7 +308,7 @@ const ValidationQueue = () => {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => handleReject(extraction.id)}
+                        onClick={() => handleReject(doc.id)}
                         className="text-red-600 hover:text-red-700"
                       >
                         <XCircle className="w-4 h-4 mr-1" />
