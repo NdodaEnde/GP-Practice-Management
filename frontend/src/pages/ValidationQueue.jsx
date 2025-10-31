@@ -65,57 +65,55 @@ const ValidationQueue = () => {
     // or we can make a separate call if needed
   };
 
-  const handleApprove = async (extractionId) => {
+  const handleApprove = async (documentId) => {
     try {
-      await axios.post(`${BACKEND_URL}/api/validation/approve`, {
-        extraction_id: extractionId,
-        validated_by: 'current-user',  // TODO: Get from auth context
-        notes: 'Approved from queue'
-      });
+      const formData = new FormData();
+      formData.append('validated_by', 'current-user'); // TODO: Get from auth context
+      formData.append('notes', 'Approved from queue');
+      
+      await axios.post(`${BACKEND_URL}/api/validation/approve/${documentId}`, formData);
 
       toast({
-        title: "Extraction Approved ✅",
+        title: "Document Approved ✅",
         description: "Data has been validated and committed"
       });
 
       // Reload queue
       loadQueue();
-      loadStats();
     } catch (error) {
       console.error('Failed to approve:', error);
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Failed to approve extraction"
+        description: "Failed to approve document"
       });
     }
   };
 
-  const handleReject = async (extractionId) => {
+  const handleReject = async (documentId) => {
     const reason = prompt('Rejection reason:');
     if (!reason) return;
 
     try {
-      await axios.post(`${BACKEND_URL}/api/validation/reject`, {
-        extraction_id: extractionId,
-        rejection_reason: reason,
-        validated_by: 'current-user'  // TODO: Get from auth context
-      });
+      const formData = new FormData();
+      formData.append('validated_by', 'current-user'); // TODO: Get from auth context
+      formData.append('reason', reason);
+      
+      await axios.post(`${BACKEND_URL}/api/validation/reject/${documentId}`, formData);
 
       toast({
-        title: "Extraction Rejected",
+        title: "Document Rejected",
         description: "Marked as rejected"
       });
 
       // Reload queue
       loadQueue();
-      loadStats();
     } catch (error) {
       console.error('Failed to reject:', error);
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Failed to reject extraction"
+        description: "Failed to reject document"
       });
     }
   };
