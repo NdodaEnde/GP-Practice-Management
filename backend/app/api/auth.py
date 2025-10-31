@@ -343,23 +343,55 @@ async def register_user(
 ):
     """
     Register new user (admin only)
-    TODO: Implement with database
+    Creates user in Supabase database
     """
     try:
-        # This is a placeholder
-        # In production, check if email exists, hash password, save to database
+        # Check if email already exists
+        existing = supabase.table('users').select('email').eq('email', register_data.email).execute()
+        
+        if existing.data:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered"
+            )
         
         # Hash password
         hashed_password = get_password_hash(register_data.password)
         
-        user_data = {
-            "user_id": f"user-{register_data.email.split('@')[0]}",
+        # Prepare user record
+        user_record = {
             "email": register_data.email,
+            "password_hash": hashed_password,
+            "first_name": register_data.first_name,
+            "last_name": register_data.last_name,
             "role": register_data.role,
             "workspace_id": current_user.get("workspace_id"),
             "tenant_id": current_user.get("tenant_id"),
-            "first_name": register_data.first_name,
-            "last_name": register_data.last_name
+            "is_active": True,
+            "is_verified": True,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        
+        # Insert user
+        result = supabase.table('users').insert(user_record).execute()
+        
+        if not result.data:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create user"
+            )
+        
+        user = result.data[0]
+        
+        # Create user data for JWT
+        user_data = {
+            "user_id": user['id'],
+            "email": user['email'],
+            "role": user['role'],
+            "workspace_id": user['workspace_id'],
+            "tenant_id": user['tenant_id'],
+            "first_name": user['first_name'],
+            "last_name": user['last_name']
         }
         
         # Create tokens for new user
@@ -372,13 +404,13 @@ async def register_user(
             access_token=access_token,
             refresh_token=refresh_token,
             user={
-                "id": user_data["user_id"],
-                "email": user_data["email"],
-                "first_name": user_data["first_name"],
-                "last_name": user_data["last_name"],
-                "role": user_data["role"],
-                "workspace_id": user_data["workspace_id"],
-                "tenant_id": user_data["tenant_id"]
+                "id": user['id'],
+                "email": user['email'],
+                "first_name": user['first_name'],
+                "last_name": user['last_name'],
+                "role": user['role'],
+                "workspace_id": user['workspace_id'],
+                "tenant_id": user['tenant_id']
             }
         )
         
