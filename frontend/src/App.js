@@ -73,6 +73,7 @@ function App() {
             <Route path="validation-queue" element={<ValidationQueue />} />
             <Route path="document-validation/:extractionId" element={<ValidationReview />} />
             <Route path="document-upload" element={<DocumentUpload />} />
+            <Route path="digitization-archive" element={<DigitizationArchive />} />
           </Route>
           
           {/* Payment routes (outside Layout for clean pages) */}
