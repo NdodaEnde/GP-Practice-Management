@@ -14,6 +14,7 @@ const Layout = () => {
     // { name: 'Batch Upload', path: '/batch-upload', icon: Layers }, // OLD - Replaced
     { name: 'Document Upload', path: '/document-upload', icon: Upload }, // NEW - Unified
     { name: 'Validation Queue', path: '/validation-queue', icon: ClipboardList },
+    { name: 'Document Archive', path: '/digitization-archive', icon: Archive }, // NEW - Archive Interface
     { name: 'Digitised Documents', path: '/gp/documents', icon: FileText },
     { name: 'Extraction Config', path: '/extraction-config', icon: Settings },
     { name: 'Patients', path: '/patients', icon: Users },
