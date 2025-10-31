@@ -86,6 +86,7 @@ function App() {
             <Route path="digitization-archive" element={<DigitizationArchive />} />
             <Route path="digitization" element={<DigitizationModule />} />
             <Route path="user-management" element={<UserManagement />} />
+            <Route path="workspace-management" element={<WorkspaceManagement />} />
           </Route>
           
           {/* Payment routes (outside Layout for clean pages) */}
