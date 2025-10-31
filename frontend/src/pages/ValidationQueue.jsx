@@ -275,12 +275,12 @@ const ValidationQueue = () => {
                         </div>
                       )}
 
-                      {/* Population Errors */}
-                      {extraction.population_errors && extraction.population_errors.length > 0 && (
+                      {/* Error Message if any */}
+                      {doc.error_message && (
                         <div className="mt-3">
                           <div className="flex items-center gap-2 text-sm text-orange-700">
                             <AlertCircle className="w-4 h-4" />
-                            <span>{extraction.population_errors.length} warning(s) during processing</span>
+                            <span>{doc.error_message}</span>
                           </div>
                         </div>
                       )}
