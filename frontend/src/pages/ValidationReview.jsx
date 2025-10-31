@@ -40,7 +40,7 @@ const ValidationReview = () => {
       const parsedDocId = documentData.parsed_doc_id;
       
       if (!parsedDocId) {
-        console.error('Document missing parsed_doc_id:', document);
+        console.error('Document missing parsed_doc_id:', documentData);
         throw new Error('Document has not been parsed yet. Please parse the document first.');
       }
 
@@ -61,7 +61,7 @@ const ValidationReview = () => {
           data: {
             document_id: documentId,
             parsed_doc_id: parsedDocId,
-            file_path: document.file_path,
+            file_path: documentData.file_path,
             extractions: parsedData.data || {},
             chunks: parsedData.chunks || [],
             success: true
