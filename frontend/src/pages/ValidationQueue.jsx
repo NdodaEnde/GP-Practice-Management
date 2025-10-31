@@ -39,8 +39,9 @@ const ValidationQueue = () => {
   const loadQueue = async () => {
     try {
       setLoading(true);
+      // Fetch both 'parsed' and 'pending_validation' documents
       const response = await axios.get(
-        `${BACKEND_URL}/api/validation/queue/list?workspace_id=${DEMO_WORKSPACE}&limit=50`
+        `${BACKEND_URL}/api/validation/queue/list?status=&workspace_id=${DEMO_WORKSPACE}&limit=50`
       );
       
       if (response.data.status === 'success') {
