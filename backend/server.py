@@ -3215,9 +3215,9 @@ async def extract_from_parsed_document(
         )
         
         if extraction_result.get('success'):
-            # Update with extraction results
+            # Update with extraction results and set to pending validation
             update_data = {
-                'status': 'extracted',
+                'status': 'pending_validation',  # Changed from 'extracted' to pending_validation
                 'template_id': template_id,
                 'template_used': True,
                 'records_created': extraction_result.get('auto_population', {}).get('records_created', 0),
@@ -3230,15 +3230,17 @@ async def extract_from_parsed_document(
             logger.info(f"✅ Extraction complete: {document_id}")
             logger.info(f"📊 Records created: {extraction_result.get('auto_population', {}).get('records_created', 0)}")
             logger.info(f"📊 Tables populated: {list(extraction_result.get('auto_population', {}).get('tables_populated', {}).keys())}")
+            logger.info(f"📋 Document moved to validation queue")
             
             return JSONResponse(content={
                 'status': 'success',
-                'message': 'Extraction completed successfully',
+                'message': 'Extraction completed - document moved to validation queue',
                 'data': {
                     'document_id': document_id,
                     'template_used': template_id is not None,
                     'auto_population': extraction_result.get('auto_population', {}),
-                    'extracted_data': extraction_result.get('extracted_data', {})
+                    'extracted_data': extraction_result.get('extracted_data', {}),
+                    'validation_status': 'pending_validation'
                 }
             })
         else:
