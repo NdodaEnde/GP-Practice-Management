@@ -33,6 +33,7 @@ import ValidationQueue from './pages/ValidationQueue';
 import ValidationReview from './pages/ValidationReview';
 import DocumentUpload from './pages/DocumentUpload';
 import DigitizationArchive from './pages/DigitizationArchive';
+import DigitizationModule from './pages/DigitizationModule';
 import Layout from './components/Layout';
 import '@/App.css';
 
