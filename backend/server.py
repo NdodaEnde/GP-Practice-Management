@@ -2803,13 +2803,17 @@ async def get_parsed_document_from_mongo(mongo_id: str):
         parsed_data = parsed_doc.get('parsed_data', {})
         chunks = parsed_data.get('chunks', [])
         
-        # For GPValidationInterface, we need extractions
-        # Check if we have extractions stored separately or need to build them
-        extractions = parsed_doc.get('extractions', {})
+        # Get extractions from extracted_data (microservice response)
+        extracted_data = parsed_doc.get('extracted_data', {})
+        extractions = extracted_data.get('extractions', {})
+        
+        # Also get chunks from extracted_data if not in parsed_data
+        if not chunks and isinstance(extracted_data, dict):
+            chunks = extracted_data.get('chunks', [])
         
         return {
             'status': 'success',
-            'data': extractions or {},
+            'data': extractions,
             'chunks': chunks,
             'parsed_data': parsed_data,
             'microservice_response': parsed_doc.get('microservice_response', {})
