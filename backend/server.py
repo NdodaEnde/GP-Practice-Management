@@ -4780,6 +4780,12 @@ api_router.include_router(payfast_router, prefix="/payfast", tags=["PayFast Paym
 api_router.include_router(extraction_mappings_router, tags=["Extraction Mappings"])
 api_router.include_router(validation_router, tags=["Validation Workflow"])
 
+# ==================== Authentication & User Management ====================
+from app.api.auth import router as auth_router
+from app.api.users import router as users_router
+api_router.include_router(auth_router, tags=["Authentication"])
+api_router.include_router(users_router, tags=["User Management"])
+
 app.include_router(api_router)
 
 # CORS middleware
