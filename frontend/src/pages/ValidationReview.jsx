@@ -202,6 +202,9 @@ const ValidationReview = () => {
       patientData={extractionData}
       onBack={handleBack}
       onValidationComplete={handleValidationComplete}
+      onExtractData={handleExtractData}
+      documentStatus={documentStatus}
+      isExtracting={isExtracting}
     />
   );
 };
