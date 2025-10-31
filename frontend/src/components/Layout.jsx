@@ -31,7 +31,8 @@ const Layout = () => {
     { name: 'Extraction Config', path: '/extraction-config', icon: Settings },
     // ===== ADMIN ONLY =====
     ...(user?.role === 'admin' ? [
-      { name: '👤 User Management', path: '/user-management', icon: UserCog }
+      { name: '👤 User Management', path: '/user-management', icon: UserCog },
+      { name: '🏢 Workspace Management', path: '/workspace-management', icon: Building2 }
     ] : []),
     { name: 'Patients', path: '/patients', icon: Users },
     { name: 'ICD-10 Test', path: '/icd10-test', icon: Code },
