@@ -3284,12 +3284,24 @@ async def extract_from_parsed_document(
         from bson import ObjectId
         try:
             query = {'_id': ObjectId(parsed_doc_id)}
-        except:
+            logger.info(f"🔍 MongoDB Query: {query}")
+        except Exception as e:
+            logger.warning(f"⚠️ ObjectId conversion failed: {e}, using document_id")
             query = {'document_id': parsed_doc_id}
+            logger.info(f"🔍 MongoDB Query (fallback): {query}")
         
+        logger.info(f"🔍 Querying database: surgiscan_documents, collection: gp_parsed_documents")
         parsed_doc = await surgiscan_docs_db.gp_parsed_documents.find_one(query)
         
         if not parsed_doc:
+            logger.error(f"❌ Document not found with query: {query}")
+            logger.error(f"❌ Database: surgiscan_documents, Collection: gp_parsed_documents")
+            # Try to count total documents to verify connection
+            try:
+                count = await surgiscan_docs_db.gp_parsed_documents.count_documents({})
+                logger.error(f"❌ Total documents in collection: {count}")
+            except Exception as count_e:
+                logger.error(f"❌ Failed to count documents: {count_e}")
             raise HTTPException(status_code=404, detail="Parsed document not found in MongoDB")
         
         logger.info(f"✅ Found parsed document in MongoDB")
