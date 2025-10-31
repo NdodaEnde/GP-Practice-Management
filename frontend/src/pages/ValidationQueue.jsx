@@ -118,9 +118,9 @@ const ValidationQueue = () => {
     }
   };
 
-  const handleReview = (extraction) => {
+  const handleReview = (doc) => {
     // Navigate to the validation review page
-    navigate(`/validation/${extraction.id}`);
+    navigate(`/validation/${doc.id}`);
   };
 
   const formatDate = (dateString) => {
