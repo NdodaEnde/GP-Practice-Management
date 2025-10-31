@@ -119,9 +119,8 @@ const ValidationQueue = () => {
   };
 
   const handleReview = (doc) => {
-    // Navigate to digitised documents validation page
-    // This page already works and loads the document correctly
-    navigate(`/digitised-documents?document=${doc.id}`);
+    // Navigate to the document validation review page
+    navigate(`/document-validation/${doc.id}`);
   };
 
   const formatDate = (dateString) => {
