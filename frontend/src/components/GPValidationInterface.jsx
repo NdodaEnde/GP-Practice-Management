@@ -36,7 +36,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
-const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) => {
+const GPValidationInterface = ({ patientData, onBack, onValidationComplete, onExtractData, documentStatus, isExtracting }) => {
   const [activeTab, setActiveTab] = useState('overview');
   const [numPages, setNumPages] = useState(null);
   const [pageNumber, setPageNumber] = useState(1);
