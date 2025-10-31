@@ -1,6 +1,7 @@
 """
 Authentication API - JWT-based user authentication
 Handles login, logout, token refresh, and password management
+Now integrated with Supabase database
 """
 
 from fastapi import APIRouter, HTTPException, Depends, status
@@ -10,12 +11,18 @@ from typing import Optional
 from datetime import datetime, timedelta, timezone
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+from supabase import create_client, Client
 import os
 import logging
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+
+# Supabase client
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Security configuration
 SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "your-secret-key-change-in-production")
