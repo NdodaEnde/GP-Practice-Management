@@ -28,6 +28,7 @@ import DigitizationArchive from './DigitizationArchive';
 const DigitizationModule = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   
   // Get active tab from URL or default to 'dashboard'
@@ -46,9 +47,9 @@ const DigitizationModule = () => {
   const [recentDocuments, setRecentDocuments] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   
-  // User role (hardcoded for now, will be dynamic later)
-  const userRole = 'validator'; // Can be: 'validator', 'uploader', 'admin'
-  const userName = 'User';
+  // Get user role and name from auth context
+  const userRole = user?.role || 'validator';
+  const userName = user ? `${user.first_name} ${user.last_name}` : 'User';
 
   useEffect(() => {
     fetchDashboardData();
