@@ -37,7 +37,7 @@ const ValidationQueue = () => {
   }, []);
 
   const loadQueue = async () => {
-    try:
+    try {
       setLoading(true);
       const response = await axios.get(
         `${BACKEND_URL}/api/validation/queue/list?workspace_id=${DEMO_WORKSPACE}&limit=50`
