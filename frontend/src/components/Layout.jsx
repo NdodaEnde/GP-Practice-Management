@@ -82,8 +82,35 @@ const Layout = () => {
             })}
           </nav>
 
-          {/* Workspace Info */}
-          <div className="mt-auto pt-6 border-t border-slate-200">
+          {/* Workspace Info & User Profile */}
+          <div className="mt-auto pt-6 border-t border-slate-200 space-y-3">
+            {/* User Profile */}
+            {user && (
+              <div className="px-4 py-3 bg-slate-50 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center">
+                    <User className="w-4 h-4 text-teal-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-slate-700 truncate">
+                      {user.first_name} {user.last_name}
+                    </p>
+                    <p className="text-xs text-slate-500 capitalize">{user.role}</p>
+                  </div>
+                </div>
+                <Button
+                  onClick={handleLogout}
+                  variant="outline"
+                  size="sm"
+                  className="w-full gap-2 text-xs"
+                >
+                  <LogOut className="w-3 h-3" />
+                  Logout
+                </Button>
+              </div>
+            )}
+            
+            {/* Workspace Info */}
             <div className="px-4 py-3 bg-slate-50 rounded-lg">
               <p className="text-xs font-medium text-slate-500 mb-1">Active Workspace</p>
               <p className="text-sm font-semibold text-slate-700">Demo GP Practice</p>
