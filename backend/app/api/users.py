@@ -1,12 +1,15 @@
 """
 User Management API
 Handles user CRUD operations, role management, and workspace assignments
+Integrated with Supabase database
 """
 
 from fastapi import APIRouter, HTTPException, Depends, status
 from pydantic import BaseModel, EmailStr
 from typing import List, Optional
 from datetime import datetime, timezone
+from supabase import create_client, Client
+import os
 import logging
 
 # Import auth dependencies
@@ -15,6 +18,11 @@ from app.api.auth import get_current_user, get_current_admin_user, get_password_
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/users", tags=["User Management"])
+
+# Supabase client
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ==================== Models ====================
 
