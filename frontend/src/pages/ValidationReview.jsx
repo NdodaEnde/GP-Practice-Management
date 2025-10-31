@@ -32,10 +32,12 @@ const ValidationReview = () => {
       );
       
       console.log('Document response:', docResponse.data);
-      const document = docResponse.data.data || docResponse.data;
-      console.log('Document:', document);
       
-      const parsedDocId = document.parsed_doc_id;
+      // The API returns {status: 'success', document: {...}}
+      const documentData = docResponse.data.document || docResponse.data.data || docResponse.data;
+      console.log('Document data:', documentData);
+      
+      const parsedDocId = documentData.parsed_doc_id;
       
       if (!parsedDocId) {
         console.error('Document missing parsed_doc_id:', document);
