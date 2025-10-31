@@ -224,9 +224,9 @@ const ValidationQueue = () => {
             </div>
           ) : (
             <div className="space-y-3">
-              {queue.map((extraction) => (
+              {queue.map((doc) => (
                 <div
-                  key={extraction.id}
+                  key={doc.id}
                   className="border rounded-lg p-4 hover:bg-gray-50 transition-colors"
                 >
                   <div className="flex items-start justify-between">
@@ -235,10 +235,10 @@ const ValidationQueue = () => {
                         <FileText className="w-5 h-5 text-blue-500" />
                         <div>
                           <p className="font-medium">
-                            Document ID: {extraction.document_id?.substring(0, 8)}...
+                            {doc.filename || 'Unknown Document'}
                           </p>
                           <p className="text-sm text-gray-500">
-                            Extracted: {formatDate(extraction.extraction_datetime)}
+                            Uploaded: {formatDate(doc.created_at || doc.upload_date)}
                           </p>
                         </div>
                       </div>
@@ -246,33 +246,29 @@ const ValidationQueue = () => {
                       {/* Quick Stats */}
                       <div className="flex gap-4 text-sm text-gray-600 mt-3">
                         <div>
-                          <span className="font-medium">Fields Extracted:</span> {extraction.fields_extracted || 0}
+                          <span className="font-medium">Status:</span> {doc.status}
                         </div>
                         <div>
-                          <span className="font-medium">Records Created:</span> {extraction.records_created || 0}
+                          <span className="font-medium">Records Created:</span> {doc.records_created || 0}
                         </div>
-                        {extraction.processing_time_ms && (
+                        {doc.patient_id && (
                           <div>
-                            <span className="font-medium">Processing Time:</span> {extraction.processing_time_ms}ms
+                            <span className="font-medium">Patient:</span> {doc.patient_id.substring(0, 8)}...
                           </div>
                         )}
                       </div>
 
-                      {/* Confidence Scores */}
-                      {extraction.confidence_scores && Object.keys(extraction.confidence_scores).length > 0 && (
+                      {/* Tables Populated */}
+                      {doc.tables_populated && Object.keys(doc.tables_populated).length > 0 && (
                         <div className="mt-3">
-                          <p className="text-sm font-medium mb-2">Confidence Scores:</p>
+                          <p className="text-sm font-medium mb-2">Tables Populated:</p>
                           <div className="flex flex-wrap gap-2">
-                            {Object.entries(extraction.confidence_scores).map(([section, score]) => (
+                            {Object.entries(doc.tables_populated).map(([table, ids]) => (
                               <span
-                                key={section}
-                                className={`text-xs px-2 py-1 rounded ${
-                                  score >= 0.8 ? 'bg-green-100 text-green-700' :
-                                  score >= 0.6 ? 'bg-yellow-100 text-yellow-700' :
-                                  'bg-red-100 text-red-700'
-                                }`}
+                                key={table}
+                                className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700"
                               >
-                                {section}: {(score * 100).toFixed(0)}%
+                                {table}: {Array.isArray(ids) ? ids.length : 0} record(s)
                               </span>
                             ))}
                           </div>
