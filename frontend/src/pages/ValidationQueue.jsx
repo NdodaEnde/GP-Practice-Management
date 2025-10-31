@@ -119,8 +119,8 @@ const ValidationQueue = () => {
   };
 
   const handleReview = (doc) => {
-    // Navigate to the validation review page
-    navigate(`/validation/${doc.id}`);
+    // Navigate to the document validation review page
+    navigate(`/document-validation/${doc.id}`);
   };
 
   const formatDate = (dateString) => {
