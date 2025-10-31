@@ -37,12 +37,16 @@ const ValidationQueue = () => {
   }, []);
 
   const loadQueue = async () => {
-    try {
+    try:
       setLoading(true);
       const response = await axios.get(
-        `${BACKEND_URL}/api/validation/queue?workspace_id=${DEMO_WORKSPACE}&limit=50`
+        `${BACKEND_URL}/api/validation/queue/list?workspace_id=${DEMO_WORKSPACE}&limit=50`
       );
-      setQueue(response.data.extractions || []);
+      
+      if (response.data.status === 'success') {
+        setQueue(response.data.data.queue || []);
+        setStats(response.data.data.stats || null);
+      }
     } catch (error) {
       console.error('Failed to load validation queue:', error);
       setQueue([]); // Set to empty array on error
@@ -57,14 +61,8 @@ const ValidationQueue = () => {
   };
 
   const loadStats = async () => {
-    try {
-      const response = await axios.get(
-        `${BACKEND_URL}/api/validation/stats?workspace_id=${DEMO_WORKSPACE}`
-      );
-      setStats(response.data.stats);
-    } catch (error) {
-      console.error('Failed to load stats:', error);
-    }
+    // Stats are now loaded with queue, so this can be a no-op
+    // or we can make a separate call if needed
   };
 
   const handleApprove = async (extractionId) => {
