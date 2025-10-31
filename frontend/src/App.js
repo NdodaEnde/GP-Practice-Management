@@ -35,6 +35,7 @@ import ValidationReview from './pages/ValidationReview';
 import DocumentUpload from './pages/DocumentUpload';
 import DigitizationArchive from './pages/DigitizationArchive';
 import DigitizationModule from './pages/DigitizationModule';
+import UserManagement from './pages/UserManagement';
 import Login from './pages/Login';
 import Layout from './components/Layout';
 import '@/App.css';
