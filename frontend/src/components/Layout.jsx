@@ -1,6 +1,8 @@
 import React from 'react';
-import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Activity, Users, FileText, DollarSign, ClipboardCheck, LayoutDashboard, BarChart3, Stethoscope, UserCheck, HeartPulse, Code, Package, Syringe, Receipt, TrendingUp, Shield, Settings, Layers, ClipboardList, Upload, Archive, FolderKanban } from 'lucide-react';
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
+import { Activity, Users, FileText, DollarSign, ClipboardCheck, LayoutDashboard, BarChart3, Stethoscope, UserCheck, HeartPulse, Code, Package, Syringe, Receipt, TrendingUp, Shield, Settings, Layers, ClipboardList, Upload, Archive, FolderKanban, LogOut, User } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 const Layout = () => {
   const location = useLocation();
