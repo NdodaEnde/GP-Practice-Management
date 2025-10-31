@@ -90,6 +90,9 @@ function App() {
           <Route path="payment/cancelled" element={<PaymentCancelled />} />
         </Routes>
       </BrowserRouter>
+    </AuthProvider>
+        </Routes>
+      </BrowserRouter>
     </div>
   );
 }
