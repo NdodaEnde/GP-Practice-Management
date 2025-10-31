@@ -32,6 +32,7 @@ import BatchUpload from './pages/BatchUpload';
 import ValidationQueue from './pages/ValidationQueue';
 import ValidationReview from './pages/ValidationReview';
 import DocumentUpload from './pages/DocumentUpload';
+import DigitizationArchive from './pages/DigitizationArchive';
 import Layout from './components/Layout';
 import '@/App.css';
 
