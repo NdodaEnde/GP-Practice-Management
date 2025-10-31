@@ -1657,6 +1657,130 @@ async def get_validation_session(encounter_id: str):
         logger.error(f"Error getting validation session: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@api_router.get("/validation/queue/list")
+async def get_validation_queue(
+    status: Optional[str] = 'pending_validation',
+    workspace_id: Optional[str] = None,
+    limit: int = 50
+):
+    """
+    Get documents in validation queue
+    Returns documents with status 'pending_validation' or 'extracted'
+    """
+    try:
+        # Build query
+        query = supabase.table('digitised_documents').select('*')
+        
+        # Filter by status
+        if status:
+            query = query.eq('status', status)
+        else:
+            # Get both pending_validation and extracted (for backward compatibility)
+            query = query.in_('status', ['pending_validation', 'extracted'])
+        
+        # Filter by workspace
+        if workspace_id:
+            query = query.eq('workspace_id', workspace_id)
+        
+        # Order by created_at descending (newest first)
+        query = query.order('created_at', desc=True).limit(limit)
+        
+        result = query.execute()
+        
+        # Calculate stats
+        all_docs = supabase.table('digitised_documents').select('status').execute()
+        total_pending = sum(1 for d in all_docs.data if d['status'] == 'pending_validation')
+        total_validated = sum(1 for d in all_docs.data if d['status'] == 'validated')
+        total_rejected = sum(1 for d in all_docs.data if d['status'] == 'rejected')
+        
+        return {
+            'status': 'success',
+            'data': {
+                'queue': result.data,
+                'stats': {
+                    'pending': total_pending,
+                    'validated': total_validated,
+                    'rejected': total_rejected,
+                    'total': len(all_docs.data)
+                }
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error fetching validation queue: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/validation/approve/{document_id}")
+async def approve_document_validation(
+    document_id: str,
+    validated_by: Optional[str] = Form(None),
+    notes: Optional[str] = Form(None)
+):
+    """
+    Approve a document after validation
+    Moves document from pending_validation to validated status
+    """
+    try:
+        # Update document status
+        result = supabase.table('digitised_documents').update({
+            'status': 'validated',
+            'validated_at': datetime.now(timezone.utc).isoformat(),
+            'validated_by': validated_by or 'system',
+            'validation_notes': notes,
+            'updated_at': datetime.now(timezone.utc).isoformat()
+        }).eq('id', document_id).execute()
+        
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        logger.info(f"✅ Document {document_id} approved by {validated_by or 'system'}")
+        
+        return {
+            'status': 'success',
+            'message': 'Document approved successfully',
+            'document': result.data[0]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error approving document: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/validation/reject/{document_id}")
+async def reject_document_validation(
+    document_id: str,
+    validated_by: Optional[str] = Form(None),
+    reason: Optional[str] = Form(None)
+):
+    """
+    Reject a document after validation
+    Moves document to rejected status
+    """
+    try:
+        result = supabase.table('digitised_documents').update({
+            'status': 'rejected',
+            'validated_at': datetime.now(timezone.utc).isoformat(),
+            'validated_by': validated_by or 'system',
+            'validation_notes': reason,
+            'error_message': reason,
+            'updated_at': datetime.now(timezone.utc).isoformat()
+        }).eq('id', document_id).execute()
+        
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        logger.info(f"❌ Document {document_id} rejected by {validated_by or 'system'}: {reason}")
+        
+        return {
+            'status': 'success',
+            'message': 'Document rejected',
+            'document': result.data[0]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error rejecting document: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @api_router.post("/validation/{document_id}/approve")
 async def approve_validation(document_id: str, update: ValidationUpdate):
     """Approve parsed document data"""
