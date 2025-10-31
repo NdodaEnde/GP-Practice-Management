@@ -13,6 +13,8 @@ const ValidationReview = () => {
   const [extractionData, setExtractionData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [documentStatus, setDocumentStatus] = useState(null);
 
   useEffect(() => {
     loadExtractionData();
