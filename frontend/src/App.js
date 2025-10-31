@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './contexts/AuthContext';
 import Dashboard from './pages/Dashboard';
 import PatientRegistry from './pages/PatientRegistry';
 import PatientEHR from './pages/PatientEHR';
@@ -34,15 +35,21 @@ import ValidationReview from './pages/ValidationReview';
 import DocumentUpload from './pages/DocumentUpload';
 import DigitizationArchive from './pages/DigitizationArchive';
 import DigitizationModule from './pages/DigitizationModule';
+import Login from './pages/Login';
 import Layout from './components/Layout';
 import '@/App.css';
 
 function App() {
   return (
     <div className="App">
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Layout />}>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+            {/* Login Route (outside Layout) */}
+            <Route path="/login" element={<Login />} />
+            
+            {/* Main App Routes */}
+            <Route path="/" element={<Layout />}>
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="digitize" element={<DocumentDigitization />} />
