@@ -65,56 +65,39 @@ async def list_users(
     Can filter by role and workspace
     """
     try:
-        # TODO: Implement database query
-        # For now, return demo users
-        
-        demo_users = [
-            {
-                "id": "user-admin",
-                "email": "admin@surgiscan.com",
-                "first_name": "Admin",
-                "last_name": "User",
-                "role": "admin",
-                "workspace_id": "demo-gp-workspace-001",
-                "tenant_id": "demo-tenant-001",
-                "is_active": True,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "last_login": datetime.now(timezone.utc).isoformat()
-            },
-            {
-                "id": "user-validator1",
-                "email": "validator@surgiscan.com",
-                "first_name": "Sarah",
-                "last_name": "Smith",
-                "role": "validator",
-                "workspace_id": "demo-gp-workspace-001",
-                "tenant_id": "demo-tenant-001",
-                "is_active": True,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "last_login": datetime.now(timezone.utc).isoformat()
-            },
-            {
-                "id": "user-uploader1",
-                "email": "uploader@surgiscan.com",
-                "first_name": "John",
-                "last_name": "Doe",
-                "role": "uploader",
-                "workspace_id": "demo-gp-workspace-001",
-                "tenant_id": "demo-tenant-001",
-                "is_active": True,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "last_login": None
-            }
-        ]
+        # Build query
+        query = supabase.table('users').select('*')
         
         # Apply filters
         if role:
-            demo_users = [u for u in demo_users if u["role"] == role]
+            query = query.eq('role', role)
         
         if workspace_id:
-            demo_users = [u for u in demo_users if u["workspace_id"] == workspace_id]
+            query = query.eq('workspace_id', workspace_id)
+        else:
+            # Default to current user's workspace
+            query = query.eq('workspace_id', current_user.get('workspace_id'))
         
-        return demo_users
+        # Execute query
+        result = query.execute()
+        
+        # Format response
+        users = []
+        for user in result.data:
+            users.append({
+                "id": user['id'],
+                "email": user['email'],
+                "first_name": user['first_name'],
+                "last_name": user['last_name'],
+                "role": user['role'],
+                "workspace_id": user['workspace_id'],
+                "tenant_id": user['tenant_id'],
+                "is_active": user.get('is_active', True),
+                "created_at": user['created_at'],
+                "last_login": user.get('last_login')
+            })
+        
+        return users
         
     except Exception as e:
         logger.error(f"Error listing users: {e}")
