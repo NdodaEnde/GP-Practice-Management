@@ -116,21 +116,12 @@ const DocumentUpload = () => {
       if (result.success) {
         setSingleProgress(100);
         setSingleResult(result);
+        setSingleStatus('success');
 
-        // Document is now parsed, show status based on whether templates are enabled
-        if (useTemplates) {
-          setSingleStatus('parsed'); // New status: ready for extraction
-          toast({
-            title: "Document Parsed Successfully! 📄",
-            description: "Click 'Extract Data' to apply template-driven extraction",
-          });
-        } else {
-          setSingleStatus('success');
-          toast({
-            title: "Upload Complete! 🎉",
-            description: "Document uploaded and parsed successfully",
-          });
-        }
+        toast({
+          title: "Document Parsed Successfully! 📄",
+          description: "Go to Validation Queue to review and extract data",
+        });
 
         // Reload recent documents
         loadRecentDocuments();
@@ -145,61 +136,6 @@ const DocumentUpload = () => {
       toast({
         variant: "destructive",
         title: "Upload Failed",
-        description: error.message || 'An error occurred',
-      });
-    }
-  };
-
-  // NEW: Handle extraction (Phase 2)
-  const handleExtraction = async () => {
-    if (!singleResult?.data?.document_id) return;
-
-    setSingleStatus('extracting');
-    setSingleProgress(10);
-
-    try {
-      const progressInterval = setInterval(() => {
-        setSingleProgress(prev => (prev < 90 ? prev + 10 : prev));
-      }, 300);
-
-      // PHASE 2: Extract with templates
-      const extractResult = await gpAPI.extractFromParsedDocument(
-        singleResult.data.document_id,
-        null, // template_id (will use default)
-        patientId || undefined
-      );
-
-      clearInterval(progressInterval);
-
-      if (extractResult.success) {
-        setSingleStatus('success');
-        setSingleProgress(100);
-
-        const autoPopulation = extractResult.data?.auto_population;
-        const recordsCreated = autoPopulation?.records_created || 0;
-        const tablesPopulated = Object.keys(autoPopulation?.tables_populated || {});
-        
-        let description = recordsCreated > 0
-          ? `✅ Created ${recordsCreated} records across ${tablesPopulated.length} tables: ${tablesPopulated.join(', ')}`
-          : 'Extraction completed';
-
-        toast({
-          title: "Extraction Complete! 🎉",
-          description,
-        });
-
-        // Reload recent documents
-        loadRecentDocuments();
-      } else {
-        throw new Error(extractResult.message || 'Extraction failed');
-      }
-
-    } catch (error) {
-      setSingleStatus('error');
-      
-      toast({
-        variant: "destructive",
-        title: "Extraction Failed",
         description: error.message || 'An error occurred',
       });
     }
