@@ -31,11 +31,15 @@ const ValidationReview = () => {
         `${BACKEND_URL}/api/gp/documents/${documentId}`
       );
       
-      const document = docResponse.data;
+      console.log('Document response:', docResponse.data);
+      const document = docResponse.data.data || docResponse.data;
+      console.log('Document:', document);
+      
       const parsedDocId = document.parsed_doc_id;
       
       if (!parsedDocId) {
-        throw new Error('Document has not been parsed yet');
+        console.error('Document missing parsed_doc_id:', document);
+        throw new Error('Document has not been parsed yet. Please parse the document first.');
       }
 
       // Step 2: Fetch parsed document data with extractions
@@ -44,6 +48,7 @@ const ValidationReview = () => {
       );
       
       const parsedData = parsedResponse.data;
+      console.log('Parsed data:', parsedData);
       
       // Format data for GPValidationInterface (same structure as DigitisedDocuments)
       const formattedData = {
@@ -62,6 +67,7 @@ const ValidationReview = () => {
         }
       };
 
+      console.log('Formatted data for GPValidationInterface:', formattedData);
       setExtractionData(formattedData);
     } catch (error) {
       console.error('Failed to load extraction data:', error);
