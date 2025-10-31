@@ -40,6 +40,7 @@ const ValidationReview = () => {
       console.log('Document data:', documentData);
       
       const parsedDocId = documentData.parsed_doc_id;
+      setDocumentStatus(documentData.status); // Store document status
       
       if (!parsedDocId) {
         console.error('Document missing parsed_doc_id:', documentData);
