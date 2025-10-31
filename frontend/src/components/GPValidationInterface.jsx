@@ -473,11 +473,37 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete, onEx
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="sm" onClick={onBack}>
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Upload
+            Back to Queue
           </Button>
+          
+          {/* Extract Data Button - Show only if document status is "parsed" */}
+          {documentStatus === 'parsed' && onExtractData && (
+            <Button
+              onClick={onExtractData}
+              disabled={isExtracting}
+              className="gap-2 bg-blue-600 hover:bg-blue-700"
+            >
+              {isExtracting ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  Extracting...
+                </>
+              ) : (
+                <>
+                  <FileCheck className="w-4 h-4" />
+                  Extract Data
+                </>
+              )}
+            </Button>
+          )}
+          
           <div>
             <h1 className="text-xl font-bold">GP Patient Data Validation</h1>
-            <p className="text-sm text-gray-600">Review and validate extracted data</p>
+            <p className="text-sm text-gray-600">
+              {documentStatus === 'parsed' 
+                ? 'Click "Extract Data" to populate structured tables' 
+                : 'Review and validate extracted data'}
+            </p>
           </div>
         </div>
         <Button 
