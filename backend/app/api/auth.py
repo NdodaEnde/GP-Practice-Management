@@ -162,56 +162,67 @@ async def get_current_admin_user(
 async def login(login_data: LoginRequest):
     """
     Login endpoint - authenticate user and return JWT tokens
-    
-    For demo: Accepts any email/password for testing
-    In production: Verify against database
+    Verifies credentials against Supabase database
     """
     try:
-        # TODO: In production, verify against database
-        # For now, create a demo user based on email
+        # Fetch user from database
+        result = supabase.table('users').select('*').eq('email', login_data.email).execute()
         
-        # Simple demo authentication (REMOVE IN PRODUCTION)
-        if login_data.password != "password123":
+        if not result.data or len(result.data) == 0:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Incorrect email or password"
             )
         
-        # Determine role from email pattern (demo only)
-        role = "validator"
-        if "admin" in login_data.email.lower():
-            role = "admin"
-        elif "upload" in login_data.email.lower():
-            role = "uploader"
+        user = result.data[0]
         
-        # Create user data
+        # Check if user is active
+        if not user.get('is_active', True):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User account is deactivated"
+            )
+        
+        # Verify password
+        if not verify_password(login_data.password, user['password_hash']):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect email or password"
+            )
+        
+        # Update last login
+        supabase.table('users').update({
+            'last_login': datetime.now(timezone.utc).isoformat()
+        }).eq('id', user['id']).execute()
+        
+        # Create user data for JWT
         user_data = {
-            "user_id": f"user-{login_data.email.split('@')[0]}",
-            "email": login_data.email,
-            "role": role,
-            "workspace_id": "demo-gp-workspace-001",
-            "tenant_id": "demo-tenant-001",
-            "first_name": login_data.email.split('@')[0].capitalize(),
-            "last_name": "User"
+            "user_id": user['id'],
+            "email": user['email'],
+            "role": user['role'],
+            "workspace_id": user['workspace_id'],
+            "tenant_id": user['tenant_id'],
+            "first_name": user['first_name'],
+            "last_name": user['last_name']
         }
         
         # Create tokens
         access_token = create_access_token(user_data)
         refresh_token = create_refresh_token(user_data)
         
-        logger.info(f"User logged in: {login_data.email} (role: {role})")
+        logger.info(f"User logged in: {login_data.email} (role: {user['role']})")
         
         return LoginResponse(
             access_token=access_token,
             refresh_token=refresh_token,
             user={
-                "id": user_data["user_id"],
-                "email": user_data["email"],
-                "first_name": user_data["first_name"],
-                "last_name": user_data["last_name"],
-                "role": user_data["role"],
-                "workspace_id": user_data["workspace_id"],
-                "tenant_id": user_data["tenant_id"]
+                "id": user['id'],
+                "email": user['email'],
+                "first_name": user['first_name'],
+                "last_name": user['last_name'],
+                "role": user['role'],
+                "workspace_id": user['workspace_id'],
+                "tenant_id": user['tenant_id']
             }
         )
         
