@@ -1659,13 +1659,13 @@ async def get_validation_session(encounter_id: str):
 
 @api_router.get("/validation/queue/list")
 async def get_validation_queue(
-    status: Optional[str] = 'pending_validation',
+    status: Optional[str] = None,  # Changed default to None
     workspace_id: Optional[str] = None,
     limit: int = 50
 ):
     """
     Get documents in validation queue
-    Returns documents with status 'pending_validation' or 'extracted'
+    Returns documents with status 'parsed' or 'pending_validation'
     """
     try:
         # Build query
@@ -1675,8 +1675,8 @@ async def get_validation_queue(
         if status:
             query = query.eq('status', status)
         else:
-            # Get both pending_validation and extracted (for backward compatibility)
-            query = query.in_('status', ['pending_validation', 'extracted'])
+            # Get both parsed and pending_validation (default behavior)
+            query = query.in_('status', ['parsed', 'pending_validation'])
         
         # Filter by workspace
         if workspace_id:
@@ -1689,6 +1689,7 @@ async def get_validation_queue(
         
         # Calculate stats
         all_docs = supabase.table('digitised_documents').select('status').execute()
+        total_parsed = sum(1 for d in all_docs.data if d['status'] == 'parsed')
         total_pending = sum(1 for d in all_docs.data if d['status'] == 'pending_validation')
         total_validated = sum(1 for d in all_docs.data if d['status'] == 'validated')
         total_rejected = sum(1 for d in all_docs.data if d['status'] == 'rejected')
@@ -1698,6 +1699,7 @@ async def get_validation_queue(
             'data': {
                 'queue': result.data,
                 'stats': {
+                    'parsed': total_parsed,
                     'pending': total_pending,
                     'validated': total_validated,
                     'rejected': total_rejected,
