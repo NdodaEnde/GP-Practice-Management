@@ -23,27 +23,43 @@ const ValidationReview = () => {
       setLoading(true);
       setError(null);
 
-      // Fetch extraction details
-      const response = await axios.get(
-        `${BACKEND_URL}/api/validation/extraction/${extractionId}`
-      );
+      // The extractionId is actually the document_id
+      const documentId = extractionId;
 
-      const extraction = response.data;
+      // Step 1: Fetch document metadata
+      const docResponse = await axios.get(
+        `${BACKEND_URL}/api/gp/documents/${documentId}`
+      );
       
-      // Format data for GPValidationInterface
-      // GPValidationInterface expects a structure with nested data
+      const document = docResponse.data;
+      const parsedDocId = document.parsed_doc_id;
+      
+      if (!parsedDocId) {
+        throw new Error('Document has not been parsed yet');
+      }
+
+      // Step 2: Fetch parsed document data with extractions
+      const parsedResponse = await axios.get(
+        `${BACKEND_URL}/api/gp/parsed-document/${parsedDocId}`
+      );
+      
+      const parsedData = parsedResponse.data;
+      
+      // Format data for GPValidationInterface (same structure as DigitisedDocuments)
       const formattedData = {
+        success: true,
         data: {
+          success: true,
+          message: 'Document loaded successfully',
           data: {
-            document_id: extraction.document_id,
-            workspace_id: extraction.workspace_id,
-            extractions: extraction.extracted_data || {},
-            chunks: extraction.chunks || [],
-            metadata: extraction.metadata || {}
+            document_id: documentId,
+            parsed_doc_id: parsedDocId,
+            file_path: document.file_path,
+            extractions: parsedData.data || {},
+            chunks: parsedData.chunks || [],
+            success: true
           }
-        },
-        document_id: extraction.document_id,
-        extraction_id: extraction.id
+        }
       };
 
       setExtractionData(formattedData);
@@ -53,7 +69,7 @@ const ValidationReview = () => {
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Failed to load extraction data. Please try again."
+        description: error.response?.data?.detail || error.message || "Failed to load extraction data. Please try again."
       });
     } finally {
       setLoading(false);
