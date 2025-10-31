@@ -91,6 +91,41 @@ const ValidationReview = () => {
     navigate('/validation-queue');
   };
 
+  const handleExtractData = async () => {
+    try {
+      setIsExtracting(true);
+      
+      const formData = new FormData();
+      formData.append('template_id', ''); // Use default template
+      formData.append('patient_id', '');
+      
+      const response = await axios.post(
+        `${BACKEND_URL}/api/gp/documents/${extractionId}/extract`,
+        formData
+      );
+      
+      if (response.data.status === 'success') {
+        toast({
+          title: "Extraction Complete! 🎉",
+          description: `Created ${response.data.data.auto_population?.records_created || 0} records`,
+        });
+        
+        // Reload the data to show extracted information
+        await loadExtractionData();
+        setDocumentStatus('pending_validation');
+      }
+    } catch (error) {
+      console.error('Failed to extract data:', error);
+      toast({
+        variant: "destructive",
+        title: "Extraction Failed",
+        description: error.response?.data?.detail || error.message || "Failed to extract data"
+      });
+    } finally {
+      setIsExtracting(false);
+    }
+  };
+
   const handleValidationComplete = async (validatedData) => {
     try {
       // Mark as approved in validation system
