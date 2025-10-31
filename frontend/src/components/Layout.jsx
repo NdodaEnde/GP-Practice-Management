@@ -9,12 +9,15 @@ const Layout = () => {
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { name: 'Reception Check-In', path: '/reception', icon: UserCheck },
     { name: 'Vitals Station', path: '/vitals', icon: HeartPulse },
+    // ===== DIGITIZATION MODULE (NEW UNIFIED INTERFACE) =====
+    { name: '📁 Digitization Module', path: '/digitization', icon: FolderKanban }, // NEW - Unified DaaS Interface
+    // ===== Individual Digitization Pages (Keep for compatibility) =====
     // { name: 'Digitize Documents', path: '/digitize', icon: FileText }, // OLD - Replaced
     // { name: 'GP Patient Digitization', path: '/gp-digitize', icon: Stethoscope }, // OLD - Replaced
     // { name: 'Batch Upload', path: '/batch-upload', icon: Layers }, // OLD - Replaced
-    { name: 'Document Upload', path: '/document-upload', icon: Upload }, // NEW - Unified
-    { name: 'Validation Queue', path: '/validation-queue', icon: ClipboardList },
-    { name: 'Document Archive', path: '/digitization-archive', icon: Archive }, // NEW - Archive Interface
+    { name: 'Document Upload', path: '/document-upload', icon: Upload }, // Still accessible
+    { name: 'Validation Queue', path: '/validation-queue', icon: ClipboardList }, // Still accessible
+    { name: 'Document Archive', path: '/digitization-archive', icon: Archive }, // Still accessible
     { name: 'Digitised Documents', path: '/gp/documents', icon: FileText },
     { name: 'Extraction Config', path: '/extraction-config', icon: Settings },
     { name: 'Patients', path: '/patients', icon: Users },
