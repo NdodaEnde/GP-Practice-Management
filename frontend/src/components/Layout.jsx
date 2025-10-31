@@ -29,6 +29,10 @@ const Layout = () => {
     { name: 'Document Archive', path: '/digitization-archive', icon: Archive }, // Still accessible
     { name: 'Digitised Documents', path: '/gp/documents', icon: FileText },
     { name: 'Extraction Config', path: '/extraction-config', icon: Settings },
+    // ===== ADMIN ONLY =====
+    ...(user?.role === 'admin' ? [
+      { name: '👤 User Management', path: '/user-management', icon: UserCog }
+    ] : []),
     { name: 'Patients', path: '/patients', icon: Users },
     { name: 'ICD-10 Test', path: '/icd10-test', icon: Code },
     { name: 'NAPPI Test', path: '/nappi-test', icon: Package },
