@@ -4783,8 +4783,10 @@ api_router.include_router(validation_router, tags=["Validation Workflow"])
 # ==================== Authentication & User Management ====================
 from app.api.auth import router as auth_router
 from app.api.users import router as users_router
+from app.api.workspaces import router as workspaces_router
 api_router.include_router(auth_router, tags=["Authentication"])
 api_router.include_router(users_router, tags=["User Management"])
+api_router.include_router(workspaces_router, tags=["Workspace Management"])
 
 app.include_router(api_router)
 
