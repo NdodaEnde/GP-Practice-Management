@@ -91,8 +91,6 @@ function App() {
         </Routes>
       </BrowserRouter>
     </AuthProvider>
-        </Routes>
-      </BrowserRouter>
     </div>
   );
 }
