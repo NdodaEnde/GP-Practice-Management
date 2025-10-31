@@ -2658,127 +2658,14 @@ async def create_new_patient_from_document(create_request: CreateNewPatientReque
         logger.error(f"Error creating new patient: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@api_router.post("/gp/documents/{document_id}/extract")
-async def extract_document_data(document_id: str):
-    """
-    Trigger extraction for a parsed document using LandingAI Extract API
-    Converts parsed chunks into structured data (Demographics, Conditions, Vitals, Notes)
-    """
-    try:
-        # Get document metadata
-        doc_result = supabase.table('digitised_documents')\
-            .select('*')\
-            .eq('id', document_id)\
-            .execute()
-        
-        if not doc_result.data:
-            raise HTTPException(status_code=404, detail="Document not found")
-        
-        document = doc_result.data[0]
-        
-        if document['status'] not in ['parsed', 'extracted', 'error']:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Document must be parsed before extraction. Current status: {document['status']}"
-            )
-        
-        # Update status to extracting
-        supabase.table('digitised_documents')\
-            .update({
-                'status': 'extracting',
-                'updated_at': datetime.now(timezone.utc).isoformat()
-            })\
-            .eq('id', document_id)\
-            .execute()
-        
-        logger.info(f"Starting extraction for document {document_id}")
-        
-        # Get parsed data from MongoDB
-        parsed_doc = await db.parsed_documents.find_one({'document_id': document_id})
-        
-        if not parsed_doc:
-            raise HTTPException(status_code=404, detail="Parsed data not found in MongoDB")
-        
-        # Extract chunks/markdown from parsed data
-        extracted_data = parsed_doc.get('extracted_data', {})
-        microservice_response = parsed_doc.get('microservice_response', {})
-        chunks = microservice_response.get('data', {}).get('chunks', [])
-        
-        # Combine all chunks into markdown text for extraction
-        markdown_text = "\n\n".join([
-            chunk.get('markdown', chunk.get('text', '')) 
-            for chunk in chunks if chunk.get('markdown') or chunk.get('text')
-        ])
-        
-        if not markdown_text:
-            raise HTTPException(status_code=400, detail="No markdown content available for extraction")
-        
-        # Call LandingAI Extract API with defined schema
-        # This is where we would call the Extract API with a schema
-        # For now, we'll use the existing extracted_data from microservice
-        # In a full implementation, you would define Pydantic schemas and call:
-        # from landing_ai_ade import LandingAIADE
-        # client = LandingAIADE(apikey=os.getenv('LANDING_AI_API_KEY'))
-        # result = client.extract(schema=your_schema, markdown=markdown_text)
-        
-        # The microservice response has extractions nested in data
-        # extracted_data = result.data = { ..., extractions: { demographics, chronic_summary, vitals, clinical_notes } }
-        extractions = extracted_data.get('extractions', {})
-        
-        logger.info(f"Extracted data structure: {list(extracted_data.keys())}")
-        logger.info(f"Extractions: {list(extractions.keys())}")
-        
-        # For now, we'll structure the existing data
-        structured_extraction = {
-            'demographics': extractions.get('demographics', extracted_data.get('demographics', {})),
-            'chronic_summary': extractions.get('chronic_summary', extracted_data.get('chronic_summary', {})),
-            'vitals': extractions.get('vitals', extracted_data.get('vitals', {})),
-            'clinical_notes': extractions.get('clinical_notes', extracted_data.get('clinical_notes', {})),
-            'extracted_at': datetime.now(timezone.utc).isoformat()
-        }
-        
-        # Update parsed document with structured extraction
-        await db.parsed_documents.update_one(
-            {'document_id': document_id},
-            {'$set': {
-                'structured_extraction': structured_extraction,
-                'extraction_completed_at': datetime.now(timezone.utc).isoformat()
-            }}
-        )
-        
-        # Update status to extracted
-        supabase.table('digitised_documents')\
-            .update({
-                'status': 'extracted',
-                'updated_at': datetime.now(timezone.utc).isoformat()
-            })\
-            .eq('id', document_id)\
-            .execute()
-        
-        logger.info(f"Document {document_id} extraction completed")
-        
-        return {
-            'status': 'success',
-            'message': 'Document extraction completed',
-            'document_id': document_id,
-            'extracted_data': structured_extraction
-        }
-    
-    except HTTPException:
-        raise
-    except Exception as e:
-        # Update status to error
-        supabase.table('digitised_documents')\
-            .update({
-                'status': 'error',
-                'error_message': f"Extraction failed: {str(e)}",
-                'updated_at': datetime.now(timezone.utc).isoformat()
-            })\
-            .eq('id', document_id)\
-            .execute()
-        
-        logger.error(f"Error extracting document {document_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+# OLD EXTRACT ENDPOINT - DEPRECATED - USE LINE 3226 VERSION INSTEAD
+# @api_router.post("/gp/documents/{document_id}/extract")
+# async def extract_document_data(document_id: str):
+#     """
+#     OLD VERSION - Deprecated
+#     Use the new extract endpoint at line 3226 which supports template-driven extraction
+#     """
+#     raise HTTPException(status_code=410, detail="This endpoint is deprecated. Use the new extract API.")
 
 
 # ==================== Digitised Documents Endpoints (Phase 1.7) ====================
