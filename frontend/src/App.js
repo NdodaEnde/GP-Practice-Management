@@ -84,6 +84,7 @@ function App() {
             <Route path="document-upload" element={<DocumentUpload />} />
             <Route path="digitization-archive" element={<DigitizationArchive />} />
             <Route path="digitization" element={<DigitizationModule />} />
+            <Route path="user-management" element={<UserManagement />} />
           </Route>
           
           {/* Payment routes (outside Layout for clean pages) */}
