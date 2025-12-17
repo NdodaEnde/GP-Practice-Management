@@ -521,7 +521,7 @@ uploaded ──→ parsing ──→ parsed ──→ pending_validation
 
 ### 4.1 PostgreSQL (Supabase) - Relational Data
 
-**Core Tables:**
+**Core System Tables:**
 
 ```sql
 -- User Management
@@ -531,7 +531,7 @@ users (
   password_hash VARCHAR,
   first_name VARCHAR,
   last_name VARCHAR,
-  role VARCHAR, -- admin, validator, uploader
+  role VARCHAR, -- admin, clinician, validator, uploader, reception, nurse
   workspace_id VARCHAR,
   tenant_id VARCHAR,
   is_active BOOLEAN,
@@ -545,7 +545,7 @@ workspaces (
   name VARCHAR,
   slug VARCHAR UNIQUE,
   organization_name VARCHAR,
-  organization_type VARCHAR, -- gp_practice, hospital, etc.
+  organization_type VARCHAR, -- gp_practice, hospital, occupational_health, clinic
   subscription_tier VARCHAR, -- free, basic, professional, enterprise
   max_users INTEGER,
   max_documents INTEGER,
@@ -563,12 +563,279 @@ workspace_users (
   role VARCHAR, -- owner, admin, member
   joined_at TIMESTAMP
 )
+```
 
+**Patient Management Tables:**
+
+```sql
+-- Patients
+patients (
+  id UUID PRIMARY KEY,
+  workspace_id VARCHAR,
+  tenant_id VARCHAR,
+  id_number VARCHAR,
+  first_name VARCHAR,
+  last_name VARCHAR,
+  date_of_birth DATE,
+  gender VARCHAR,
+  email VARCHAR,
+  phone VARCHAR,
+  address TEXT,
+  medical_aid_name VARCHAR,
+  medical_aid_number VARCHAR,
+  emergency_contact_name VARCHAR,
+  emergency_contact_phone VARCHAR,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+)
+
+-- Patient Encounters
+encounters (
+  id UUID PRIMARY KEY,
+  patient_id UUID REFERENCES patients,
+  workspace_id VARCHAR,
+  encounter_date TIMESTAMP,
+  encounter_type VARCHAR, -- consultation, follow-up, emergency
+  chief_complaint TEXT,
+  clinician_id UUID REFERENCES users,
+  status VARCHAR, -- in-progress, completed, billed
+  created_at TIMESTAMP
+)
+```
+
+**Clinical Data Tables:**
+
+```sql
+-- Allergies
+allergies (
+  id UUID PRIMARY KEY,
+  patient_id UUID REFERENCES patients,
+  workspace_id VARCHAR,
+  allergy_name VARCHAR,
+  allergen_type VARCHAR, -- drug, food, environmental
+  severity VARCHAR, -- mild, moderate, severe, life-threatening
+  reaction VARCHAR,
+  identified_date DATE,
+  notes TEXT,
+  is_active BOOLEAN,
+  created_at TIMESTAMP
+)
+
+-- Diagnoses (ICD-10 coded)
+diagnoses (
+  id UUID PRIMARY KEY,
+  patient_id UUID REFERENCES patients,
+  encounter_id UUID REFERENCES encounters,
+  workspace_id VARCHAR,
+  icd10_code VARCHAR,
+  diagnosis_name VARCHAR,
+  diagnosis_type VARCHAR, -- primary, secondary
+  status VARCHAR, -- active, resolved, chronic
+  diagnosed_date DATE,
+  notes TEXT,
+  created_at TIMESTAMP
+)
+
+-- Medications (NAPPI coded)
+patient_medications (
+  id UUID PRIMARY KEY,
+  patient_id UUID REFERENCES patients,
+  encounter_id UUID REFERENCES encounters,
+  workspace_id VARCHAR,
+  nappi_code VARCHAR,
+  medication_name VARCHAR,
+  dosage VARCHAR,
+  frequency VARCHAR,
+  route VARCHAR, -- oral, topical, injection
+  duration VARCHAR,
+  quantity INTEGER,
+  start_date DATE,
+  end_date DATE,
+  prescribing_clinician_id UUID REFERENCES users,
+  status VARCHAR, -- active, discontinued, completed
+  created_at TIMESTAMP
+)
+
+-- Vitals
+vitals (
+  id UUID PRIMARY KEY,
+  patient_id UUID REFERENCES patients,
+  encounter_id UUID REFERENCES encounters,
+  workspace_id VARCHAR,
+  recorded_at TIMESTAMP,
+  recorded_by UUID REFERENCES users,
+  systolic_bp INTEGER,
+  diastolic_bp INTEGER,
+  pulse INTEGER,
+  temperature DECIMAL,
+  respiratory_rate INTEGER,
+  oxygen_saturation INTEGER,
+  blood_glucose DECIMAL,
+  weight DECIMAL,
+  height DECIMAL,
+  bmi DECIMAL,
+  notes TEXT,
+  created_at TIMESTAMP
+)
+
+-- Clinical Notes
+clinical_notes (
+  id UUID PRIMARY KEY,
+  patient_id UUID REFERENCES patients,
+  encounter_id UUID REFERENCES encounters,
+  workspace_id VARCHAR,
+  clinician_id UUID REFERENCES users,
+  note_type VARCHAR, -- soap, progress, discharge
+  subjective TEXT,
+  objective TEXT,
+  assessment TEXT,
+  plan TEXT,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+)
+
+-- Lab Orders & Results
+lab_orders (
+  id UUID PRIMARY KEY,
+  patient_id UUID REFERENCES patients,
+  encounter_id UUID REFERENCES encounters,
+  workspace_id VARCHAR,
+  ordering_clinician_id UUID REFERENCES users,
+  order_date TIMESTAMP,
+  test_name VARCHAR,
+  lab_name VARCHAR,
+  status VARCHAR, -- ordered, collected, processing, completed
+  urgency VARCHAR, -- routine, urgent, stat
+  notes TEXT,
+  created_at TIMESTAMP
+)
+
+lab_results (
+  id UUID PRIMARY KEY,
+  lab_order_id UUID REFERENCES lab_orders,
+  patient_id UUID REFERENCES patients,
+  workspace_id VARCHAR,
+  test_name VARCHAR,
+  result_value VARCHAR,
+  unit VARCHAR,
+  reference_range VARCHAR,
+  is_abnormal BOOLEAN,
+  result_date TIMESTAMP,
+  notes TEXT,
+  created_at TIMESTAMP
+)
+
+-- Procedures
+procedures (
+  id UUID PRIMARY KEY,
+  patient_id UUID REFERENCES patients,
+  encounter_id UUID REFERENCES encounters,
+  workspace_id VARCHAR,
+  procedure_code VARCHAR,
+  procedure_name VARCHAR,
+  performed_by UUID REFERENCES users,
+  performed_date TIMESTAMP,
+  outcome TEXT,
+  notes TEXT,
+  created_at TIMESTAMP
+)
+
+-- Immunizations
+immunizations (
+  id UUID PRIMARY KEY,
+  patient_id UUID REFERENCES patients,
+  workspace_id VARCHAR,
+  vaccine_name VARCHAR,
+  batch_number VARCHAR,
+  administration_date DATE,
+  administered_by UUID REFERENCES users,
+  site VARCHAR, -- left arm, right arm, thigh
+  route VARCHAR, -- intramuscular, subcutaneous
+  dose VARCHAR,
+  adverse_reactions TEXT,
+  next_due_date DATE,
+  created_at TIMESTAMP
+)
+```
+
+**Billing & Financial Tables:**
+
+```sql
+-- Invoices
+invoices (
+  id UUID PRIMARY KEY,
+  patient_id UUID REFERENCES patients,
+  encounter_id UUID REFERENCES encounters,
+  workspace_id VARCHAR,
+  invoice_number VARCHAR UNIQUE,
+  invoice_date DATE,
+  total_amount DECIMAL,
+  tax_amount DECIMAL,
+  discount_amount DECIMAL,
+  grand_total DECIMAL,
+  status VARCHAR, -- draft, sent, paid, overdue, cancelled
+  due_date DATE,
+  created_by UUID REFERENCES users,
+  created_at TIMESTAMP
+)
+
+-- Invoice Line Items
+invoice_items (
+  id UUID PRIMARY KEY,
+  invoice_id UUID REFERENCES invoices,
+  workspace_id VARCHAR,
+  item_type VARCHAR, -- consultation, procedure, medication, lab
+  item_code VARCHAR,
+  description VARCHAR,
+  quantity INTEGER,
+  unit_price DECIMAL,
+  total_price DECIMAL,
+  created_at TIMESTAMP
+)
+
+-- Payments
+payments (
+  id UUID PRIMARY KEY,
+  invoice_id UUID REFERENCES invoices,
+  patient_id UUID REFERENCES patients,
+  workspace_id VARCHAR,
+  payment_date TIMESTAMP,
+  amount DECIMAL,
+  payment_method VARCHAR, -- cash, card, eft, medical_aid, online
+  reference_number VARCHAR,
+  payment_gateway VARCHAR, -- payfast, etc
+  status VARCHAR, -- pending, completed, failed, refunded
+  notes TEXT,
+  created_at TIMESTAMP
+)
+
+-- Medical Aid Claims
+claims (
+  id UUID PRIMARY KEY,
+  invoice_id UUID REFERENCES invoices,
+  patient_id UUID REFERENCES patients,
+  workspace_id VARCHAR,
+  medical_aid_name VARCHAR,
+  member_number VARCHAR,
+  claim_number VARCHAR,
+  submission_date DATE,
+  claim_amount DECIMAL,
+  status VARCHAR, -- submitted, approved, rejected, partially_paid
+  rejection_reason TEXT,
+  paid_amount DECIMAL,
+  payment_date DATE,
+  created_at TIMESTAMP
+)
+```
+
+**Document Digitization Tables:**
+
+```sql
 -- Document Metadata
 digitised_documents (
   id UUID PRIMARY KEY,
   filename VARCHAR,
-  status VARCHAR, -- parsed, extracted, approved, rejected
+  status VARCHAR, -- uploaded, parsing, parsed, extracted, pending_validation, approved, rejected
   patient_id UUID,
   workspace_id VARCHAR,
   tenant_id VARCHAR,
@@ -576,30 +843,71 @@ digitised_documents (
   parsed_doc_id VARCHAR, -- MongoDB reference
   pages_count INTEGER,
   file_size_bytes BIGINT,
-  template_id UUID
+  template_id UUID,
+  template_used VARCHAR,
+  uploaded_by UUID REFERENCES users,
+  validated_by UUID REFERENCES users,
+  validation_date TIMESTAMP,
+  created_at TIMESTAMP
 )
 
--- EHR Tables (examples)
-patients (...)
-diagnoses (...)
-medications (...)
-vitals (...)
-lab_results (...)
+-- Extraction Templates
+extraction_templates (
+  id UUID PRIMARY KEY,
+  workspace_id VARCHAR,
+  template_name VARCHAR,
+  document_type VARCHAR,
+  field_mappings JSONB,
+  is_active BOOLEAN,
+  created_by UUID REFERENCES users,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+)
+```
+
+**Reference Data Tables:**
+
+```sql
+-- ICD-10 Diagnosis Codes
+icd10_codes (
+  id UUID PRIMARY KEY,
+  code VARCHAR UNIQUE,
+  description TEXT,
+  category VARCHAR,
+  is_active BOOLEAN
+)
+
+-- NAPPI Medication Codes (South African drug codes)
+nappi_codes (
+  id UUID PRIMARY KEY,
+  nappi_code VARCHAR UNIQUE,
+  trade_name VARCHAR,
+  generic_name VARCHAR,
+  dosage_form VARCHAR,
+  strength VARCHAR,
+  pack_size VARCHAR,
+  manufacturer VARCHAR,
+  schedule VARCHAR, -- unscheduled, S1-S6
+  is_active BOOLEAN
+)
 ```
 
 **Indexes:**
-- `users.workspace_id` (workspace filtering)
-- `users.email` (login lookup)
-- `workspaces.slug` (URL routing)
-- `digitised_documents.workspace_id` (tenant isolation)
-- `digitised_documents.status` (queue queries)
+- `users.workspace_id`, `users.email` (workspace filtering, login)
+- `patients.workspace_id`, `patients.id_number` (patient lookup)
+- `encounters.patient_id`, `encounters.workspace_id` (encounter queries)
+- `diagnoses.patient_id`, `diagnoses.icd10_code`
+- `patient_medications.patient_id`, `patient_medications.nappi_code`
+- `vitals.patient_id`, `vitals.encounter_id`
+- `invoices.patient_id`, `invoices.workspace_id`, `invoices.status`
+- `digitised_documents.workspace_id`, `digitised_documents.status`
 
 ### 4.2 MongoDB - Document Storage
 
 **Collections:**
 
 ```javascript
-// Parsed Documents
+// Parsed Documents (from AI)
 gp_parsed_documents {
   _id: ObjectId,
   document_id: "uuid",
@@ -628,6 +936,24 @@ gp_validation_sessions {
   validation_status: "pending_validation",
   started_at: ISODate,
   completed_at: ISODate
+}
+
+// AI Scribe Notes (voice transcription)
+ai_scribe_sessions {
+  _id: ObjectId,
+  encounter_id: "uuid",
+  patient_id: "uuid",
+  clinician_id: "uuid",
+  workspace_id: "client-abc-123",
+  transcription_text: "Patient presents with...",
+  structured_note: {
+    subjective: "...",
+    objective: "...",
+    assessment: "...",
+    plan: "..."
+  },
+  audio_duration_seconds: 120,
+  created_at: ISODate
 }
 ```
 
