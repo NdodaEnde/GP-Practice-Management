@@ -9,14 +9,15 @@
 
 ## Executive Summary
 
-SurgiScan is a multi-tenant healthcare SaaS platform offering **Digitization as a Service (DaaS)** for medical document processing. The platform enables healthcare organizations to digitize, validate, and manage medical records through AI-powered document extraction, human validation workflows, and structured data export.
+SurgiScan is a **comprehensive multi-tenant healthcare SaaS platform** designed for GP practices, occupational health clinics, hospitals, and medical facilities. It provides a complete Electronic Health Record (EHR) system, practice management tools, clinical workflows, billing integration, and AI-powered document digitization.
 
 **Core Value Proposition:**
-- Transform paper-based medical records into structured digital data
-- Multi-tenant architecture supporting multiple healthcare organizations
-- Template-driven extraction eliminating custom coding for new document types
-- Human-in-the-loop validation ensuring accuracy
-- Role-based access control with workspace isolation
+- **Complete EHR System:** Patient management, clinical notes, prescriptions, lab results
+- **Clinical Workflow:** Reception, queue management, vitals capture, AI scribe
+- **Billing & Payments:** Invoice generation, online payments (PayFast), claims management
+- **Document Digitization:** AI-powered extraction with human validation (DaaS offering)
+- **Multi-Tenant Architecture:** Support multiple healthcare organizations with data isolation
+- **Role-Based Access:** Admin, clinician, validator, uploader, reception roles
 
 ---
 
