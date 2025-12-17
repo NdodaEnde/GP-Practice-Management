@@ -211,7 +211,173 @@ SurgiScan is an all-in-one healthcare platform that manages:
 
 ## 3. Core Features & Capabilities
 
-### 3.1 Authentication & Authorization
+### 3.1 Patient Management
+
+**Patient Registry:**
+- Create and manage patient records
+- Search by name, ID number, medical aid
+- Demographics (name, DOB, gender, contact info)
+- Medical aid details
+- Next of kin information
+- Patient photo upload
+
+**Electronic Health Records (EHR):**
+- Complete medical history view
+- Timeline of encounters and events
+- Allergies and adverse reactions
+- Chronic conditions and diagnoses
+- Medication history
+- Immunization records
+- Lab results and procedures
+- Vitals trends and charts
+- Document attachments
+
+### 3.2 Clinical Workflows
+
+**Reception & Queue Management:**
+- Patient check-in interface
+- Real-time queue display
+- Waiting time tracking
+- Call next patient
+- Priority queuing
+- Multi-workstation support
+
+**Vitals Station:**
+- Capture vital signs:
+  - Blood pressure (systolic/diastolic)
+  - Pulse/Heart rate
+  - Temperature
+  - Respiratory rate
+  - Oxygen saturation (SpO2)
+  - Blood glucose
+  - Weight and height (BMI auto-calc)
+- Historical vitals trends
+- Alert thresholds for abnormal values
+
+**AI Scribe (Clinical Notes):**
+- Voice-to-text dictation
+- AI-powered note structuring
+- SOAP note format (Subjective, Objective, Assessment, Plan)
+- Auto-save drafts
+- Template support
+- Encounter documentation
+
+**Prescription Writing:**
+- NAPPI code medication search
+- Drug interaction warnings
+- Allergy checking
+- Dosage and frequency selection
+- Prescription printing
+- Electronic prescription (future)
+- Repeat prescription management
+
+**Document Generation:**
+- Sick notes/Medical certificates
+- Referral letters
+- Medical reports
+- Custom templates
+
+### 3.3 Clinical Data Management
+
+**Allergies Management:**
+```
+- Allergy name (drugs, food, environmental)
+- Severity (mild, moderate, severe, life-threatening)
+- Reaction type
+- Date identified
+- Auto-alerts during prescribing
+```
+
+**Diagnosis Management:**
+```
+- ICD-10 code search and selection
+- Primary vs secondary diagnosis
+- Diagnosis date
+- Status (active, resolved, chronic)
+- Link to encounters
+- Diagnostic notes
+```
+
+**Medications:**
+```
+- NAPPI code database (South African drug codes)
+- Generic and trade name search
+- Dosage forms and strengths
+- Prescribing information
+- Drug interaction checking
+```
+
+**Lab Orders & Results:**
+```
+- Order lab tests
+- Link to external labs
+- Track order status
+- Receive and store results
+- Flag abnormal values
+- Historical result comparison
+```
+
+**Procedures:**
+```
+- Record procedures performed
+- Procedure codes
+- Date and provider
+- Outcome notes
+- Billing integration
+```
+
+**Immunizations:**
+```
+- Vaccine name and batch number
+- Administration date
+- Site and route
+- Adverse reactions
+- Vaccination schedule tracking
+- Certificate generation
+```
+
+### 3.4 Billing & Financial Management
+
+**Invoice Generation:**
+- Line item billing
+- Procedure and consultation codes
+- Medication dispensing fees
+- Lab test billing
+- Custom line items
+- Tax calculation
+- Discount application
+
+**Payment Processing:**
+```
+Payment Methods:
+- Cash
+- Credit/Debit card
+- EFT (Electronic Funds Transfer)
+- Medical aid
+- PayFast online payment gateway
+```
+
+**Medical Aid Claims:**
+- Submit claims electronically (future: EDI)
+- Track claim status
+- Payment reconciliation
+- Rejection management
+- Outstanding claims reporting
+
+**Financial Dashboards:**
+- Daily/weekly/monthly revenue
+- Outstanding payments
+- Payment method breakdown
+- Top procedures by revenue
+- Debtor aging analysis
+
+**PayFast Integration:**
+- Online payment link generation
+- Payment confirmation webhooks
+- Receipt generation
+- Refund processing
+
+### 3.5 Authentication & Authorization
 
 **JWT-Based Authentication:**
 - Access tokens: 24-hour validity
@@ -225,10 +391,17 @@ admin:
   - Full platform access
   - Create/manage workspaces
   - Create/manage users
-  - View all data
+  - View all data across workspaces
+
+clinician/doctor:
+  - Patient management
+  - Clinical documentation
+  - Prescriptions
+  - Referrals and certificates
+  - Billing
 
 validator:
-  - Access validation queue
+  - Access digitization validation queue
   - Review document extractions
   - Approve/reject data
   - View assigned documents
@@ -237,6 +410,17 @@ uploader:
   - Upload documents (single/batch)
   - View upload history
   - Track document status
+
+reception:
+  - Patient check-in
+  - Queue management
+  - Payments and invoicing
+  - Appointment scheduling
+
+nurse:
+  - Vitals capture
+  - Patient preparation
+  - Basic clinical notes
 ```
 
 **Security Features:**
@@ -246,12 +430,12 @@ uploader:
 - XSS protection (React escaping)
 - Rate limiting (future)
 
-### 3.2 Multi-Tenant Architecture
+### 3.6 Multi-Tenant Architecture
 
 **Workspace Isolation:**
 ```sql
 -- Every query filters by workspace_id
-SELECT * FROM documents 
+SELECT * FROM patients 
 WHERE workspace_id = 'client-abc-123';
 
 -- Users belong to workspaces
@@ -270,7 +454,7 @@ WHERE workspace_id = 'client-abc-123';
 - Subscription tiers (free, basic, professional, enterprise)
 - Independent configuration per workspace
 
-### 3.3 Document Processing Workflow
+### 3.7 Document Digitization Module
 
 **Two-Phase Processing:**
 
@@ -317,42 +501,19 @@ uploaded ──→ parsing ──→ parsed ──→ pending_validation
 }
 ```
 
-### 3.4 Validation Queue
-
-**Human-in-the-Loop Validation:**
+**Validation Queue:**
 - AI extracts data with confidence scores
 - Human validators review side-by-side (PDF + extracted data)
 - Edit incorrect extractions
 - Approve or reject with reasons
 - Track validator performance metrics
 
-**Queue Management:**
-- Priority sorting (urgent documents first)
-- Auto-assignment to validators
-- Workload balancing
-- SLA tracking (time to validation)
-
-### 3.5 Data Export
-
-**Export Formats:**
+**Data Export:**
 - **JSON:** Complete document structure
 - **CSV:** Tabular data (demographics, vitals, etc.)
 - **Bulk Export:** All documents in single file
 - **PDF:** Original scanned document
-
-**Future Formats:**
-- HL7 FHIR (healthcare interoperability standard)
-- HL7 v2 messages
-- CDA (Clinical Document Architecture)
-
-### 3.6 Document Archive
-
-**Features:**
-- Full-text search across documents
-- Filter by: status, patient, date range, document type
-- Preview PDF alongside extracted data
-- Export individual or bulk documents
-- Statistics dashboard (total docs, by status)
+- **FHIR:** Healthcare interoperability standard (future)
 
 ---
 
