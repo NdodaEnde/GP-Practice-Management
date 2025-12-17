@@ -138,23 +138,27 @@ SurgiScan is an all-in-one healthcare platform that manages:
 ┌─────────────────────────────────────────────────────────────┐
 │                      CLIENT LAYER                            │
 │  Web Browser (React SPA) - Role-Based Dashboards            │
+│  - Patient Management  - Clinical Workflows                  │
+│  - Billing & Payments  - Document Digitization               │
 └─────────────────────────────────────────────────────────────┘
                             ▼ HTTPS/REST
 ┌─────────────────────────────────────────────────────────────┐
-│                   APPLICATION LAYER                          │
+│                   APPLICATION LAYER (FastAPI)                │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │  FastAPI     │  │  FastAPI     │  │  FastAPI     │      │
-│  │  Auth Service│  │  Digitization│  │  User/       │      │
-│  │              │  │  Service     │  │  Workspace   │      │
+│  │  Auth &      │  │  Patient &   │  │  Billing &   │      │
+│  │  User Mgmt   │  │  Clinical    │  │  Payments    │      │
+│  └──────────────┘  └──────────────┘  └──────────────┘      │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│  │  Digitization│  │  Lab &       │  │  Workspace   │      │
+│  │  Service     │  │  Procedures  │  │  Management  │      │
 │  └──────────────┘  └──────────────┘  └──────────────┘      │
 └─────────────────────────────────────────────────────────────┘
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                   INTEGRATION LAYER                          │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │  LandingAI   │  │  Supabase    │  │  MongoDB     │      │
-│  │  (Document   │  │  (Relational)│  │  (Documents) │      │
-│  │   Parsing)   │  │              │  │              │      │
+│  │  LandingAI   │  │  PayFast     │  │  Email/SMS   │      │
+│  │  (AI Parse)  │  │  (Payments)  │  │  (Future)    │      │
 │  └──────────────┘  └──────────────┘  └──────────────┘      │
 └─────────────────────────────────────────────────────────────┘
                             ▼
@@ -164,8 +168,11 @@ SurgiScan is an all-in-one healthcare platform that manages:
 │  │  PostgreSQL    │         │  MongoDB Atlas    │           │
 │  │  (Supabase)    │         │  (Document Store) │           │
 │  │  - Users       │         │  - Parsed Docs    │           │
-│  │  - Workspaces  │         │  - Extractions    │           │
-│  │  - EHR Tables  │         │  - Validation     │           │
+│  │  - Patients    │         │  - Extractions    │           │
+│  │  - Encounters  │         │  - AI Scribe      │           │
+│  │  - Medications │         │  - Validations    │           │
+│  │  - Diagnoses   │         │                   │           │
+│  │  - Billing     │         │                   │           │
 │  └────────────────┘         └───────────────────┘           │
 └─────────────────────────────────────────────────────────────┘
 ```
