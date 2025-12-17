@@ -25,47 +25,108 @@ SurgiScan is a **comprehensive multi-tenant healthcare SaaS platform** designed 
 
 ### 1.1 What Does SurgiScan Do?
 
-**Primary Function:** Medical Document Digitization as a Service
+**Primary Function:** Comprehensive Healthcare Practice Management & EHR System
 
-The platform accepts scanned medical documents (PDF, images) and:
-1. **Parses** documents using AI (LandingAI ADE DPT-2)
-2. **Extracts** structured data using configurable templates
-3. **Validates** extractions through human review
-4. **Stores** validated data in relational databases
-5. **Exports** data in multiple formats (JSON, CSV, FHIR-ready)
+SurgiScan is an all-in-one healthcare platform that manages:
+
+**1. Patient Management**
+- Electronic Health Records (EHR)
+- Patient demographics and medical history
+- Patient registry with search and filtering
+- Document attachment and management
+
+**2. Clinical Workflows**
+- Reception check-in and queue management
+- Workstation dashboards for clinicians
+- Vitals capture and monitoring
+- AI-powered clinical note dictation (AI Scribe)
+- Prescription writing and management
+- Referral letter generation
+- Sick note issuance
+
+**3. Clinical Data Management**
+- Allergy tracking with severity levels
+- Diagnosis management (ICD-10 coded)
+- Medication prescribing (NAPPI coded)
+- Structured clinical notes (SOAP format)
+- Lab orders and results tracking
+- Procedure recording
+- Immunization history
+- Vitals tracking (BP, pulse, temperature, etc.)
+
+**4. Billing & Financial Management**
+- Invoice generation with line items
+- Payment recording (cash, card, EFT, medical aid)
+- PayFast online payment integration
+- Claims submission to medical aids
+- Financial dashboards and reporting
+- Outstanding payments tracking
+
+**5. Document Digitization Module** (DaaS Capability)
+- Scan and upload medical documents (PDF, images)
+- AI-powered parsing and data extraction
+- Human validation workflow
+- Template-driven extraction (no custom coding)
+- Export to JSON, CSV, FHIR formats
+- Document archive with search
+
+**6. System Administration**
+- Multi-tenant workspace management
+- User management with role-based access
+- Authentication and security
+- Usage quota management
+- Subscription tier control
 
 ### 1.2 Target Users
 
 **Healthcare Organizations:**
-- GP Practices
+- GP Practices (primary target)
 - Occupational Health Clinics
-- Hospitals
+- Hospitals and Medical Centers
 - Medical Records Departments
+- Community Health Centers
 
 **User Roles:**
-- **Administrators:** Manage workspaces, users, and system configuration
-- **Validators:** Review and approve AI extractions
-- **Uploaders:** Upload documents for processing
-- **Clinicians:** Access validated patient records (future)
+- **Administrators:** Manage workspaces, users, system configuration, billing
+- **Clinicians/Doctors:** Patient consultations, prescriptions, clinical notes
+- **Validators:** Review and approve digitized document extractions
+- **Uploaders:** Scan and upload documents for digitization
+- **Reception Staff:** Patient check-in, appointment management, payments
+- **Nurses:** Vitals capture, patient preparation
 
 ### 1.3 Use Cases
 
-**Use Case 1: Historical Records Digitization**
+**Use Case 1: Daily GP Clinic Operations**
+- Reception checks in patients → queue display
+- Nurse captures vitals → vitals station
+- Doctor sees patient → AI scribe captures notes
+- Doctor prescribes medication → prescription builder
+- Issue sick note or referral letter
+- Generate invoice → patient pays (cash/card/online)
+- Submit claim to medical aid
+
+**Use Case 2: Historical Records Digitization**
 - Client has 10,000 paper patient files
-- Scans documents → uploads to platform
+- Scan documents → upload to digitization module
 - AI extracts demographics, diagnoses, medications
-- Validators review and approve
-- Export structured data to existing EHR
+- Validators review and approve extractions
+- Data populates patient EHR automatically
+- Export structured data if needed
 
-**Use Case 2: Ongoing Document Processing**
-- Daily intake of referral letters, lab results, prescriptions
-- Real-time processing and validation
-- Integration with practice management systems
+**Use Case 3: Occupational Health Screening**
+- Bulk patient check-ins for company wellness day
+- Multiple workstations process vitals and assessments
+- Lab orders sent electronically
+- Results auto-populate patient records
+- Medical certificates issued
+- Company invoiced for all services
 
-**Use Case 3: Compliance & Audit**
-- Centralized document archive
-- Searchable medical record repository
-- Audit trail for data access and modifications
+**Use Case 4: Multi-Location Practice**
+- Central admin manages multiple clinics (workspaces)
+- Each clinic has own users and patient data
+- Consolidated billing and reporting
+- Shared medication and diagnosis databases
+- Role-based access across locations
 
 ---
 
