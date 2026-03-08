@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './contexts/AuthContext';
 import Dashboard from './pages/Dashboard';
 import PatientRegistry from './pages/PatientRegistry';
 import PatientEHR from './pages/PatientEHR';
@@ -9,6 +10,8 @@ import PatientPrescriptions from './pages/PatientPrescriptions';
 import ValidationInterface from './pages/ValidationInterface';
 import DocumentDigitization from './pages/DocumentDigitization';
 import GPPatientDigitization from './pages/GPPatientDigitization';
+import DigitisedDocuments from './pages/DigitisedDocuments';
+import DocumentValidation from './pages/DocumentValidation';
 import DocumentArchive from './pages/DocumentArchive';
 import ReceptionCheckIn from './pages/ReceptionCheckIn';
 import QueueDisplay from './pages/QueueDisplay';
@@ -16,19 +19,45 @@ import WorkstationDashboard from './pages/WorkstationDashboard';
 import VitalsStation from './pages/VitalsStation';
 import Billing from './pages/Billing';
 import Analytics from './pages/Analytics';
+import ICD10TestPage from './pages/ICD10TestPage';
+import NAPPITestPage from './pages/NAPPITestPage';
+import LabTestPage from './pages/LabTestPage';
+import ImmunizationsTestPage from './pages/ImmunizationsTestPage';
+import BillingTestPage from './pages/BillingTestPage';
+import FinancialDashboard from './pages/FinancialDashboard';
+import ClaimsManagement from './pages/ClaimsManagement';
+import PaymentSuccess from './pages/PaymentSuccess';
+import PaymentCancelled from './pages/PaymentCancelled';
+import ExtractionConfiguration from './pages/ExtractionConfiguration';
+import BatchUpload from './pages/BatchUpload';
+import ValidationQueue from './pages/ValidationQueue';
+import ValidationReview from './pages/ValidationReview';
+import DocumentUpload from './pages/DocumentUpload';
+import DigitizationArchive from './pages/DigitizationArchive';
+import DigitizationModule from './pages/DigitizationModule';
+import UserManagement from './pages/UserManagement';
+import WorkspaceManagement from './pages/WorkspaceManagement';
+import Login from './pages/Login';
 import Layout from './components/Layout';
 import '@/App.css';
 
 function App() {
   return (
     <div className="App">
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Layout />}>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+            {/* Login Route (outside Layout) */}
+            <Route path="/login" element={<Login />} />
+            
+            {/* Main App Routes */}
+            <Route path="/" element={<Layout />}>
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="digitize" element={<DocumentDigitization />} />
             <Route path="gp-digitize" element={<GPPatientDigitization />} />
+            <Route path="gp/documents" element={<DigitisedDocuments />} />
+            <Route path="gp/documents/:documentId/validate" element={<DocumentValidation />} />
             <Route path="patients" element={<PatientRegistry />} />
             <Route path="patients/:patientId" element={<PatientEHR />} />
             <Route path="patients/:patientId/documents" element={<DocumentArchive />} />
@@ -42,9 +71,30 @@ function App() {
             <Route path="queue/workstation" element={<WorkstationDashboard />} />
             <Route path="billing" element={<Billing />} />
             <Route path="analytics" element={<Analytics />} />
+            <Route path="icd10-test" element={<ICD10TestPage />} />
+            <Route path="nappi-test" element={<NAPPITestPage />} />
+            <Route path="lab-test" element={<LabTestPage />} />
+            <Route path="immunizations-test" element={<ImmunizationsTestPage />} />
+            <Route path="billing-test" element={<BillingTestPage />} />
+            <Route path="financial-dashboard" element={<FinancialDashboard />} />
+            <Route path="claims-management" element={<ClaimsManagement />} />
+            <Route path="extraction-config" element={<ExtractionConfiguration />} />
+            <Route path="batch-upload" element={<BatchUpload />} />
+            <Route path="validation-queue" element={<ValidationQueue />} />
+            <Route path="document-validation/:extractionId" element={<ValidationReview />} />
+            <Route path="document-upload" element={<DocumentUpload />} />
+            <Route path="digitization-archive" element={<DigitizationArchive />} />
+            <Route path="digitization" element={<DigitizationModule />} />
+            <Route path="user-management" element={<UserManagement />} />
+            <Route path="workspace-management" element={<WorkspaceManagement />} />
           </Route>
+          
+          {/* Payment routes (outside Layout for clean pages) */}
+          <Route path="payment/success" element={<PaymentSuccess />} />
+          <Route path="payment/cancelled" element={<PaymentCancelled />} />
         </Routes>
       </BrowserRouter>
+    </AuthProvider>
     </div>
   );
 }

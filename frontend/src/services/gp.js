@@ -56,6 +56,101 @@ export const gpAPI = {
   },
 
   /**
+   * Upload patient file with template-driven extraction (Phase 1.2)
+   * @param {File} file - The patient file to upload
+   * @param {string} patientId - Optional existing patient ID
+   * @param {string} templateId - Optional template ID (auto-selects if not provided)
+   * @param {string} encounterId - Optional encounter ID
+   */
+  uploadWithTemplate: async (file, patientId = undefined, templateId = undefined, encounterId = undefined) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    if (patientId) {
+      formData.append('patient_id', patientId);
+    }
+    if (templateId) {
+      formData.append('template_id', templateId);
+    }
+    if (encounterId) {
+      formData.append('encounter_id', encounterId);
+    }
+
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/api/gp/upload-with-template`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+          timeout: 180000, // 3 minute timeout
+        }
+      );
+
+      return {
+        success: response.data.status === 'success',
+        data: response.data.data,
+        message: response.data.message || 'File processed with templates'
+      };
+    } catch (error) {
+      console.error('Template-driven upload error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.detail || error.message || 'Upload failed',
+        error: error
+      };
+    }
+  },
+
+  /**
+   * Extract structured data from already-parsed document (Phase 2)
+   * @param {string} documentId - Document ID
+   * @param {string} templateId - Optional template ID
+   * @param {string} patientId - Optional patient ID
+   * @param {string} encounterId - Optional encounter ID
+   */
+  extractFromParsedDocument: async (documentId, templateId = null, patientId = null, encounterId = null) => {
+    const formData = new FormData();
+    
+    if (templateId) {
+      formData.append('template_id', templateId);
+    }
+    if (patientId) {
+      formData.append('patient_id', patientId);
+    }
+    if (encounterId) {
+      formData.append('encounter_id', encounterId);
+    }
+
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/api/gp/documents/${documentId}/extract`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+          timeout: 120000, // 2 minute timeout
+        }
+      );
+
+      return {
+        success: response.data.status === 'success',
+        data: response.data.data,
+        message: response.data.message || 'Extraction completed successfully'
+      };
+    } catch (error) {
+      console.error('Extraction error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.detail || error.message || 'Extraction failed',
+        error: error
+      };
+    }
+  },
+
+  /**
    * Validate and save extracted data
    * @param {string} patientId - Patient ID
    * @param {object} validatedData - The validated/corrected data
@@ -173,7 +268,111 @@ export const gpAPI = {
         message: error.message
       };
     }
-  }
+  },
+
+  /**
+   * Batch upload multiple patient files
+   * @param {FileList|Array} files - Array of files to upload
+   * @param {string} patientId - Optional patient ID
+   * @param {string} templateId - Optional template ID
+   * @param {string} encounterId - Optional encounter ID
+   */
+  batchUpload: async (files, patientId = undefined, templateId = undefined, encounterId = undefined) => {
+    const formData = new FormData();
+    
+    // Append all files
+    for (let i = 0; i < files.length; i++) {
+      formData.append('files', files[i]);
+    }
+    
+    if (patientId) {
+      formData.append('patient_id', patientId);
+    }
+    if (templateId) {
+      formData.append('template_id', templateId);
+    }
+    if (encounterId) {
+      formData.append('encounter_id', encounterId);
+    }
+
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/api/gp/batch-upload`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+          timeout: 300000, // 5 minute timeout for batch upload
+        }
+      );
+
+      return {
+        success: true,
+        data: response.data,
+        batchId: response.data.batch_id
+      };
+    } catch (error) {
+      console.error('Batch upload error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.detail || error.message || 'Batch upload failed',
+        error: error
+      };
+    }
+  },
+
+  /**
+   * Get batch upload status
+   * @param {string} batchId - Batch ID to check status
+   */
+  getBatchStatus: async (batchId) => {
+    try {
+      const response = await axios.get(
+        `${API_BASE_URL}/api/gp/batch-status/${batchId}`
+      );
+
+      return {
+        success: true,
+        data: response.data.batch
+      };
+    } catch (error) {
+      console.error('Get batch status error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.detail || error.message || 'Failed to get batch status',
+        error: error
+      };
+    }
+  },
+
+  /**
+   * Get batch upload history
+   * @param {string} workspaceId - Workspace ID
+   * @param {number} limit - Number of batches to retrieve
+   */
+  getBatchHistory: async (workspaceId = 'demo-gp-workspace-001', limit = 20) => {
+    try {
+      const response = await axios.get(
+        `${API_BASE_URL}/api/gp/batch-history`,
+        {
+          params: { workspace_id: workspaceId, limit }
+        }
+      );
+
+      return {
+        success: true,
+        data: response.data.batches
+      };
+    } catch (error) {
+      console.error('Get batch history error:', error);
+      return {
+        success: false,
+        message: error.message,
+        data: []
+      };
+    }
+  },
 };
 
 // TypeScript-like type definitions for reference (as JSDoc comments)

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Activity, FileText, Pill, FlaskConical, FolderOpen, Calendar, AlertCircle, Heart, TrendingUp, Plus, Upload, Sparkles } from 'lucide-react';
+import { ArrowLeft, Activity, FileText, Pill, FlaskConical, FolderOpen, Calendar, AlertCircle, Heart, TrendingUp, Plus, Upload, Sparkles, User } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -8,6 +8,9 @@ import { Button } from '@/components/ui/button';
 import ReactECharts from 'echarts-for-react';
 import { patientAPI, encounterAPI, documentAPI } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
+import AllergyManagement from '@/components/AllergyManagement';
+import DiagnosesManagement from '@/components/DiagnosesManagement';
+import VitalsManagement from '@/components/VitalsManagement';
 
 const PatientEHR = () => {
   const { patientId } = useParams();
@@ -15,8 +18,13 @@ const PatientEHR = () => {
   const [patient, setPatient] = useState(null);
   const [encounters, setEncounters] = useState([]);
   const [documents, setDocuments] = useState([]);
+  const [conditions, setConditions] = useState([]);
+  const [medications, setMedications] = useState([]);
+  const [labOrders, setLabOrders] = useState([]);
+  const [labResults, setLabResults] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+  const [expandedEncounters, setExpandedEncounters] = useState({});
 
   useEffect(() => {
     loadPatientData();
@@ -25,12 +33,40 @@ const PatientEHR = () => {
   const loadPatientData = async () => {
     try {
       setLoading(true);
-      const [patientRes, encountersRes] = await Promise.all([
+      const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
+      
+      const [patientRes, encountersRes, conditionsRes, medicationsRes, labOrdersRes] = await Promise.all([
         patientAPI.get(patientId),
-        encounterAPI.listByPatient(patientId)
+        encounterAPI.listByPatient(patientId),
+        fetch(`${backendUrl}/api/patients/${patientId}/conditions`).then(r => r.json()),
+        fetch(`${backendUrl}/api/patients/${patientId}/medications`).then(r => r.json()),
+        fetch(`${backendUrl}/api/lab-orders/patient/${patientId}`).then(r => r.json()).catch(() => [])
       ]);
+      
       setPatient(patientRes.data);
       setEncounters(encountersRes.data);
+      setConditions(conditionsRes.conditions || []);
+      setMedications(medicationsRes.medications || []);
+      setLabOrders(labOrdersRes || []);
+      
+      // Load lab results for all orders
+      if (labOrdersRes && labOrdersRes.length > 0) {
+        const allResults = [];
+        for (const order of labOrdersRes) {
+          try {
+            const resultsRes = await fetch(`${backendUrl}/api/lab-results/order/${order.id}`).then(r => r.json());
+            allResults.push(...(resultsRes || []));
+          } catch (err) {
+            console.log('No results for order', order.id);
+          }
+        }
+        setLabResults(allResults);
+      }
+      
+      console.log('Loaded conditions:', conditionsRes.conditions);
+      console.log('Loaded medications:', medicationsRes.medications);
+      console.log('Loaded lab orders:', labOrdersRes);
+      console.log('Loaded lab results:', labResults);
       
       // Load documents for all encounters
       if (encountersRes.data.length > 0) {
@@ -338,24 +374,55 @@ const PatientEHR = () => {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-2">
-                    <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <Badge className="bg-red-500">Severe</Badge>
-                        <span className="font-semibold text-red-800">Penicillin</span>
-                      </div>
-                      <p className="text-sm text-red-600 mt-1">Anaphylaxis reaction</p>
-                    </div>
-                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <Badge className="bg-amber-500">Moderate</Badge>
-                        <span className="font-semibold text-amber-800">Latex</span>
-                      </div>
-                      <p className="text-sm text-amber-600 mt-1">Contact dermatitis</p>
-                    </div>
-                  </div>
+                  <AllergyManagement patientId={patientId} />
                 </CardContent>
               </Card>
+
+              {/* Diagnoses */}
+              <DiagnosesManagement patientId={patientId} />
+              
+              {/* Recent Lab Results - Overview */}
+              {labResults.length > 0 && (
+                <Card className="border-0 shadow-lg">
+                  <CardHeader>
+                    <CardTitle className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                      <FlaskConical className="w-5 h-5 text-blue-500" />
+                      Recent Lab Results
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {labResults.slice(0, 3).map((result, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                          <div className="flex-1">
+                            <p className="font-semibold text-sm text-slate-800">{result.test_name}</p>
+                            <p className="text-xs text-slate-500">
+                              {result.result_datetime && new Date(result.result_datetime).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className={`font-bold ${
+                              result.abnormal_flag === 'critical_high' || result.abnormal_flag === 'critical_low' ? 'text-red-600' :
+                              result.abnormal_flag === 'high' || result.abnormal_flag === 'low' ? 'text-amber-600' :
+                              'text-slate-800'
+                            }`}>
+                              {result.result_value} {result.units}
+                            </p>
+                            {result.abnormal_flag !== 'normal' && result.abnormal_flag !== 'unknown' && (
+                              <p className="text-xs font-medium text-amber-600">
+                                {result.abnormal_flag.replace('_', ' ').toUpperCase()}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      <Link to={`/patient/${patientId}`} onClick={() => setActiveTab('vitals')} className="block text-center text-sm text-blue-600 hover:text-blue-700 mt-2">
+                        View all lab results →
+                      </Link>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </div>
 
             {/* Timeline */}
@@ -365,34 +432,155 @@ const PatientEHR = () => {
                   <CardTitle className="text-lg font-bold text-slate-800">Patient Timeline</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-4">
+                  <div className="space-y-6">
                     {encounters.length > 0 ? (
-                      encounters.map((encounter, idx) => (
-                        <div key={encounter.id} className="relative pl-8 pb-4 border-l-2 border-teal-200">
-                          <div className="absolute left-0 top-0 -translate-x-1/2 w-4 h-4 rounded-full bg-teal-500"></div>
-                          <div className="bg-gradient-to-r from-slate-50 to-blue-50 p-4 rounded-lg">
-                            <div className="flex items-start justify-between mb-2">
-                              <div>
-                                <Badge className="bg-teal-100 text-teal-700 mb-2">Visit</Badge>
-                                <p className="font-semibold text-slate-800">{encounter.chief_complaint || 'General Consultation'}</p>
-                                <p className="text-sm text-slate-600">
-                                  {new Date(encounter.encounter_date).toLocaleDateString('en-US', {
-                                    year: 'numeric',
-                                    month: 'long',
-                                    day: 'numeric'
-                                  })}
-                                </p>
-                              </div>
-                              <Badge className={encounter.status === 'completed' ? 'bg-emerald-500' : 'bg-amber-500'}>
-                                {encounter.status}
-                              </Badge>
+                      (() => {
+                        const toggleEncounter = (encounterId) => {
+                          setExpandedEncounters(prev => ({
+                            ...prev,
+                            [encounterId]: !prev[encounterId]
+                          }));
+                        };
+
+                        // Group encounters by date
+                        const groupedEncounters = encounters.reduce((groups, encounter) => {
+                          const date = new Date(encounter.encounter_date).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric'
+                          });
+                          if (!groups[date]) groups[date] = [];
+                          groups[date].push(encounter);
+                          return groups;
+                        }, {});
+
+                        return Object.entries(groupedEncounters).map(([date, encountersForDate]) => (
+                          <div key={date}>
+                            {/* Date Header - Compact Style */}
+                            <div className="flex items-center gap-2 mb-3">
+                              <div className="w-2 h-2 rounded-full bg-teal-500"></div>
+                              <h3 className="text-sm font-bold text-slate-700">{date}</h3>
                             </div>
-                            {encounter.gp_notes && (
-                              <p className="text-sm text-slate-600 mt-2">{encounter.gp_notes}</p>
-                            )}
+                            
+                            {/* Timeline entries for this date - Compact */}
+                            <div className="ml-3 pl-4 border-l-2 border-slate-200 space-y-3 pb-4">
+                              {encountersForDate.map((encounter) => {
+                                const isExpanded = expandedEncounters[encounter.id];
+                                
+                                // Extract Assessment (diagnosis) from SOAP notes
+                                const extractAssessment = (notes) => {
+                                  if (!notes) return 'No diagnosis recorded';
+                                  
+                                  // Look for Assessment section in SOAP format (with ** markdown)
+                                  const assessmentMatch = notes.match(/\*\*ASSESSMENT:\*\*[:\s]*\n?(.*?)(?=\n\s*\*\*PLAN|\n\s*\*\*P[:\s]|$)/is);
+                                  if (assessmentMatch && assessmentMatch[1]) {
+                                    let assessment = assessmentMatch[1].trim();
+                                    // Remove markdown formatting
+                                    assessment = assessment.replace(/\*\*/g, '').trim();
+                                    return assessment.substring(0, 120) + (assessment.length > 120 ? '...' : '');
+                                  }
+                                  
+                                  // Look for Assessment without markdown
+                                  const assessmentMatch2 = notes.match(/Assessment[:\s]*\n?(.*?)(?=\n\s*Plan[:\s]|\n\s*P[:\s]|$)/is);
+                                  if (assessmentMatch2 && assessmentMatch2[1]) {
+                                    let assessment = assessmentMatch2[1].trim();
+                                    assessment = assessment.replace(/\*\*/g, '').trim();
+                                    return assessment.substring(0, 120) + (assessment.length > 120 ? '...' : '');
+                                  }
+                                  
+                                  // Look for A: pattern (abbreviated SOAP)
+                                  const aMatch = notes.match(/\bA[:\s]+(.*?)(?=\n\s*P[:\s]|$)/is);
+                                  if (aMatch && aMatch[1]) {
+                                    let assessment = aMatch[1].trim();
+                                    assessment = assessment.replace(/\*\*/g, '').trim();
+                                    return assessment.substring(0, 120) + (assessment.length > 120 ? '...' : '');
+                                  }
+                                  
+                                  // Fallback: first meaningful line
+                                  const lines = notes.split('\n').filter(line => line.trim().length > 0);
+                                  if (lines.length > 0) {
+                                    let firstLine = lines[0].trim();
+                                    firstLine = firstLine.replace(/\*\*/g, '').replace(/SUBJECTIVE:|OBJECTIVE:|S:|O:/gi, '').trim();
+                                    return firstLine.substring(0, 120) + (firstLine.length > 120 ? '...' : '');
+                                  }
+                                  
+                                  return 'No diagnosis recorded';
+                                };
+                                
+                                const diagnosis = extractAssessment(encounter.gp_notes);
+
+                                return (
+                                  <div key={encounter.id} className="space-y-2">
+                                    {/* Compact info */}
+                                    <div className="text-sm">
+                                      <p className="text-slate-600">
+                                        <span className="font-medium text-slate-800">Dr. [Provider Name]</span>
+                                      </p>
+                                      <p className="text-slate-700">
+                                        <span className="font-semibold">Complaint:</span> {encounter.chief_complaint || 'General consultation'}
+                                      </p>
+                                      <p className="text-slate-700">
+                                        <span className="font-semibold">Diagnosis:</span> {diagnosis}
+                                      </p>
+                                    </div>
+
+                                    {/* Expandable details */}
+                                    {isExpanded && (
+                                      <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-2">
+                                        <div>
+                                          <p className="text-xs font-semibold text-slate-600 mb-1">Time:</p>
+                                          <p className="text-sm text-slate-800">
+                                            {new Date(encounter.encounter_date).toLocaleTimeString('en-US', {
+                                              hour: '2-digit',
+                                              minute: '2-digit'
+                                            })}
+                                          </p>
+                                        </div>
+                                        
+                                        {encounter.vitals_json && (
+                                          <div>
+                                            <p className="text-xs font-semibold text-slate-600 mb-1">Vitals:</p>
+                                            <div className="flex gap-4 text-sm text-slate-700">
+                                              {encounter.vitals_json.blood_pressure && (
+                                                <span><strong>BP:</strong> {encounter.vitals_json.blood_pressure}</span>
+                                              )}
+                                              {encounter.vitals_json.heart_rate && (
+                                                <span><strong>HR:</strong> {encounter.vitals_json.heart_rate} bpm</span>
+                                              )}
+                                              {encounter.vitals_json.weight && (
+                                                <span><strong>WT:</strong> {encounter.vitals_json.weight} kg</span>
+                                              )}
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {encounter.gp_notes && (
+                                          <div>
+                                            <p className="text-xs font-semibold text-slate-600 mb-1">Full Notes:</p>
+                                            <p className="text-sm text-slate-700 whitespace-pre-wrap">{encounter.gp_notes}</p>
+                                          </div>
+                                        )}
+
+                                        <Badge className={encounter.status === 'completed' ? 'bg-emerald-500 text-white' : 'bg-amber-500 text-white'}>
+                                          {encounter.status}
+                                        </Badge>
+                                      </div>
+                                    )}
+
+                                    {/* View Details button */}
+                                    <button
+                                      onClick={() => toggleEncounter(encounter.id)}
+                                      className="text-xs text-teal-600 hover:text-teal-700 font-medium flex items-center gap-1"
+                                    >
+                                      {isExpanded ? '▼ Hide Details' : '▶ View Details'}
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </div>
-                        </div>
-                      ))
+                        ));
+                      })()
                     ) : (
                       <p className="text-slate-400 text-center py-8">No encounters recorded</p>
                     )}
@@ -410,58 +598,151 @@ const PatientEHR = () => {
               <CardTitle className="text-lg font-bold text-slate-800">Consultation History</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {encounters.map((encounter) => (
-                  <div key={encounter.id} className="p-5 bg-gradient-to-r from-slate-50 to-blue-50 rounded-lg border border-slate-200">
-                    <div className="flex items-center justify-between mb-3">
-                      <div>
-                        <Badge className="bg-blue-100 text-blue-700 mb-2">General Consultation</Badge>
-                        <p className="font-semibold text-slate-800">{encounter.chief_complaint || 'General consultation'}</p>
-                        <p className="text-sm text-slate-600">
-                          {new Date(encounter.encounter_date).toLocaleDateString('en-US', {
-                            year: 'numeric',
-                            month: 'long',
-                            day: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
-                        </p>
-                      </div>
-                      <Badge className={encounter.status === 'completed' ? 'bg-emerald-500' : 'bg-amber-500'}>
-                        {encounter.status}
-                      </Badge>
-                    </div>
-                    {encounter.gp_notes && (
-                      <div className="mt-3 p-3 bg-white rounded border border-slate-200">
-                        <p className="text-sm font-semibold text-slate-700 mb-1">Assessment & Plan:</p>
-                        <p className="text-sm text-slate-600">{encounter.gp_notes}</p>
-                      </div>
-                    )}
-                    {encounter.vitals_json && (
-                      <div className="mt-3 flex gap-4 text-sm">
-                        {encounter.vitals_json.blood_pressure && (
-                          <span className="text-slate-600">
-                            <strong>BP:</strong> {encounter.vitals_json.blood_pressure}
-                          </span>
-                        )}
-                        {encounter.vitals_json.heart_rate && (
-                          <span className="text-slate-600">
-                            <strong>HR:</strong> {encounter.vitals_json.heart_rate} bpm
-                          </span>
-                        )}
-                        {encounter.vitals_json.weight && (
-                          <span className="text-slate-600">
-                            <strong>WT:</strong> {encounter.vitals_json.weight} kg
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
-                {encounters.length === 0 && (
-                  <p className="text-slate-400 text-center py-8">No visits recorded</p>
-                )}
-              </div>
+              {encounters.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b-2 border-slate-200">
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">Date</th>
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">Doctor</th>
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">Complaint</th>
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">Diagnosis</th>
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">Status</th>
+                        <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {encounters.map((encounter) => {
+                        // Extract Assessment from SOAP notes
+                        const extractAssessment = (notes) => {
+                          if (!notes) return 'No diagnosis recorded';
+                          
+                          const assessmentMatch = notes.match(/\*\*ASSESSMENT:\*\*[:\s]*\n?(.*?)(?=\n\s*\*\*PLAN|\n\s*\*\*P[:\s]|$)/is);
+                          if (assessmentMatch && assessmentMatch[1]) {
+                            let assessment = assessmentMatch[1].trim().replace(/\*\*/g, '').trim();
+                            return assessment.substring(0, 60) + (assessment.length > 60 ? '...' : '');
+                          }
+                          
+                          const assessmentMatch2 = notes.match(/Assessment[:\s]*\n?(.*?)(?=\n\s*Plan[:\s]|\n\s*P[:\s]|$)/is);
+                          if (assessmentMatch2 && assessmentMatch2[1]) {
+                            let assessment = assessmentMatch2[1].trim().replace(/\*\*/g, '').trim();
+                            return assessment.substring(0, 60) + (assessment.length > 60 ? '...' : '');
+                          }
+                          
+                          const lines = notes.split('\n').filter(line => line.trim().length > 0);
+                          if (lines.length > 0) {
+                            let firstLine = lines[0].trim().replace(/\*\*/g, '').replace(/SUBJECTIVE:|OBJECTIVE:|S:|O:/gi, '').trim();
+                            return firstLine.substring(0, 60) + (firstLine.length > 60 ? '...' : '');
+                          }
+                          
+                          return 'No diagnosis recorded';
+                        };
+
+                        const diagnosis = extractAssessment(encounter.gp_notes);
+                        const isExpanded = expandedEncounters[encounter.id];
+
+                        return (
+                          <React.Fragment key={encounter.id}>
+                            <tr className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                              <td className="py-4 px-4">
+                                <div className="flex items-center gap-2 text-slate-600">
+                                  <Calendar className="w-4 h-4" />
+                                  <span className="text-sm">
+                                    {new Date(encounter.encounter_date).toLocaleDateString('en-US', {
+                                      year: 'numeric',
+                                      month: '2-digit',
+                                      day: '2-digit'
+                                    })}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="py-4 px-4">
+                                <div className="flex items-center gap-2">
+                                  <User className="w-4 h-4 text-slate-400" />
+                                  <span className="text-sm text-slate-700">Dr. [Provider Name]</span>
+                                </div>
+                              </td>
+                              <td className="py-4 px-4">
+                                <span className="text-sm text-slate-700">{encounter.chief_complaint || 'General consultation'}</span>
+                              </td>
+                              <td className="py-4 px-4">
+                                <span className="text-sm text-slate-700">{diagnosis}</span>
+                              </td>
+                              <td className="py-4 px-4">
+                                <Badge className={encounter.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}>
+                                  {encounter.status}
+                                </Badge>
+                              </td>
+                              <td className="py-4 px-4">
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm"
+                                  onClick={() => {
+                                    setExpandedEncounters(prev => ({
+                                      ...prev,
+                                      [encounter.id]: !prev[encounter.id]
+                                    }));
+                                  }}
+                                  className="text-teal-600 hover:text-teal-700 hover:bg-teal-50"
+                                >
+                                  <FileText className="w-4 h-4 mr-1" />
+                                  View Details
+                                </Button>
+                              </td>
+                            </tr>
+                            {/* Expandable Details Row */}
+                            {isExpanded && (
+                              <tr className="bg-slate-50 border-b border-slate-100">
+                                <td colSpan="6" className="py-4 px-4">
+                                  <div className="space-y-3 ml-8">
+                                    <div className="grid grid-cols-2 gap-4">
+                                      <div>
+                                        <p className="text-xs font-semibold text-slate-600 mb-1">Time:</p>
+                                        <p className="text-sm text-slate-800">
+                                          {new Date(encounter.encounter_date).toLocaleTimeString('en-US', {
+                                            hour: '2-digit',
+                                            minute: '2-digit'
+                                          })}
+                                        </p>
+                                      </div>
+                                      {encounter.vitals_json && (
+                                        <div>
+                                          <p className="text-xs font-semibold text-slate-600 mb-1">Vitals:</p>
+                                          <div className="flex gap-4 text-sm text-slate-700">
+                                            {encounter.vitals_json.blood_pressure && (
+                                              <span><strong>BP:</strong> {encounter.vitals_json.blood_pressure}</span>
+                                            )}
+                                            {encounter.vitals_json.heart_rate && (
+                                              <span><strong>HR:</strong> {encounter.vitals_json.heart_rate} bpm</span>
+                                            )}
+                                            {encounter.vitals_json.weight && (
+                                              <span><strong>WT:</strong> {encounter.vitals_json.weight} kg</span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                    {encounter.gp_notes && (
+                                      <div>
+                                        <p className="text-xs font-semibold text-slate-600 mb-1">Full Notes:</p>
+                                        <p className="text-sm text-slate-700 whitespace-pre-wrap bg-white p-3 rounded border border-slate-200">
+                                          {encounter.gp_notes}
+                                        </p>
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-slate-400 text-center py-8">No visits recorded</p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -469,6 +750,9 @@ const PatientEHR = () => {
         {/* Tab 3: Vitals & Labs */}
         <TabsContent value="vitals" className="mt-6">
           <div className="space-y-6">
+            {/* Vitals Management Component */}
+            <VitalsManagement patientId={patientId} />
+
             {/* Vitals Trends Chart */}
             <Card className="border-0 shadow-lg">
               <CardHeader>
@@ -485,29 +769,49 @@ const PatientEHR = () => {
                 <CardTitle className="text-lg font-bold text-slate-800">Recent Lab Results</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  {mockLabResults.map((lab, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-4 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
-                      <div className="flex-1">
-                        <p className="font-semibold text-slate-800">{lab.test}</p>
-                        <p className="text-sm text-slate-600">Normal range: {lab.range}</p>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <div className="text-right">
-                          <p className="font-bold text-lg text-slate-800">{lab.value}</p>
-                          <p className="text-sm text-slate-600">{lab.unit}</p>
+                {labResults.length > 0 ? (
+                  <div className="space-y-3">
+                    {labResults.slice(0, 6).map((result, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-4 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
+                        <div className="flex-1">
+                          <p className="font-semibold text-slate-800">{result.test_name}</p>
+                          <p className="text-sm text-slate-600">
+                            {result.reference_range ? `Normal range: ${result.reference_range}` : 'No reference range'}
+                          </p>
+                          {result.result_datetime && (
+                            <p className="text-xs text-slate-500 mt-1">
+                              {new Date(result.result_datetime).toLocaleDateString()}
+                            </p>
+                          )}
                         </div>
-                        <Badge className={
-                          lab.status === 'high' ? 'bg-red-100 text-red-700' :
-                          lab.status === 'low' ? 'bg-amber-100 text-amber-700' :
-                          'bg-emerald-100 text-emerald-700'
-                        }>
-                          {lab.status}
-                        </Badge>
+                        <div className="flex items-center gap-4">
+                          <div className="text-right">
+                            <p className="font-bold text-lg text-slate-800">{result.result_value}</p>
+                            <p className="text-sm text-slate-600">{result.units || ''}</p>
+                          </div>
+                          <Badge className={
+                            result.abnormal_flag === 'critical_high' || result.abnormal_flag === 'critical_low' ? 'bg-red-100 text-red-700' :
+                            result.abnormal_flag === 'high' || result.abnormal_flag === 'low' ? 'bg-amber-100 text-amber-700' :
+                            result.abnormal_flag === 'normal' ? 'bg-emerald-100 text-emerald-700' :
+                            'bg-slate-100 text-slate-700'
+                          }>
+                            {result.abnormal_flag === 'critical_high' ? 'Critical High' :
+                             result.abnormal_flag === 'critical_low' ? 'Critical Low' :
+                             result.abnormal_flag === 'high' ? 'High' :
+                             result.abnormal_flag === 'low' ? 'Low' :
+                             result.abnormal_flag === 'normal' ? 'Normal' : 'Unknown'}
+                          </Badge>
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-slate-400">
+                    <FlaskConical className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                    <p>No lab results available</p>
+                    <p className="text-sm mt-1">Lab results will appear here once tests are ordered and completed</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -527,38 +831,76 @@ const PatientEHR = () => {
               {/* Active Medications */}
               <div className="mb-8">
                 <h3 className="text-lg font-semibold text-slate-800 mb-4">Active Medications</h3>
-                <div className="space-y-3">
-                  {mockMedications.filter(m => m.status === 'active').map((med, idx) => (
-                    <div key={idx} className="p-5 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Badge className="bg-emerald-500">Active</Badge>
-                            <h4 className="text-lg font-bold text-slate-800">{med.name}</h4>
+                <div className="space-y-6">
+                  {medications.filter(m => m.status === 'active').length > 0 ? (
+                    (() => {
+                      // Group medications by date
+                      const groupedByDate = medications
+                        .filter(m => m.status === 'active')
+                        .reduce((groups, med) => {
+                          const date = med.start_date || 'Unknown Date';
+                          if (!groups[date]) groups[date] = [];
+                          groups[date].push(med);
+                          return groups;
+                        }, {});
+                      
+                      // Sort dates descending
+                      const sortedDates = Object.keys(groupedByDate).sort((a, b) => {
+                        if (a === 'Unknown Date') return 1;
+                        if (b === 'Unknown Date') return -1;
+                        return new Date(b) - new Date(a);
+                      });
+                      
+                      return sortedDates.map((date) => (
+                        <div key={date} className="border-l-4 border-emerald-500 pl-4">
+                          <div className="flex items-center gap-2 mb-3">
+                            <Calendar className="w-4 h-4 text-emerald-600" />
+                            <h4 className="font-bold text-slate-700">
+                              {date !== 'Unknown Date' 
+                                ? new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+                                : 'Unknown Date'}
+                            </h4>
+                            <Badge className="bg-emerald-100 text-emerald-700">
+                              {groupedByDate[date].length} medication{groupedByDate[date].length > 1 ? 's' : ''}
+                            </Badge>
                           </div>
-                          <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-                            <div>
-                              <span className="text-slate-600">Dosage:</span>
-                              <span className="ml-2 font-semibold text-slate-800">{med.dosage}</span>
-                            </div>
-                            <div>
-                              <span className="text-slate-600">Frequency:</span>
-                              <span className="ml-2 font-semibold text-slate-800">{med.frequency}</span>
-                            </div>
-                            <div>
-                              <span className="text-slate-600">Start Date:</span>
-                              <span className="ml-2 font-semibold text-slate-800">{med.startDate}</span>
-                            </div>
-                            <div>
-                              <span className="text-slate-600">Prescribed by:</span>
-                              <span className="ml-2 font-semibold text-slate-800">{med.prescriber}</span>
-                            </div>
+                          <div className="space-y-2">
+                            {groupedByDate[date].map((med, idx) => (
+                              <div key={idx} className="p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200">
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1">
+                                    <h5 className="font-bold text-slate-800 mb-2">{med.medication_name}</h5>
+                                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                                      {med.dosage && (
+                                        <div>
+                                          <span className="text-slate-600">Dosage:</span>
+                                          <span className="ml-2 font-semibold text-slate-800">{med.dosage}</span>
+                                        </div>
+                                      )}
+                                      {med.frequency && (
+                                        <div>
+                                          <span className="text-slate-600">Frequency:</span>
+                                          <span className="ml-2 font-semibold text-slate-800">{med.frequency}</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                    {med.notes && med.notes !== 'Imported from scanned document' && (
+                                      <div className="mt-2 text-xs text-slate-600 italic">
+                                        {med.notes}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <Pill className="w-6 h-6 text-emerald-600" />
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         </div>
-                        <Pill className="w-8 h-8 text-emerald-600" />
-                      </div>
-                    </div>
-                  ))}
+                      ));
+                    })()
+                  ) : (
+                    <p className="text-slate-500 italic">No active medications on record</p>
+                  )}
                 </div>
               </div>
 
@@ -566,28 +908,32 @@ const PatientEHR = () => {
               <div>
                 <h3 className="text-lg font-semibold text-slate-800 mb-4">Discontinued Medications</h3>
                 <div className="space-y-3">
-                  {mockMedications.filter(m => m.status === 'discontinued').map((med, idx) => (
-                    <div key={idx} className="p-5 bg-slate-50 rounded-lg border border-slate-200 opacity-75">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Badge className="bg-slate-400">Discontinued</Badge>
-                            <h4 className="text-lg font-bold text-slate-600">{med.name}</h4>
-                          </div>
-                          <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-                            <div>
-                              <span className="text-slate-500">Dosage:</span>
-                              <span className="ml-2 font-semibold text-slate-600">{med.dosage}</span>
+                  {medications.filter(m => m.status === 'discontinued' || m.status === 'inactive').length > 0 ? (
+                    medications.filter(m => m.status === 'discontinued' || m.status === 'inactive').map((med, idx) => (
+                      <div key={idx} className="p-5 bg-slate-50 rounded-lg border border-slate-200 opacity-75">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Badge className="bg-slate-400">Discontinued</Badge>
+                              <h4 className="text-lg font-bold text-slate-600">{med.medication_name}</h4>
                             </div>
-                            <div>
-                              <span className="text-slate-500">End Date:</span>
-                              <span className="ml-2 font-semibold text-slate-600">{med.endDate}</span>
+                            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                              <div>
+                                <span className="text-slate-500">Dosage:</span>
+                                <span className="ml-2 font-semibold text-slate-600">{med.dosage || 'Not specified'}</span>
+                              </div>
+                              <div>
+                                <span className="text-slate-500">End Date:</span>
+                                <span className="ml-2 font-semibold text-slate-600">{med.end_date || 'Not specified'}</span>
+                              </div>
                             </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    ))
+                  ) : (
+                    <p className="text-slate-500 italic">No discontinued medications</p>
+                  )}
                 </div>
               </div>
             </CardContent>

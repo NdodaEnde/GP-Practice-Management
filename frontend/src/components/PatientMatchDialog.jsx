@@ -11,6 +11,47 @@ import {
   X
 } from 'lucide-react';
 
+// Utility function to format date for display
+const formatDateForDisplay = (dateStr) => {
+  if (!dateStr) return 'Not available';
+  
+  try {
+    const dateString = String(dateStr);
+    
+    // Handle various input formats: 1991.02:03, 1991.02.03, 1991-02-03, etc.
+    // Replace periods and colons with hyphens for consistent parsing
+    let cleanDate = dateString.replace(/[.:]/g, '-');
+    
+    // Parse the date
+    const parts = cleanDate.split('-');
+    if (parts.length === 3) {
+      // Determine if format is YYYY-MM-DD or DD-MM-YYYY based on first part length
+      let year, month, day;
+      
+      if (parts[0].length === 4) {
+        // YYYY-MM-DD format
+        year = parts[0];
+        month = parts[1].padStart(2, '0');
+        day = parts[2].padStart(2, '0');
+      } else {
+        // DD-MM-YYYY or DD-MM-YY format
+        day = parts[0].padStart(2, '0');
+        month = parts[1].padStart(2, '0');
+        year = parts[2].length === 2 ? '20' + parts[2] : parts[2];
+      }
+      
+      // Return in DD/MM/YYYY format
+      return `${day}/${month}/${year}`;
+    }
+    
+    // If we can't parse it, return original
+    return dateString;
+  } catch (e) {
+    console.error('Date format error:', e);
+    return String(dateStr);
+  }
+};
+
 const PatientMatchDialog = ({ 
   isOpen, 
   onClose, 
@@ -65,7 +106,7 @@ const PatientMatchDialog = ({
                     <div>
                       <span className="text-gray-600">Name:</span>
                       <p className="font-medium">
-                        {extractedData.first_name} {extractedData.last_name}
+                        {extractedData.first_name || extractedData.first_names || ''} {extractedData.last_name || extractedData.surname || ''}
                       </p>
                     </div>
                     <div>
@@ -74,7 +115,7 @@ const PatientMatchDialog = ({
                     </div>
                     <div>
                       <span className="text-gray-600">Date of Birth:</span>
-                      <p className="font-medium">{extractedData.dob || 'Not available'}</p>
+                      <p className="font-medium">{formatDateForDisplay(extractedData.dob || extractedData.date_of_birth)}</p>
                     </div>
                     <div>
                       <span className="text-gray-600">Contact:</span>
@@ -172,7 +213,7 @@ const PatientMatchDialog = ({
                   <div>
                     <span className="text-gray-600">Name:</span>
                     <span className="ml-2 font-medium">
-                      {extractedData.first_name} {extractedData.last_name}
+                      {extractedData.first_name || extractedData.first_names || ''} {extractedData.last_name || extractedData.surname || ''}
                     </span>
                   </div>
                   <div>

@@ -36,7 +36,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
-const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) => {
+const GPValidationInterface = ({ patientData, onBack, onValidationComplete, onExtractData, documentStatus, isExtracting }) => {
   const [activeTab, setActiveTab] = useState('overview');
   const [numPages, setNumPages] = useState(null);
   const [pageNumber, setPageNumber] = useState(1);
@@ -131,9 +131,49 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
   console.log('7. File path:', filePath);
   console.log('8. Document ID:', documentId);
 
+  // Utility function to normalize date format
+  const normalizeDateFormat = (dateStr) => {
+    if (!dateStr) return dateStr;
+    try {
+      // Handle various formats: 1991.02:03, 1991.02.03, etc.
+      let cleanDate = dateStr.toString().replace(/[.:]/g, '-');
+      const parts = cleanDate.split('-');
+      if (parts.length === 3) {
+        const year = parts[0];
+        const month = parts[1].padStart(2, '0');
+        const day = parts[2].padStart(2, '0');
+        // Return in YYYY-MM-DD format (ISO standard)
+        return `${year}-${month}-${day}`;
+      }
+      return dateStr;
+    } catch (e) {
+      return dateStr;
+    }
+  };
+
   // Initialize edited data with original values
   useEffect(() => {
-    setEditedDemographics(JSON.parse(JSON.stringify(demographics)));
+    // Normalize demographics - ensure dob field exists and format dates
+    const normalizedDemographics = JSON.parse(JSON.stringify(demographics));
+    
+    // Normalize date formats
+    if (normalizedDemographics.date_of_birth) {
+      normalizedDemographics.date_of_birth = normalizeDateFormat(normalizedDemographics.date_of_birth);
+    }
+    if (normalizedDemographics.dob) {
+      normalizedDemographics.dob = normalizeDateFormat(normalizedDemographics.dob);
+    }
+    
+    // If date_of_birth exists but not dob, add dob
+    if (normalizedDemographics.date_of_birth && !normalizedDemographics.dob) {
+      normalizedDemographics.dob = normalizedDemographics.date_of_birth;
+    }
+    // If dob exists but not date_of_birth, add date_of_birth
+    if (normalizedDemographics.dob && !normalizedDemographics.date_of_birth) {
+      normalizedDemographics.date_of_birth = normalizedDemographics.dob;
+    }
+    
+    setEditedDemographics(normalizedDemographics);
     setEditedChronicCare(JSON.parse(JSON.stringify(chronicSummary)));
     setEditedVitals(JSON.parse(JSON.stringify(vitals)));
     setEditedClinicalNotes(JSON.parse(JSON.stringify(clinicalNotes)));
@@ -433,11 +473,37 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="sm" onClick={onBack}>
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Upload
+            Back to Queue
           </Button>
+          
+          {/* Extract Data Button - Show only if document status is "parsed" */}
+          {documentStatus === 'parsed' && onExtractData && (
+            <Button
+              onClick={onExtractData}
+              disabled={isExtracting}
+              className="gap-2 bg-blue-600 hover:bg-blue-700"
+            >
+              {isExtracting ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  Extracting...
+                </>
+              ) : (
+                <>
+                  <FileCheck className="w-4 h-4" />
+                  Extract Data
+                </>
+              )}
+            </Button>
+          )}
+          
           <div>
             <h1 className="text-xl font-bold">GP Patient Data Validation</h1>
-            <p className="text-sm text-gray-600">Review and validate extracted data</p>
+            <p className="text-sm text-gray-600">
+              {documentStatus === 'parsed' 
+                ? 'Click "Extract Data" to populate structured tables' 
+                : 'Review and validate extracted data'}
+            </p>
           </div>
         </div>
         <Button 
@@ -797,34 +863,40 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete }) =>
                 <CardContent className="space-y-4">
                   {Object.keys(editedDemographics).length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {Object.entries(editedDemographics).map(([key, value]) => (
-                        <div key={key} className="flex flex-col">
-                          <Label htmlFor={`demo-${key}`} className="text-sm font-medium text-gray-600 capitalize mb-2">
-                            {key.replace(/_/g, ' ')}
-                          </Label>
-                          <Input
-                            id={`demo-${key}`}
-                            value={typeof value === 'object' ? JSON.stringify(value) : value || ''}
-                            onChange={(e) => {
-                              const originalValue = demographics[key];
-                              const newValue = e.target.value;
-                              if (originalValue !== newValue) {
-                                trackModification(key, originalValue, newValue, 'demographics');
-                              }
-                              setEditedDemographics(prev => ({
-                                ...prev,
-                                [key]: newValue
-                              }));
-                            }}
-                            className="border-gray-300 focus:border-teal-500"
-                          />
-                          {demographics[key] !== editedDemographics[key] && (
-                            <span className="text-xs text-amber-600 mt-1 flex items-center gap-1">
-                              <Edit className="w-3 h-3" /> Modified
-                            </span>
-                          )}
-                        </div>
-                      ))}
+                      {Object.entries(editedDemographics).map(([key, value]) => {
+                        // Determine input type based on field name
+                        const inputType = (key === 'dob' || key === 'date_of_birth') ? 'date' : 'text';
+                        
+                        return (
+                          <div key={key} className="flex flex-col">
+                            <Label htmlFor={`demo-${key}`} className="text-sm font-medium text-gray-600 capitalize mb-2">
+                              {key.replace(/_/g, ' ')}
+                            </Label>
+                            <Input
+                              id={`demo-${key}`}
+                              type={inputType}
+                              value={typeof value === 'object' ? JSON.stringify(value) : value || ''}
+                              onChange={(e) => {
+                                const originalValue = demographics[key];
+                                const newValue = e.target.value;
+                                if (originalValue !== newValue) {
+                                  trackModification(key, originalValue, newValue, 'demographics');
+                                }
+                                setEditedDemographics(prev => ({
+                                  ...prev,
+                                  [key]: newValue
+                                }));
+                              }}
+                              className="border-gray-300 focus:border-teal-500"
+                            />
+                            {demographics[key] !== editedDemographics[key] && (
+                              <span className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                                <Edit className="w-3 h-3" /> Modified
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   ) : (
                     <p className="text-gray-500">No demographic data extracted</p>

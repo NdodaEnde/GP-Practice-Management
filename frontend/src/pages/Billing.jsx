@@ -9,6 +9,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { invoiceAPI } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
+import InvoiceView from '@/components/InvoiceView';
+import axios from 'axios';
+
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || import.meta.env.REACT_APP_BACKEND_URL;
 
 const Billing = () => {
   const [searchParams] = useSearchParams();
@@ -17,6 +21,8 @@ const Billing = () => {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState(null);
+  const [invoiceViewOpen, setInvoiceViewOpen] = useState(false);
 
   const encounterId = searchParams.get('encounter');
 
@@ -39,9 +45,13 @@ const Billing = () => {
     try {
       setLoading(true);
       const response = await invoiceAPI.list();
-      setInvoices(response.data);
+      // Handle new API structure that returns {count, invoices}
+      const invoicesList = response.data?.invoices || response.data || [];
+      setInvoices(Array.isArray(invoicesList) ? invoicesList : []);
     } catch (error) {
       console.error('Error loading invoices:', error);
+      // Initialize as empty array to prevent map error
+      setInvoices([]);
       toast({
         title: 'Error',
         description: 'Failed to load invoices',
@@ -49,6 +59,21 @@ const Billing = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleViewInvoice = async (invoiceId) => {
+    try {
+      const response = await axios.get(`${BACKEND_URL}/api/invoices/${invoiceId}`);
+      setSelectedInvoice(response.data);
+      setInvoiceViewOpen(true);
+    } catch (error) {
+      console.error('Error loading invoice details:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load invoice details',
+        variant: 'destructive'
+      });
     }
   };
 
@@ -258,7 +283,8 @@ const Billing = () => {
               {invoices.map((invoice) => (
                 <div
                   key={invoice.id}
-                  className="p-5 bg-gradient-to-r from-slate-50 to-violet-50 rounded-lg border border-slate-200 hover:shadow-md transition-all duration-200"
+                  onClick={() => handleViewInvoice(invoice.id)}
+                  className="p-5 bg-gradient-to-r from-slate-50 to-violet-50 rounded-lg border border-slate-200 hover:shadow-md hover:border-violet-300 transition-all duration-200 cursor-pointer"
                   data-testid={`invoice-card-${invoice.id}`}
                 >
                   <div className="flex items-center justify-between">
@@ -268,21 +294,23 @@ const Billing = () => {
                       </div>
                       <div>
                         <h3 className="text-lg font-semibold text-slate-800">
-                          Invoice #{invoice.id.slice(0, 8)}
+                          {invoice.invoice_number || `Invoice #${invoice.id.slice(0, 8)}`}
                         </h3>
                         <p className="text-sm text-slate-600">
-                          {new Date(invoice.created_at).toLocaleDateString()}
+                          {new Date(invoice.invoice_date || invoice.created_at).toLocaleDateString()}
                         </p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-2xl font-bold text-violet-600">R{invoice.total_amount.toFixed(2)}</p>
+                      <p className="text-2xl font-bold text-violet-600">R{parseFloat(invoice.total_amount).toFixed(2)}</p>
                       <span className={`inline-block px-3 py-1 text-xs font-medium rounded-full mt-1 ${
-                        invoice.status === 'paid'
+                        invoice.payment_status === 'paid'
                           ? 'bg-emerald-100 text-emerald-700'
+                          : invoice.payment_status === 'partially_paid'
+                          ? 'bg-yellow-100 text-yellow-700'
                           : 'bg-amber-100 text-amber-700'
                       }`}>
-                        {invoice.status}
+                        {invoice.payment_status ? invoice.payment_status.replace('_', ' ').toUpperCase() : invoice.status}
                       </span>
                     </div>
                   </div>
@@ -292,6 +320,16 @@ const Billing = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Invoice View Dialog */}
+      <InvoiceView 
+        invoice={selectedInvoice}
+        open={invoiceViewOpen}
+        onClose={() => {
+          setInvoiceViewOpen(false);
+          setSelectedInvoice(null);
+        }}
+      />
     </div>
   );
 };

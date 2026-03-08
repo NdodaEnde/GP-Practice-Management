@@ -180,6 +180,8 @@ class InvoiceCreate(BaseModel):
 
 class PrescriptionItem(BaseModel):
     medication_name: str
+    nappi_code: Optional[str] = None  # South African medication code
+    generic_name: Optional[str] = None  # Generic/active ingredient name
     dosage: str
     frequency: str
     duration: str
@@ -267,6 +269,43 @@ class ReferralResponse(BaseModel):
     urgency: str
     status: str
     created_at: str
+
+
+# ==================== Digitised Documents Models (Phase 1.7) ====================
+
+class DigitisedDocumentResponse(BaseModel):
+    id: str
+    workspace_id: str
+    filename: str
+    file_path: str
+    file_size: Optional[int] = None
+    pages_count: Optional[int] = None
+    upload_date: str
+    status: str  # uploaded, parsing, parsed, extracting, extracted, validated, approved, error
+    patient_id: Optional[str] = None
+    patient_name: Optional[str] = None  # Computed field
+    encounter_id: Optional[str] = None
+    parsed_doc_id: Optional[str] = None
+    extracted_data_id: Optional[str] = None
+    uploaded_by: Optional[str] = None
+    validated_by: Optional[str] = None
+    validated_at: Optional[str] = None
+    approved_at: Optional[str] = None
+    error_message: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+class DocumentStatusUpdate(BaseModel):
+    status: str
+    error_message: Optional[str] = None
+
+class DocumentListFilters(BaseModel):
+    status: Optional[str] = None
+    patient_id: Optional[str] = None
+    date_from: Optional[str] = None
+    date_to: Optional[str] = None
+    search: Optional[str] = None
+
 
 # ==================== Helper Functions ====================
 
@@ -396,6 +435,238 @@ async def find_patient_matches(demographics: Dict[str, Any]) -> List[Dict[str, A
     
     return matches[:5]  # Return top 5 matches
 
+async def populate_allergies_from_document(patient_id: str, parsed_data: Dict[str, Any]):
+    """Auto-populate allergies table from extracted document data"""
+    try:
+        demographics = parsed_data.get('demographics', {})
+        allergies_data = demographics.get('allergies') or demographics.get('known_allergies')
+        
+        if not allergies_data:
+            return
+        
+        # Handle different formats: string or list
+        if isinstance(allergies_data, str):
+            if allergies_data.lower() in ['none', 'nil', 'nka', 'nkda', 'no known allergies']:
+                return
+            allergies_list = [a.strip() for a in allergies_data.split(',') if a.strip()]
+        elif isinstance(allergies_data, list):
+            allergies_list = allergies_data
+        else:
+            return
+        
+        for allergy_item in allergies_list:
+            if isinstance(allergy_item, dict):
+                allergen = allergy_item.get('allergen') or allergy_item.get('name') or str(allergy_item)
+                reaction = allergy_item.get('reaction', 'Unknown reaction')
+                severity = allergy_item.get('severity', 'moderate')
+            else:
+                allergen = str(allergy_item)
+                reaction = 'Unknown reaction'
+                severity = 'moderate'
+            
+            # Check if allergy already exists
+            existing = supabase.table('allergies')\
+                .select('*')\
+                .eq('patient_id', patient_id)\
+                .ilike('allergen', f'%{allergen}%')\
+                .eq('status', 'active')\
+                .execute()
+            
+            if not existing.data:
+                allergy_data = {
+                    'id': str(uuid.uuid4()),
+                    'patient_id': patient_id,
+                    'allergen': allergen,
+                    'reaction': reaction,
+                    'severity': severity,
+                    'status': 'active',
+                    'notes': 'Auto-imported from digitized document',
+                    'created_at': datetime.now(timezone.utc).isoformat()
+                }
+                supabase.table('allergies').insert(allergy_data).execute()
+                logger.info(f"Created allergy: {allergen} for patient {patient_id}")
+    
+    except Exception as e:
+        logger.error(f"Error populating allergies: {e}")
+
+async def populate_diagnoses_from_document(patient_id: str, encounter_id: str, parsed_data: Dict[str, Any]):
+    """Auto-populate diagnoses table with AI ICD-10 matching from extracted document data"""
+    try:
+        chronic_summary = parsed_data.get('chronic_summary', {})
+        clinical_notes = parsed_data.get('clinical_notes', {})
+        
+        # Collect diagnoses from different sources
+        diagnoses_to_process = []
+        
+        # From chronic conditions
+        conditions = chronic_summary.get('chronic_conditions', [])
+        for condition in conditions:
+            if isinstance(condition, dict):
+                diagnosis_text = condition.get('condition') or condition.get('name')
+            else:
+                diagnosis_text = str(condition)
+            
+            if diagnosis_text:
+                diagnoses_to_process.append({
+                    'text': diagnosis_text,
+                    'type': 'primary',
+                    'onset_date': None
+                })
+        
+        # From clinical notes (assessment/diagnosis section)
+        if isinstance(clinical_notes, dict):
+            assessment = clinical_notes.get('assessment') or clinical_notes.get('diagnosis')
+            if assessment:
+                diagnoses_to_process.append({
+                    'text': assessment,
+                    'type': 'primary',
+                    'onset_date': None
+                })
+        
+        # Process each diagnosis with AI ICD-10 matching
+        import httpx
+        for diagnosis_item in diagnoses_to_process:
+            diagnosis_text = diagnosis_item['text']
+            
+            # Skip if empty or already exists
+            if not diagnosis_text or len(diagnosis_text) < 3:
+                continue
+            
+            # Check if diagnosis already exists
+            existing = supabase.table('diagnoses')\
+                .select('*')\
+                .eq('patient_id', patient_id)\
+                .ilike('diagnosis_description', f'%{diagnosis_text}%')\
+                .eq('status', 'active')\
+                .execute()
+            
+            if existing.data:
+                continue
+            
+            # Use AI to suggest ICD-10 code
+            icd10_code = None
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(
+                        f"http://localhost:8001/api/icd10/suggest",
+                        params={'diagnosis_text': diagnosis_text, 'max_suggestions': 1},
+                        timeout=10.0
+                    )
+                    if response.status_code == 200:
+                        data = response.json()
+                        if data.get('suggestions') and len(data['suggestions']) > 0:
+                            icd10_code = data['suggestions'][0]['code']
+                            logger.info(f"AI matched '{diagnosis_text}' to ICD-10 code: {icd10_code}")
+            except Exception as e:
+                logger.warning(f"ICD-10 AI matching failed for '{diagnosis_text}': {e}")
+            
+            # If AI matching failed, try simple keyword search
+            if not icd10_code:
+                try:
+                    async with httpx.AsyncClient() as client:
+                        response = await client.get(
+                            f"http://localhost:8001/api/icd10/search",
+                            params={'query': diagnosis_text, 'limit': 1},
+                            timeout=10.0
+                        )
+                        if response.status_code == 200:
+                            data = response.json()
+                            if len(data) > 0:
+                                icd10_code = data[0]['code']
+                                logger.info(f"Keyword matched '{diagnosis_text}' to ICD-10 code: {icd10_code}")
+                except Exception as e:
+                    logger.warning(f"ICD-10 keyword search failed for '{diagnosis_text}': {e}")
+            
+            # Create diagnosis record (even without ICD-10 code)
+            if icd10_code or diagnosis_text:
+                diagnosis_data = {
+                    'id': str(uuid.uuid4()),
+                    'patient_id': patient_id,
+                    'encounter_id': encounter_id,
+                    'icd10_code': icd10_code or 'UNMAPPED',
+                    'diagnosis_description': diagnosis_text,
+                    'diagnosis_type': diagnosis_item['type'],
+                    'status': 'active',
+                    'notes': 'Auto-imported from digitized document' + ('' if icd10_code else ' - ICD-10 code needs manual assignment'),
+                    'created_at': datetime.now(timezone.utc).isoformat()
+                }
+                
+                # Only insert if we have a valid ICD-10 code or the description is substantial
+                if icd10_code and icd10_code != 'UNMAPPED':
+                    supabase.table('diagnoses').insert(diagnosis_data).execute()
+                    logger.info(f"Created diagnosis: {diagnosis_text} ({icd10_code}) for patient {patient_id}")
+    
+    except Exception as e:
+        logger.error(f"Error populating diagnoses: {e}")
+
+async def populate_vitals_from_document(patient_id: str, encounter_id: str, parsed_data: Dict[str, Any]):
+    """Auto-populate vitals table from extracted document data"""
+    try:
+        vitals_data = parsed_data.get('vitals', {})
+        demographics = parsed_data.get('demographics', {})
+        
+        if not vitals_data:
+            return
+        
+        # Get measurement date from document
+        measurement_date = demographics.get('document_date') or datetime.now(timezone.utc).isoformat()
+        if 'T' in measurement_date:
+            measurement_date = measurement_date.split('T')[0]
+        
+        # Get vital records (handle both new and old structures)
+        vital_records = vitals_data.get('vital_entries') or vitals_data.get('vital_signs_records') or []
+        
+        if not vital_records:
+            return
+        
+        # Process each vital record (usually we want the most recent)
+        for idx, vital_record in enumerate(vital_records[:1]):  # Just take the first/most recent one
+            # Extract and normalize vital signs
+            bp_systolic = vital_record.get('bp_systolic')
+            bp_diastolic = vital_record.get('bp_diastolic')
+            heart_rate = vital_record.get('pulse') or vital_record.get('heart_rate')
+            temperature = vital_record.get('temperature')
+            weight = vital_record.get('weight_kg') or vital_record.get('weight')
+            height = vital_record.get('height_cm') or vital_record.get('height')
+            oxygen_saturation = vital_record.get('oxygen_saturation') or vital_record.get('spo2')
+            
+            # Only create record if at least one vital sign exists
+            if not any([bp_systolic, heart_rate, temperature, weight, height, oxygen_saturation]):
+                continue
+            
+            # Check if similar vital already exists for this date
+            existing = supabase.table('vitals')\
+                .select('*')\
+                .eq('patient_id', patient_id)\
+                .eq('measurement_date', measurement_date)\
+                .execute()
+            
+            if existing.data:
+                continue
+            
+            vital_data = {
+                'id': str(uuid.uuid4()),
+                'patient_id': patient_id,
+                'encounter_id': encounter_id,
+                'measurement_date': measurement_date,
+                'blood_pressure_systolic': int(bp_systolic) if bp_systolic else None,
+                'blood_pressure_diastolic': int(bp_diastolic) if bp_diastolic else None,
+                'heart_rate': int(heart_rate) if heart_rate else None,
+                'temperature': float(temperature) if temperature else None,
+                'weight': float(weight) if weight else None,
+                'height': float(height) if height else None,
+                'oxygen_saturation': int(oxygen_saturation) if oxygen_saturation else None,
+                'notes': 'Auto-imported from digitized document',
+                'created_at': datetime.now(timezone.utc).isoformat(),
+                'recorded_by': 'system'
+            }
+            
+            supabase.table('vitals').insert(vital_data).execute()
+            logger.info(f"Created vitals record for patient {patient_id} on {measurement_date}")
+    
+    except Exception as e:
+        logger.error(f"Error populating vitals: {e}")
+
 async def create_encounter_from_document(patient_id: str, parsed_data: Dict[str, Any], document_id: str) -> str:
     """Create an encounter from validated document data"""
     try:
@@ -409,26 +680,50 @@ async def create_encounter_from_document(patient_id: str, parsed_data: Dict[str,
         
         # Prepare vitals
         vitals_json = None
-        if vitals_data and vitals_data.get('vital_signs_records'):
-            # Use the first vital signs record
-            first_record = vitals_data['vital_signs_records'][0] if vitals_data['vital_signs_records'] else {}
-            vitals_json = {
-                'blood_pressure': first_record.get('blood_pressure'),
-                'heart_rate': first_record.get('heart_rate'),
-                'temperature': first_record.get('temperature'),
-                'weight': first_record.get('weight'),
-                'height': first_record.get('height'),
-                'oxygen_saturation': first_record.get('oxygen_saturation')
-            }
+        if vitals_data:
+            # Check for vital_entries (new structure) or vital_signs_records (old structure)
+            vital_records = vitals_data.get('vital_entries') or vitals_data.get('vital_signs_records')
+            
+            if vital_records and len(vital_records) > 0:
+                # Use the most recent vital signs record (first in array)
+                first_record = vital_records[0]
+                
+                # Handle new structure (vital_entries) vs old structure (vital_signs_records)
+                if 'bp_systolic' in first_record:
+                    # New structure with separate systolic/diastolic
+                    bp = None
+                    if first_record.get('bp_systolic') and first_record.get('bp_diastolic'):
+                        bp = f"{first_record.get('bp_systolic')}/{first_record.get('bp_diastolic')}"
+                    elif first_record.get('bp_raw'):
+                        bp = first_record.get('bp_raw')
+                    
+                    vitals_json = {
+                        'blood_pressure': bp,
+                        'heart_rate': first_record.get('pulse') or first_record.get('pulse_raw'),
+                        'temperature': first_record.get('temperature') or first_record.get('temperature_raw'),
+                        'weight': first_record.get('weight_kg') or first_record.get('weight_raw'),
+                        'height': first_record.get('height_cm') or first_record.get('height_raw'),
+                        'oxygen_saturation': first_record.get('oxygen_saturation') or first_record.get('spo2')
+                    }
+                else:
+                    # Old structure
+                    vitals_json = {
+                        'blood_pressure': first_record.get('blood_pressure'),
+                        'heart_rate': first_record.get('heart_rate'),
+                        'temperature': first_record.get('temperature'),
+                        'weight': first_record.get('weight'),
+                        'height': first_record.get('height'),
+                        'oxygen_saturation': first_record.get('oxygen_saturation')
+                    }
         
-        # Prepare GP notes from clinical notes and chronic summary
+        # Prepare GP notes from clinical notes
         gp_notes_parts = []
         if clinical_notes:
-            gp_notes_parts.append(f"Clinical Notes: {json.dumps(clinical_notes)}")
-        if chronic_summary.get('chronic_conditions'):
-            gp_notes_parts.append(f"Chronic Conditions: {json.dumps(chronic_summary['chronic_conditions'])}")
-        if chronic_summary.get('current_medications'):
-            gp_notes_parts.append(f"Current Medications: {json.dumps(chronic_summary['current_medications'])}")
+            if isinstance(clinical_notes, dict):
+                for key, value in clinical_notes.items():
+                    gp_notes_parts.append(f"{key}: {value}")
+            else:
+                gp_notes_parts.append(str(clinical_notes))
         
         gp_notes = '\n\n'.join(gp_notes_parts) if gp_notes_parts else 'Imported from scanned document'
         
@@ -450,6 +745,102 @@ async def create_encounter_from_document(patient_id: str, parsed_data: Dict[str,
         
         supabase.table('encounters').insert(encounter_data).execute()
         
+        # Save chronic conditions as patient_conditions
+        conditions = chronic_summary.get('chronic_conditions', [])
+        if conditions:
+            for condition in conditions:
+                if isinstance(condition, dict):
+                    condition_name = condition.get('condition') or condition.get('name') or str(condition)
+                else:
+                    condition_name = str(condition)
+                
+                # Check if condition already exists
+                existing = supabase.table('patient_conditions')\
+                    .select('*')\
+                    .eq('patient_id', patient_id)\
+                    .ilike('condition_name', f'%{condition_name}%')\
+                    .execute()
+                
+                if not existing.data:
+                    condition_data = {
+                        'id': str(uuid.uuid4()),
+                        'patient_id': patient_id,
+                        'condition_name': condition_name,
+                        'diagnosed_date': encounter_date.split('T')[0] if 'T' in encounter_date else encounter_date,
+                        'status': 'active',
+                        'notes': f'Imported from historical document',
+                        'created_at': datetime.now(timezone.utc).isoformat()
+                    }
+                    supabase.table('patient_conditions').insert(condition_data).execute()
+                    logger.info(f"Created condition: {condition_name} for patient {patient_id}")
+        
+        # Save current medications
+        medications = chronic_summary.get('current_medications', []) or chronic_summary.get('likely_current_medications', [])
+        if medications:
+            for medication in medications:
+                if isinstance(medication, dict):
+                    # Handle different field name variations from microservice
+                    med_name = (
+                        medication.get('medication_name') or 
+                        medication.get('medication') or 
+                        medication.get('name') or 
+                        'Unknown Medication'
+                    )
+                    
+                    # Extract dosage information
+                    med_dosage = (
+                        medication.get('dosage_info') or 
+                        medication.get('dosage') or 
+                        medication.get('dose') or 
+                        ''
+                    )
+                    
+                    # Extract frequency
+                    med_frequency = medication.get('frequency', '')
+                    
+                    # Extract the mentioned date (when medication was prescribed)
+                    med_date = (
+                        medication.get('mentioned_date') or 
+                        medication.get('prescribed_date') or 
+                        medication.get('start_date') or
+                        encounter_date
+                    )
+                    
+                    # Normalize date format
+                    if 'T' in str(med_date):
+                        med_date = med_date.split('T')[0]
+                    
+                    # Extract context/notes
+                    med_notes = medication.get('context', 'Imported from scanned document')
+                    if medication.get('legibility'):
+                        med_notes += f" (Legibility: {medication.get('legibility')})"
+                    
+                else:
+                    med_name = str(medication)
+                    med_dosage = ''
+                    med_frequency = ''
+                    med_date = encounter_date.split('T')[0] if 'T' in encounter_date else encounter_date
+                    med_notes = 'Imported from scanned document'
+                
+                # Skip if medication name is empty or just brackets
+                if not med_name or med_name in ['Unknown Medication', '{}', '[]']:
+                    continue
+                
+                # Store in MongoDB
+                await db.patient_medications.insert_one({
+                    'id': str(uuid.uuid4()),
+                    'patient_id': patient_id,
+                    'medication_name': med_name,
+                    'dosage': med_dosage,
+                    'frequency': med_frequency,
+                    'start_date': med_date,
+                    'status': 'active',
+                    'prescribed_by': 'Historical Record',
+                    'notes': med_notes,
+                    'created_at': datetime.now(timezone.utc).isoformat()
+                })
+                logger.info(f"Created medication: {med_name} (Date: {med_date}) for patient {patient_id}")
+        
         # Store reference to original document in MongoDB
         await db.document_refs.insert_one({
             'id': str(uuid.uuid4()),
@@ -460,7 +851,12 @@ async def create_encounter_from_document(patient_id: str, parsed_data: Dict[str,
             'created_at': datetime.now(timezone.utc).isoformat()
         })
         
-        logger.info(f"Created encounter {encounter_id} from document {document_id}")
+        # Auto-populate structured EHR tables
+        await populate_allergies_from_document(patient_id, parsed_data)
+        await populate_diagnoses_from_document(patient_id, encounter_id, parsed_data)
+        await populate_vitals_from_document(patient_id, encounter_id, parsed_data)
+        
+        logger.info(f"Created encounter {encounter_id} from document {document_id} with structured EHR data")
         return encounter_id
         
     except Exception as e:
@@ -767,6 +1163,37 @@ async def update_encounter(encounter_id: str, gp_notes: Optional[str] = None, st
         raise HTTPException(status_code=500, detail=str(e))
 
 # ==================== Document Processing ====================
+
+
+@api_router.get("/patients/{patient_id}/conditions")
+async def get_patient_conditions(patient_id: str):
+    """Get all conditions for a patient"""
+    try:
+        result = supabase.table('patient_conditions')\
+            .select('*')\
+            .eq('patient_id', patient_id)\
+            .order('diagnosed_date', desc=True)\
+            .execute()
+        return {'status': 'success', 'conditions': result.data}
+    except Exception as e:
+        logger.error(f"Error getting patient conditions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/patients/{patient_id}/medications")
+async def get_patient_medications(patient_id: str):
+    """Get all medications for a patient"""
+    try:
+        # Fetch from MongoDB
+        medications_cursor = db.patient_medications.find(
+            {'patient_id': patient_id},
+            {'_id': 0}
+        ).sort('created_at', -1)
+        
+        medications = await medications_cursor.to_list(length=100)
+        return {'status': 'success', 'medications': medications}
+    except Exception as e:
+        logger.error(f"Error getting patient medications: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.post("/documents/upload-standalone")
 async def upload_standalone_document(
@@ -1230,6 +1657,132 @@ async def get_validation_session(encounter_id: str):
         logger.error(f"Error getting validation session: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@api_router.get("/validation/queue/list")
+async def get_validation_queue(
+    status: Optional[str] = None,  # Changed default to None
+    workspace_id: Optional[str] = None,
+    limit: int = 50
+):
+    """
+    Get documents in validation queue
+    Returns documents with status 'parsed' or 'pending_validation'
+    """
+    try:
+        # Build query
+        query = supabase.table('digitised_documents').select('*')
+        
+        # Filter by status
+        if status:
+            query = query.eq('status', status)
+        else:
+            # Get both parsed and pending_validation (default behavior)
+            query = query.in_('status', ['parsed', 'pending_validation'])
+        
+        # Filter by workspace
+        if workspace_id:
+            query = query.eq('workspace_id', workspace_id)
+        
+        # Order by created_at descending (newest first)
+        query = query.order('created_at', desc=True).limit(limit)
+        
+        result = query.execute()
+        
+        # Calculate stats
+        all_docs = supabase.table('digitised_documents').select('status').execute()
+        total_parsed = sum(1 for d in all_docs.data if d['status'] == 'parsed')
+        total_pending = sum(1 for d in all_docs.data if d['status'] == 'pending_validation')
+        total_validated = sum(1 for d in all_docs.data if d['status'] == 'validated')
+        total_rejected = sum(1 for d in all_docs.data if d['status'] == 'rejected')
+        
+        return {
+            'status': 'success',
+            'data': {
+                'queue': result.data,
+                'stats': {
+                    'parsed': total_parsed,
+                    'pending': total_pending,
+                    'validated': total_validated,
+                    'rejected': total_rejected,
+                    'total': len(all_docs.data)
+                }
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error fetching validation queue: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/validation/approve/{document_id}")
+async def approve_document_validation(
+    document_id: str,
+    validated_by: Optional[str] = Form(None),
+    notes: Optional[str] = Form(None)
+):
+    """
+    Approve a document after validation
+    Moves document from pending_validation to validated status
+    """
+    try:
+        # Update document status
+        result = supabase.table('digitised_documents').update({
+            'status': 'validated',
+            'validated_at': datetime.now(timezone.utc).isoformat(),
+            'validated_by': validated_by or 'system',
+            'validation_notes': notes,
+            'updated_at': datetime.now(timezone.utc).isoformat()
+        }).eq('id', document_id).execute()
+        
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        logger.info(f"✅ Document {document_id} approved by {validated_by or 'system'}")
+        
+        return {
+            'status': 'success',
+            'message': 'Document approved successfully',
+            'document': result.data[0]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error approving document: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/validation/reject/{document_id}")
+async def reject_document_validation(
+    document_id: str,
+    validated_by: Optional[str] = Form(None),
+    reason: Optional[str] = Form(None)
+):
+    """
+    Reject a document after validation
+    Moves document to rejected status
+    """
+    try:
+        result = supabase.table('digitised_documents').update({
+            'status': 'rejected',
+            'validated_at': datetime.now(timezone.utc).isoformat(),
+            'validated_by': validated_by or 'system',
+            'validation_notes': reason,
+            'error_message': reason,
+            'updated_at': datetime.now(timezone.utc).isoformat()
+        }).eq('id', document_id).execute()
+        
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        logger.info(f"❌ Document {document_id} rejected by {validated_by or 'system'}: {reason}")
+        
+        return {
+            'status': 'success',
+            'message': 'Document rejected',
+            'document': result.data[0]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error rejecting document: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @api_router.post("/validation/{document_id}/approve")
 async def approve_validation(document_id: str, update: ValidationUpdate):
     """Approve parsed document data"""
@@ -1315,71 +1868,73 @@ async def get_dispense_events(encounter_id: str):
         logger.error(f"Error getting dispense events: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# ==================== Billing ====================
+# ==================== Billing (OLD - REPLACED BY api/billing.py) ====================
 
-@api_router.post("/invoices")
-async def create_invoice(invoice: InvoiceCreate):
-    """Create an invoice for an encounter"""
-    try:
-        invoice_id = str(uuid.uuid4())
-        invoice_data = {
-            'id': invoice_id,
-            'encounter_id': invoice.encounter_id,
-            'payer_type': invoice.payer_type,
-            'items_json': [item.model_dump() for item in invoice.items],
-            'total_amount': invoice.total_amount,
-            'notes': invoice.notes,
-            'status': 'pending',
-            'created_at': datetime.now(timezone.utc).isoformat()
-        }
-        
-        supabase.table('gp_invoices').insert(invoice_data).execute()
-        
-        # Update encounter status
-        supabase.table('encounters').update({'status': 'completed'}).eq('id', invoice.encounter_id).execute()
-        
-        return {'status': 'success', 'invoice_id': invoice_id}
-    except Exception as e:
-        logger.error(f"Error creating invoice: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@api_router.get("/invoices")
-async def list_invoices():
-    """List all invoices"""
-    try:
-        result = supabase.table('gp_invoices').select('*').order('created_at', desc=True).limit(100).execute()
-        return result.data
-    except Exception as e:
-        logger.error(f"Error listing invoices: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@api_router.get("/invoices/{invoice_id}")
-async def get_invoice(invoice_id: str):
-    """Get invoice details"""
-    try:
-        result = supabase.table('gp_invoices').select('*').eq('id', invoice_id).execute()
-        if not result.data:
-            raise HTTPException(status_code=404, detail="Invoice not found")
-        return result.data[0]
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting invoice: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@api_router.put("/invoices/{invoice_id}/status")
-async def update_invoice_status(invoice_id: str, status: str):
-    """Update invoice status"""
-    try:
-        result = supabase.table('gp_invoices').update({'status': status}).eq('id', invoice_id).execute()
-        if not result.data:
-            raise HTTPException(status_code=404, detail="Invoice not found")
-        return result.data[0]
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error updating invoice: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+# OLD BILLING ENDPOINTS COMMENTED OUT - REPLACED BY api/billing.py
+# 
+# @api_router.post("/invoices")
+# async def create_invoice(invoice: InvoiceCreate):
+#     """Create an invoice for an encounter"""
+#     try:
+#         invoice_id = str(uuid.uuid4())
+#         invoice_data = {
+#             'id': invoice_id,
+#             'encounter_id': invoice.encounter_id,
+#             'payer_type': invoice.payer_type,
+#             'items_json': [item.model_dump() for item in invoice.items],
+#             'total_amount': invoice.total_amount,
+#             'notes': invoice.notes,
+#             'status': 'pending',
+#             'created_at': datetime.now(timezone.utc).isoformat()
+#         }
+#         
+#         supabase.table('gp_invoices').insert(invoice_data).execute()
+#         
+#         # Update encounter status
+#         supabase.table('encounters').update({'status': 'completed'}).eq('id', invoice.encounter_id).execute()
+#         
+#         return {'status': 'success', 'invoice_id': invoice_id}
+#     except Exception as e:
+#         logger.error(f"Error creating invoice: {e}")
+#         raise HTTPException(status_code=500, detail=str(e))
+# 
+# @api_router.get("/invoices")
+# async def list_invoices():
+#     """List all invoices"""
+#     try:
+#         result = supabase.table('gp_invoices').select('*').order('created_at', desc=True).limit(100).execute()
+#         return result.data
+#     except Exception as e:
+#         logger.error(f"Error listing invoices: {e}")
+#         raise HTTPException(status_code=500, detail=str(e))
+# 
+# @api_router.get("/invoices/{invoice_id}")
+# async def get_invoice(invoice_id: str):
+#     """Get invoice details"""
+#     try:
+#         result = supabase.table('gp_invoices').select('*').eq('id', invoice_id).execute()
+#         if not result.data:
+#             raise HTTPException(status_code=404, detail="Invoice not found")
+#         return result.data[0]
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         logger.error(f"Error getting invoice: {e}")
+#         raise HTTPException(status_code=500, detail=str(e))
+# 
+# @api_router.put("/invoices/{invoice_id}/status")
+# async def update_invoice_status(invoice_id: str, status: str):
+#     """Update invoice status"""
+#     try:
+#         result = supabase.table('gp_invoices').update({'status': status}).eq('id', invoice_id).execute()
+#         if not result.data:
+#             raise HTTPException(status_code=404, detail="Invoice not found")
+#         return result.data[0]
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         logger.error(f"Error updating invoice: {e}")
+#         raise HTTPException(status_code=500, detail=str(e))
 
 # ==================== Analytics ====================
 
@@ -1594,10 +2149,62 @@ async def proxy_gp_upload(
     patient_id: Optional[str] = Form(None),
     processing_mode: str = Form("smart")
 ):
-    """Proxy GP patient file upload to microservice"""
+    """
+    Upload GP patient file with Phase 1.7 integration
+    Creates digitised_documents record and tracks status through workflow
+    """
+    document_id = str(uuid.uuid4())
+    
     try:
         # Read file content
         file_content = await file.read()
+        file_size = len(file_content)
+        
+        # Upload to Supabase Storage
+        storage_path = f"{DEMO_WORKSPACE_ID}/{document_id}/{file.filename}"
+        
+        try:
+            supabase.storage.from_('medical-records').upload(
+                path=storage_path,
+                file=file_content,
+                file_options={
+                    'content-type': 'application/pdf',
+                    'cache-control': '3600',
+                    'upsert': 'false'
+                }
+            )
+            logger.info(f"File uploaded to Supabase Storage: {storage_path} ({file_size} bytes)")
+        except Exception as storage_error:
+            logger.error(f"Supabase Storage upload failed: {storage_error}")
+            # Fall back to local storage if Supabase fails
+            storage_dir = Path("storage/gp_documents/original")
+            storage_dir.mkdir(parents=True, exist_ok=True)
+            local_path = storage_dir / f"gp_doc_{document_id}_{file.filename}"
+            with open(local_path, "wb") as f:
+                f.write(file_content)
+            storage_path = str(local_path)
+            logger.info(f"File saved locally as fallback: {local_path}")
+        
+        # Create digitised_documents record with status "uploaded"
+        digitised_doc_data = {
+            'id': document_id,
+            'workspace_id': DEMO_WORKSPACE_ID,
+            'filename': file.filename,
+            'file_path': storage_path,  # Supabase Storage path or local fallback
+            'file_size': file_size,
+            'status': 'uploaded',
+            'created_at': datetime.now(timezone.utc).isoformat(),
+            'updated_at': datetime.now(timezone.utc).isoformat()
+        }
+        
+        supabase.table('digitised_documents').insert(digitised_doc_data).execute()
+        logger.info(f"Created digitised_documents record: {document_id}")
+        
+        # Update status to "parsing"
+        supabase.table('digitised_documents')\
+            .update({'status': 'parsing', 'updated_at': datetime.now(timezone.utc).isoformat()})\
+            .eq('id', document_id)\
+            .execute()
         
         # Prepare multipart form data for microservice
         files = {'file': (file.filename, file_content, file.content_type)}
@@ -1608,7 +2215,7 @@ async def proxy_gp_upload(
         if patient_id:
             data['patient_id'] = patient_id
         
-        # Forward to microservice
+        # Forward to microservice for parsing and extraction
         async with httpx.AsyncClient(timeout=180.0) as client:
             response = await client.post(
                 f"{MICROSERVICE_URL}/api/v1/gp/upload-patient-file",
@@ -1616,12 +2223,71 @@ async def proxy_gp_upload(
                 data=data
             )
             response.raise_for_status()
-            return response.json()
+            result = response.json()
+        
+        # Store parsed data in MongoDB and update status
+        if result.get('success'):
+            parsed_doc_id = result.get('data', {}).get('parsed_doc_id')
+            
+            # Store the entire parsed response in MongoDB for retrieval
+            parsed_data_record = {
+                'document_id': document_id,
+                'parsed_doc_id': parsed_doc_id,
+                'microservice_response': result,
+                'extracted_data': result.get('data', {}),
+                'workspace_id': DEMO_WORKSPACE_ID,
+                'created_at': datetime.now(timezone.utc).isoformat()
+            }
+            
+            # Store in MongoDB (surgiscan_documents database)
+            surgiscan_docs_db = mongo_client['surgiscan_documents']
+            mongo_result = await surgiscan_docs_db.gp_parsed_documents.insert_one(parsed_data_record)
+            mongo_id = str(mongo_result.inserted_id)
+            
+            logger.info(f"Stored parsed data in MongoDB: {mongo_id}")
+            
+            # Update Supabase with both IDs
+            update_data = {
+                'status': 'parsed',
+                'parsed_doc_id': mongo_id,  # Use MongoDB ID instead
+                'updated_at': datetime.now(timezone.utc).isoformat()
+            }
+            
+            supabase.table('digitised_documents')\
+                .update(update_data)\
+                .eq('id', document_id)\
+                .execute()
+            
+            logger.info(f"Document {document_id} parsed successfully, MongoDB ID: {mongo_id}")
+        
+        # Add document_id to response
+        result['document_id'] = document_id
+        return result
             
     except httpx.HTTPError as e:
+        # Update status to "error"
+        supabase.table('digitised_documents')\
+            .update({
+                'status': 'error',
+                'error_message': f"Microservice error: {str(e)}",
+                'updated_at': datetime.now(timezone.utc).isoformat()
+            })\
+            .eq('id', document_id)\
+            .execute()
+        
         logger.error(f"Microservice error: {e}")
         raise HTTPException(status_code=500, detail=f"Microservice error: {str(e)}")
     except Exception as e:
+        # Update status to "error"
+        supabase.table('digitised_documents')\
+            .update({
+                'status': 'error',
+                'error_message': str(e),
+                'updated_at': datetime.now(timezone.utc).isoformat()
+            })\
+            .eq('id', document_id)\
+            .execute()
+        
         logger.error(f"GP upload proxy error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1666,19 +2332,21 @@ async def proxy_gp_chronic_summary(patient_id: str):
         logger.error(f"GP chronic summary proxy error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@api_router.get("/gp/parsed-document/{document_id}")
-async def proxy_gp_parsed_document(document_id: str):
-    """Proxy get parsed document to microservice"""
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(
-                f"{MICROSERVICE_URL}/api/v1/gp/parsed-document/{document_id}"
-            )
-            response.raise_for_status()
-            return response.json()
-    except Exception as e:
-        logger.error(f"GP parsed document proxy error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+# OLD: Proxy to microservice - DEPRECATED in Phase 1.7
+# Now using MongoDB storage instead (see endpoint at line ~2429)
+# @api_router.get("/gp/parsed-document/{document_id}")
+# async def proxy_gp_parsed_document(document_id: str):
+#     """Proxy get parsed document to microservice"""
+#     try:
+#         async with httpx.AsyncClient(timeout=30.0) as client:
+#             response = await client.get(
+#                 f"{MICROSERVICE_URL}/api/v1/gp/parsed-document/{document_id}"
+#             )
+#             response.raise_for_status()
+#             return response.json()
+#     except Exception as e:
+#         logger.error(f"GP parsed document proxy error: {e}")
+#         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/gp/statistics")
 async def proxy_gp_statistics():
@@ -1694,34 +2362,56 @@ async def proxy_gp_statistics():
 
 @api_router.get("/gp/document/{document_id}/view")
 async def get_gp_document_view(document_id: str):
-    """Get GP document for viewing"""
+    """
+    Get GP document for viewing from Supabase Storage
+    Phase 1.7: Uses Supabase Storage (production will use S3)
+    """
     try:
-        # Connect to the microservice database where GP documents are stored
-        microservice_db_name = os.environ.get('DATABASE_NAME', 'surgiscan_documents')
-        microservice_client = AsyncIOMotorClient(os.environ.get('MONGODB_URL', 'mongodb://localhost:27017'))
-        microservice_db = microservice_client[microservice_db_name]
+        # Get document metadata from digitised_documents table
+        doc_result = supabase.table('digitised_documents')\
+            .select('*')\
+            .eq('id', document_id)\
+            .execute()
         
-        # Get document from MongoDB
-        doc = await microservice_db.gp_scanned_documents.find_one({"document_id": document_id})
-        
-        microservice_client.close()
-        
-        if not doc:
+        if not doc_result.data:
             raise HTTPException(status_code=404, detail=f"Document not found: {document_id}")
         
-        # Return the file data with CORS headers
-        from fastapi.responses import Response
-        return Response(
-            content=doc["file_data"],
-            media_type="application/pdf",
-            headers={
-                "Content-Disposition": f'inline; filename="{doc["filename"]}"',
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "GET, OPTIONS",
-                "Access-Control-Allow-Headers": "*",
-                "Cache-Control": "public, max-age=3600"
-            }
-        )
+        doc_metadata = doc_result.data[0]
+        storage_path = doc_metadata['file_path']
+        
+        # Check if it's a Supabase Storage path or local path
+        if storage_path.startswith(DEMO_WORKSPACE_ID):
+            # It's in Supabase Storage - generate signed URL
+            signed_url_response = supabase.storage.from_('medical-records').create_signed_url(
+                path=storage_path,
+                expires_in=3600  # 1 hour
+            )
+            
+            # Redirect to signed URL
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(url=signed_url_response['signedURL'])
+        
+        else:
+            # Fallback: Local file system (for old documents)
+            file_path = Path(storage_path)
+            if not file_path.exists():
+                raise HTTPException(status_code=404, detail="Document file not found")
+            
+            with open(file_path, 'rb') as f:
+                file_content = f.read()
+            
+            from fastapi.responses import Response
+            return Response(
+                content=file_content,
+                media_type="application/pdf",
+                headers={
+                    "Content-Disposition": f'inline; filename="{doc_metadata["filename"]}"',
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "GET, OPTIONS",
+                    "Access-Control-Allow-Headers": "*",
+                    "Cache-Control": "public, max-age=3600"
+                }
+            )
     except HTTPException:
         raise
     except Exception as e:
@@ -1882,6 +2572,24 @@ async def confirm_patient_match(confirm_request: ConfirmMatchRequest):
         
         microservice_client.close()
         
+        # Update digitised_documents status to 'approved' and link to patient/encounter
+        try:
+            supabase.table('digitised_documents')\
+                .update({
+                    'status': 'approved',
+                    'patient_id': patient_id,
+                    'encounter_id': encounter_id,
+                    'validated_by': 'user',
+                    'validated_at': datetime.now(timezone.utc).isoformat(),
+                    'approved_at': datetime.now(timezone.utc).isoformat(),
+                    'updated_at': datetime.now(timezone.utc).isoformat()
+                })\
+                .eq('id', document_id)\
+                .execute()
+            logger.info(f"Updated digitised_documents record for {document_id} - status: approved")
+        except Exception as e:
+            logger.warning(f"Could not update digitised_documents for {document_id}: {e}")
+        
         logger.info(f"Successfully matched document {document_id} to patient {patient_id}, created encounter {encounter_id}")
         
         return {
@@ -1904,6 +2612,89 @@ async def create_new_patient_from_document(create_request: CreateNewPatientReque
         parsed_data = create_request.parsed_data
         
         logger.info(f"Creating new patient from document {document_id}")
+        logger.info(f"Received demographics: {demographics}")
+        
+        # Normalize demographics data - try multiple field name variations
+        # Extract name from various possible fields
+        first_name = 'Unknown'
+        last_name = 'Unknown'
+        
+        # Try to get first_name and last_name directly
+        if demographics.get('first_name'):
+            first_name = demographics.get('first_name')
+        if demographics.get('last_name'):
+            last_name = demographics.get('last_name')
+        
+        # Try first_names and surname (common in South African documents)
+        if first_name == 'Unknown' and demographics.get('first_names'):
+            first_name = demographics.get('first_names')
+        if last_name == 'Unknown' and demographics.get('surname'):
+            last_name = demographics.get('surname')
+        
+        # If not found, try patient_name or name field
+        if first_name == 'Unknown' and (demographics.get('patient_name') or demographics.get('name')):
+            full_name = demographics.get('patient_name') or demographics.get('name', '')
+            name_parts = full_name.strip().split()
+            if len(name_parts) >= 2:
+                first_name = name_parts[0]
+                last_name = ' '.join(name_parts[1:])
+            elif len(name_parts) == 1:
+                first_name = name_parts[0]
+                last_name = ''
+        
+        # Extract other fields with fallbacks
+        dob = demographics.get('dob') or demographics.get('date_of_birth') or demographics.get('birth_date') or '1900-01-01'
+        
+        # Normalize date format (handle formats like 1991.02:03 or 1991.02.03)
+        if dob and dob != '1900-01-01':
+            # Replace periods and colons with dashes
+            dob = dob.replace('.', '-').replace(':', '-')
+            # Ensure proper formatting
+            try:
+                from datetime import datetime
+                parsed_date = datetime.strptime(dob, '%Y-%m-%d')
+                dob = parsed_date.strftime('%Y-%m-%d')
+            except:
+                # If parsing fails, keep the normalized version
+                pass
+        id_number = demographics.get('id_number') or demographics.get('patient_id') or demographics.get('sa_id_number') or demographics.get('id') or 'Unknown'
+        
+        # Contact number - check multiple field variations
+        contact_number = (
+            demographics.get('contact_number') or 
+            demographics.get('cell_number') or 
+            demographics.get('mobile') or 
+            demographics.get('phone') or 
+            demographics.get('telephone') or 
+            demographics.get('cellphone')
+        )
+        
+        email = demographics.get('email') or demographics.get('email_address')
+        
+        # Address - combine multiple address fields if needed
+        address = demographics.get('address') or demographics.get('residential_address')
+        if not address:
+            # Build address from components
+            address_parts = []
+            if demographics.get('home_address_street'):
+                address_parts.append(demographics.get('home_address_street'))
+            if demographics.get('home_address_suburb'):
+                address_parts.append(demographics.get('home_address_suburb'))
+            if demographics.get('home_address_city'):
+                address_parts.append(demographics.get('home_address_city'))
+            if demographics.get('home_address_code'):
+                address_parts.append(str(demographics.get('home_address_code')))
+            if demographics.get('postal_address') and not address_parts:
+                address_parts.append(demographics.get('postal_address'))
+            address = ', '.join(address_parts) if address_parts else None
+        
+        # Medical aid - check multiple field variations
+        medical_aid = (
+            demographics.get('medical_aid') or 
+            demographics.get('medical_scheme') or 
+            demographics.get('medical_aid_name') or 
+            demographics.get('medical_aid_scheme')
+        )
         
         # Create new patient in Supabase
         patient_id = str(uuid.uuid4())
@@ -1912,16 +2703,18 @@ async def create_new_patient_from_document(create_request: CreateNewPatientReque
             'id': patient_id,
             'tenant_id': DEMO_TENANT_ID,
             'workspace_id': DEMO_WORKSPACE_ID,
-            'first_name': demographics.get('first_name') or demographics.get('patient_name', 'Unknown').split()[0],
-            'last_name': demographics.get('last_name') or ' '.join(demographics.get('patient_name', 'Unknown').split()[1:]) or 'Unknown',
-            'dob': demographics.get('dob') or demographics.get('date_of_birth') or '1900-01-01',
-            'id_number': demographics.get('id_number') or demographics.get('patient_id') or demographics.get('sa_id_number') or 'Unknown',
-            'contact_number': demographics.get('contact_number') or demographics.get('phone'),
-            'email': demographics.get('email'),
-            'address': demographics.get('address'),
-            'medical_aid': demographics.get('medical_aid'),
+            'first_name': first_name,
+            'last_name': last_name,
+            'dob': dob,
+            'id_number': id_number,
+            'contact_number': contact_number,
+            'email': email,
+            'address': address,
+            'medical_aid': medical_aid,
             'created_at': datetime.now(timezone.utc).isoformat()
         }
+        
+        logger.info(f"Normalized patient data: {patient_data}")
         
         supabase.table('patients').insert(patient_data).execute()
         
@@ -1960,6 +2753,24 @@ async def create_new_patient_from_document(create_request: CreateNewPatientReque
         
         microservice_client.close()
         
+        # Update digitised_documents status to 'approved' and link to patient/encounter
+        try:
+            supabase.table('digitised_documents')\
+                .update({
+                    'status': 'approved',
+                    'patient_id': patient_id,
+                    'encounter_id': encounter_id,
+                    'validated_by': 'user',
+                    'validated_at': datetime.now(timezone.utc).isoformat(),
+                    'approved_at': datetime.now(timezone.utc).isoformat(),
+                    'updated_at': datetime.now(timezone.utc).isoformat()
+                })\
+                .eq('id', document_id)\
+                .execute()
+            logger.info(f"Updated digitised_documents record for {document_id} - status: approved")
+        except Exception as e:
+            logger.warning(f"Could not update digitised_documents for {document_id}: {e}")
+        
         logger.info(f"Created new patient {patient_id} and encounter {encounter_id} from document {document_id}")
         
         return {
@@ -1972,6 +2783,813 @@ async def create_new_patient_from_document(create_request: CreateNewPatientReque
     except Exception as e:
         logger.error(f"Error creating new patient: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# OLD EXTRACT ENDPOINT - DEPRECATED - USE LINE 3113 VERSION INSTEAD
+# @api_router.post("/gp/documents/{document_id}/extract")
+# async def extract_document_data(document_id: str):
+#     """
+#     OLD VERSION - Deprecated
+#     Use the new extract endpoint at line 3113 which supports template-driven extraction
+#     """
+#     raise HTTPException(status_code=410, detail="This endpoint is deprecated. Use the new extract API.")
+
+
+# ==================== Digitised Documents Endpoints (Phase 1.7) ====================
+
+@api_router.get("/gp/documents")
+async def list_digitised_documents(
+    status: Optional[str] = None,
+    patient_id: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    search: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0
+):
+    """
+    List all digitised documents with optional filters
+    Supports pagination and multiple filter criteria
+    """
+    try:
+        logger.info(f"Fetching digitised documents with filters: status={status}, patient_id={patient_id}")
+        
+        # Build query
+        query = supabase.table('digitised_documents').select('*')
+        
+        # Apply filters
+        if status:
+            query = query.eq('status', status)
+        if patient_id:
+            query = query.eq('patient_id', patient_id)
+        if date_from:
+            query = query.gte('upload_date', date_from)
+        if date_to:
+            query = query.lte('upload_date', date_to)
+        if search:
+            query = query.ilike('filename', f'%{search}%')
+        
+        # Apply workspace filter
+        query = query.eq('workspace_id', DEMO_WORKSPACE_ID)
+        
+        # Order by upload date descending
+        query = query.order('upload_date', desc=True)
+        
+        # Apply pagination
+        query = query.range(offset, offset + limit - 1)
+        
+        result = query.execute()
+        
+        # Enrich with patient names if patient_id exists
+        documents = []
+        for doc in result.data:
+            doc_copy = doc.copy()
+            if doc.get('patient_id'):
+                try:
+                    patient_res = supabase.table('patients').select('first_name, last_name').eq('id', doc['patient_id']).execute()
+                    if patient_res.data:
+                        patient = patient_res.data[0]
+                        doc_copy['patient_name'] = f"{patient['first_name']} {patient['last_name']}"
+                except:
+                    doc_copy['patient_name'] = None
+            documents.append(doc_copy)
+        
+        return {
+            'status': 'success',
+            'documents': documents,
+            'total': len(documents),
+            'offset': offset,
+            'limit': limit
+        }
+    except Exception as e:
+        logger.error(f"Error listing digitised documents: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/gp/documents/{document_id}")
+async def get_digitised_document(document_id: str):
+    """Get details of a specific digitised document"""
+    try:
+        result = supabase.table('digitised_documents')\
+            .select('*')\
+            .eq('id', document_id)\
+            .execute()
+        
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        document = result.data[0]
+        
+        # Enrich with patient name if linked
+        if document.get('patient_id'):
+            try:
+                patient_res = supabase.table('patients').select('first_name, last_name').eq('id', document['patient_id']).execute()
+                if patient_res.data:
+                    patient = patient_res.data[0]
+                    document['patient_name'] = f"{patient['first_name']} {patient['last_name']}"
+            except:
+                document['patient_name'] = None
+        
+        return {
+            'status': 'success',
+            'document': document
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching document: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/gp/parsed-document/{mongo_id}")
+async def get_parsed_document_from_mongo(mongo_id: str):
+    """
+    Retrieve parsed document data from MongoDB
+    This is our internal storage, not the microservice
+    """
+    try:
+        from bson import ObjectId
+        
+        # Use surgiscan_documents database (where documents actually are)
+        surgiscan_docs_db = mongo_client['surgiscan_documents']
+        
+        # Try as ObjectId first, then as string
+        try:
+            query = {'_id': ObjectId(mongo_id)}
+        except:
+            query = {'document_id': mongo_id}
+        
+        parsed_doc = await surgiscan_docs_db.gp_parsed_documents.find_one(query)
+        
+        if not parsed_doc:
+            raise HTTPException(status_code=404, detail="Parsed document not found")
+        
+        # Convert ObjectId to string for JSON serialization
+        if '_id' in parsed_doc:
+            parsed_doc['_id'] = str(parsed_doc['_id'])
+        
+        # Extract data from parsed_data structure
+        parsed_data = parsed_doc.get('parsed_data', {})
+        chunks = parsed_data.get('chunks', [])
+        
+        # Get extractions from extracted_data (microservice response)
+        extracted_data = parsed_doc.get('extracted_data', {})
+        extractions = extracted_data.get('extractions', {})
+        
+        # Also get chunks from extracted_data if not in parsed_data
+        if not chunks and isinstance(extracted_data, dict):
+            chunks = extracted_data.get('chunks', [])
+        
+        return {
+            'status': 'success',
+            'data': extractions,
+            'chunks': chunks,
+            'parsed_data': parsed_data,
+            'microservice_response': parsed_doc.get('microservice_response', {})
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving parsed document: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/gp/document/{document_id}/view")
+async def view_document_pdf(document_id: str):
+    """
+    Serve PDF file for viewing in browser
+    Used by GPValidationInterface to display documents
+    """
+    try:
+        # Get document metadata from Supabase
+        doc_result = supabase.table('digitised_documents').select('*').eq('id', document_id).execute()
+        
+        if not doc_result.data:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        doc = doc_result.data[0]
+        file_path = doc.get('file_path')
+        
+        if not file_path:
+            raise HTTPException(status_code=404, detail="File path not found")
+        
+        # Check if file exists
+        from pathlib import Path
+        full_path = Path(file_path)
+        
+        if not full_path.exists():
+            raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+        
+        # Return the PDF file
+        from fastapi.responses import FileResponse
+        return FileResponse(
+            path=str(full_path),
+            media_type='application/pdf',
+            filename=doc.get('filename', 'document.pdf')
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error serving document: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.put("/gp/documents/{document_id}/status")
+async def update_document_status(document_id: str, update: DocumentStatusUpdate):
+    """Update the status of a digitised document"""
+    try:
+        logger.info(f"Updating document {document_id} status to {update.status}")
+        
+        update_data = {
+            'status': update.status,
+            'updated_at': datetime.now(timezone.utc).isoformat()
+        }
+        
+        if update.error_message:
+            update_data['error_message'] = update.error_message
+        
+        result = supabase.table('digitised_documents')\
+            .update(update_data)\
+            .eq('id', document_id)\
+            .execute()
+        
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        return {
+            'status': 'success',
+            'message': f'Document status updated to {update.status}',
+            'document': result.data[0]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating document status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.delete("/gp/documents/{document_id}")
+async def delete_digitised_document(document_id: str):
+    """Delete a digitised document and its associated files"""
+    try:
+        # Get document details
+        doc_result = supabase.table('digitised_documents')\
+            .select('*')\
+            .eq('id', document_id)\
+            .execute()
+        
+        if not doc_result.data:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        document = doc_result.data[0]
+        
+        # Delete physical file if exists
+        if document.get('file_path'):
+            file_path = Path(document['file_path'])
+            if file_path.exists():
+                file_path.unlink()
+                logger.info(f"Deleted file: {file_path}")
+        
+        # Delete from database
+        supabase.table('digitised_documents').delete().eq('id', document_id).execute()
+        
+        return {
+            'status': 'success',
+            'message': 'Document deleted successfully'
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting document: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/gp/documents/bulk-extract")
+async def bulk_extract_documents(document_ids: List[str]):
+    """Trigger extraction for multiple documents"""
+    try:
+        logger.info(f"Bulk extraction requested for {len(document_ids)} documents")
+        
+        results = []
+        for doc_id in document_ids:
+            try:
+                # Update status to 'extracting'
+                supabase.table('digitised_documents')\
+                    .update({'status': 'extracting', 'updated_at': datetime.now(timezone.utc).isoformat()})\
+                    .eq('id', doc_id)\
+                    .execute()
+                
+                results.append({
+                    'document_id': doc_id,
+                    'status': 'queued'
+                })
+            except Exception as e:
+                results.append({
+                    'document_id': doc_id,
+                    'status': 'error',
+                    'error': str(e)
+                })
+        
+        return {
+            'status': 'success',
+            'message': f'Extraction queued for {len(document_ids)} documents',
+            'results': results
+        }
+    except Exception as e:
+        logger.error(f"Error in bulk extraction: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+@api_router.post("/gp/upload-with-template")
+async def upload_gp_document_with_template(
+    file: UploadFile = File(...),
+    patient_id: Optional[str] = Form(None),
+    template_id: Optional[str] = Form(None),
+    encounter_id: Optional[str] = Form(None)
+):
+    """
+    NEW ENDPOINT: Upload GP document with template-driven extraction and auto-population
+    
+    This endpoint uses the Phase 1.2 Enhanced Extraction:
+    - Layer 1: Always extracts core demographics
+    - Layer 2: Uses templates to extract additional sections
+    - Auto-populates structured tables based on field mappings
+    
+    Args:
+        file: PDF file to upload
+        patient_id: Optional patient ID (if known)
+        template_id: Optional template ID (will use default if not specified)
+        encounter_id: Optional encounter ID to link records
+    
+    Returns:
+        Complete extraction result with auto-population summary
+    """
+    document_id = str(uuid.uuid4())
+    
+    try:
+        logger.info(f"📄 Template-driven upload: {file.filename}")
+        
+        # Read file content
+        file_content = await file.read()
+        file_size = len(file_content)
+        
+        # Save file temporarily
+        temp_dir = Path("storage/temp")
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        temp_file_path = temp_dir / f"{document_id}_{file.filename}"
+        
+        with open(temp_file_path, "wb") as f:
+            f.write(file_content)
+        
+        logger.info(f"✅ File saved temporarily: {temp_file_path}")
+        
+        # Create digitised_documents record
+        digitised_doc_data = {
+            'id': document_id,
+            'workspace_id': DEMO_WORKSPACE_ID,
+            'patient_id': patient_id,
+            'filename': file.filename,
+            'file_path': str(temp_file_path),
+            'file_size': file_size,
+            'status': 'processing',
+            'template_id': template_id,
+            'created_at': datetime.now(timezone.utc).isoformat(),
+            'updated_at': datetime.now(timezone.utc).isoformat()
+        }
+        
+        supabase.table('digitised_documents').insert(digitised_doc_data).execute()
+        logger.info(f"✅ Created digitised_documents record: {document_id}")
+        
+        # Process with template-driven extraction
+        from app.services.gp_processor import GPDocumentProcessor
+        
+        # Initialize processor with MongoDB connection
+        processor = GPDocumentProcessor(db_manager=type('obj', (object,), {
+            'db': db,
+            'connected': True
+        }))
+        
+        # Process the document with templates
+        result = await processor.process_with_template(
+            file_path=str(temp_file_path),
+            filename=file.filename,
+            organization_id=DEMO_WORKSPACE_ID,
+            workspace_id=DEMO_WORKSPACE_ID,
+            tenant_id=DEMO_TENANT_ID,
+            template_id=template_id,
+            patient_id=patient_id,
+            encounter_id=encounter_id,
+            file_data=file_content
+        )
+        
+        # Update status based on result
+        if result.get('success'):
+            status = 'extracted' if result.get('template_used') else 'parsed'
+            
+            update_data = {
+                'status': status,
+                'parsed_doc_id': result.get('parsed_doc_id'),
+                'template_used': result.get('template_used', False),
+                'records_created': result.get('auto_population', {}).get('records_created', 0),
+                'tables_populated': result.get('auto_population', {}).get('tables_populated', {}),
+                'updated_at': datetime.now(timezone.utc).isoformat()
+            }
+            
+            supabase.table('digitised_documents')\
+                .update(update_data)\
+                .eq('id', document_id)\
+                .execute()
+            
+            logger.info(f"✅ Document processed successfully: {document_id}")
+            logger.info(f"📊 Template used: {result.get('template_used')}")
+            logger.info(f"📊 Records created: {result.get('auto_population', {}).get('records_created', 0)}")
+            logger.info(f"📊 Tables populated: {list(result.get('auto_population', {}).get('tables_populated', {}).keys())}")
+        else:
+            supabase.table('digitised_documents')\
+                .update({
+                    'status': 'error',
+                    'error_message': result.get('error', 'Unknown error'),
+                    'updated_at': datetime.now(timezone.utc).isoformat()
+                })\
+                .eq('id', document_id)\
+                .execute()
+        
+        # Clean up temp file
+        try:
+            temp_file_path.unlink()
+        except:
+            pass
+        
+        return JSONResponse(content={
+            'status': 'success' if result.get('success') else 'error',
+            'message': 'Document processed with template-driven extraction',
+            'data': result
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Template-driven upload failed: {e}", exc_info=True)
+        
+        # Update status to error
+        try:
+            supabase.table('digitised_documents')\
+                .update({
+                    'status': 'error',
+                    'error_message': str(e),
+                    'updated_at': datetime.now(timezone.utc).isoformat()
+                })\
+                .eq('id', document_id)\
+                .execute()
+        except:
+            pass
+        
+        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
+
+
+@api_router.post("/gp/documents/{document_id}/extract")
+async def extract_from_parsed_document(
+    document_id: str,
+    template_id: Optional[str] = Form(None),
+    patient_id: Optional[str] = Form(None),
+    encounter_id: Optional[str] = Form(None)
+):
+    """
+    Phase 2: Extract on Demand from Parsed Document
+    
+    This endpoint extracts structured data from an already-parsed document:
+    - Reads parsed document from MongoDB (no API call needed)
+    - Applies template-driven extraction
+    - Auto-populates structured tables (ICD-10, NAPPI, immunizations, etc.)
+    - Can be run multiple times with different templates
+    
+    Args:
+        document_id: ID of the digitised document
+        template_id: Optional template ID for extraction
+        patient_id: Optional patient ID override
+        encounter_id: Optional encounter ID to link records
+        
+    Returns:
+        Extraction results with auto-population summary
+    """
+    try:
+        logger.info(f"🔍 Phase 2: Extracting from document {document_id}")
+        
+        # Get document record
+        doc_result = supabase.table('digitised_documents').select('*').eq('id', document_id).execute()
+        
+        if not doc_result.data:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        doc = doc_result.data[0]
+        
+        # Check if document is parsed
+        if doc['status'] not in ['parsed', 'extracted', 'extraction_failed']:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Document must be parsed first. Current status: {doc['status']}"
+            )
+        
+        parsed_doc_id = doc.get('parsed_doc_id')
+        if not parsed_doc_id:
+            raise HTTPException(status_code=400, detail="No parsed document ID found")
+        
+        # Update status to extracting
+        supabase.table('digitised_documents').update({
+            'status': 'extracting',
+            'updated_at': datetime.now(timezone.utc).isoformat()
+        }).eq('id', document_id).execute()
+        
+        logger.info(f"📄 Reading parsed document from MongoDB: {parsed_doc_id}")
+        
+        # Get parsed document from MongoDB (surgiscan_documents database)
+        surgiscan_docs_db = mongo_client['surgiscan_documents']
+        
+        from bson import ObjectId
+        try:
+            query = {'_id': ObjectId(parsed_doc_id)}
+            logger.info(f"🔍 MongoDB Query: {query}")
+        except Exception as e:
+            logger.warning(f"⚠️ ObjectId conversion failed: {e}, using document_id")
+            query = {'document_id': parsed_doc_id}
+            logger.info(f"🔍 MongoDB Query (fallback): {query}")
+        
+        logger.info(f"🔍 Querying database: surgiscan_documents, collection: gp_parsed_documents")
+        parsed_doc = await surgiscan_docs_db.gp_parsed_documents.find_one(query)
+        
+        if not parsed_doc:
+            logger.error(f"❌ Document not found with query: {query}")
+            logger.error(f"❌ Database: surgiscan_documents, Collection: gp_parsed_documents")
+            # Try to count total documents to verify connection
+            try:
+                count = await surgiscan_docs_db.gp_parsed_documents.count_documents({})
+                logger.error(f"❌ Total documents in collection: {count}")
+            except Exception as count_e:
+                logger.error(f"❌ Failed to count documents: {count_e}")
+            raise HTTPException(status_code=404, detail="Parsed document not found in MongoDB")
+        
+        logger.info(f"✅ Found parsed document in MongoDB")
+        
+        # Extract with template-driven extraction
+        from app.services.extraction_engine import ExtractionEngine
+        
+        engine = ExtractionEngine(workspace_id=doc['workspace_id'], tenant_id=DEMO_TENANT_ID)
+        
+        # Use patient_id from request or fallback to document record
+        final_patient_id = patient_id or doc.get('patient_id')
+        
+        extraction_result = await engine.extract_from_parsed_data(
+            parsed_data=parsed_doc,
+            template_id=template_id,
+            patient_id=final_patient_id,
+            encounter_id=encounter_id,
+            workspace_id=doc['workspace_id'],
+            document_id=document_id
+        )
+        
+        if extraction_result.get('success'):
+            # Update with extraction results and set to pending validation
+            update_data = {
+                'status': 'pending_validation',  # Changed from 'extracted' to pending_validation
+                'template_id': template_id,
+                'template_used': True,
+                'records_created': extraction_result.get('auto_population', {}).get('records_created', 0),
+                'tables_populated': extraction_result.get('auto_population', {}).get('tables_populated', {}),
+                'updated_at': datetime.now(timezone.utc).isoformat()
+            }
+            
+            supabase.table('digitised_documents').update(update_data).eq('id', document_id).execute()
+            
+            logger.info(f"✅ Extraction complete: {document_id}")
+            logger.info(f"📊 Records created: {extraction_result.get('auto_population', {}).get('records_created', 0)}")
+            logger.info(f"📊 Tables populated: {list(extraction_result.get('auto_population', {}).get('tables_populated', {}).keys())}")
+            logger.info(f"📋 Document moved to validation queue")
+            
+            return JSONResponse(content={
+                'status': 'success',
+                'message': 'Extraction completed - document moved to validation queue',
+                'data': {
+                    'document_id': document_id,
+                    'template_used': template_id is not None,
+                    'auto_population': extraction_result.get('auto_population', {}),
+                    'extracted_data': extraction_result.get('extracted_data', {}),
+                    'validation_status': 'pending_validation'
+                }
+            })
+        else:
+            # Update to extraction failed
+            supabase.table('digitised_documents').update({
+                'status': 'extraction_failed',
+                'error_message': extraction_result.get('error', 'Unknown error'),
+                'updated_at': datetime.now(timezone.utc).isoformat()
+            }).eq('id', document_id).execute()
+            
+            raise HTTPException(status_code=500, detail=extraction_result.get('error', 'Extraction failed'))
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Extraction failed: {e}", exc_info=True)
+        
+        # Update status to error
+        try:
+            supabase.table('digitised_documents').update({
+                'status': 'extraction_failed',
+                'error_message': str(e),
+                'updated_at': datetime.now(timezone.utc).isoformat()
+            }).eq('id', document_id).execute()
+        except:
+            pass
+        
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.post("/gp/batch-upload")
+async def batch_upload_documents(
+    files: List[UploadFile] = File(...),
+    patient_id: Optional[str] = Form(None),
+    template_id: Optional[str] = Form(None),
+    encounter_id: Optional[str] = Form(None)
+):
+    """
+    BATCH UPLOAD: Upload multiple GP documents for processing
+    
+    Processes multiple documents asynchronously with progress tracking.
+    Returns a batch_id that can be used to track progress.
+    
+    Args:
+        files: List of PDF files to upload (up to 50)
+        patient_id: Optional patient ID for all files
+        template_id: Optional template ID (uses default if not specified)
+        encounter_id: Optional encounter ID
+    
+    Returns:
+        {
+            'batch_id': str,
+            'total_files': int,
+            'status': 'processing',
+            'message': str
+        }
+    """
+    
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided")
+    
+    if len(files) > 50:
+        raise HTTPException(status_code=400, detail="Maximum 50 files per batch")
+    
+    batch_id = str(uuid.uuid4())
+    
+    try:
+        logger.info(f"📦 Batch upload started: {len(files)} files")
+        
+        # Get batch service
+        from app.services.batch_upload_service import get_batch_service
+        batch_service = get_batch_service(
+            db_manager=type('obj', (object,), {'db': db}),
+            supabase_client=supabase
+        )
+        
+        # Prepare file info for batch creation
+        files_info = [
+            {
+                'filename': file.filename,
+                'size': file.size if hasattr(file, 'size') else 0
+            }
+            for file in files
+        ]
+        
+        # Create batch record
+        batch_id = batch_service.create_batch(
+            workspace_id=DEMO_WORKSPACE_ID,
+            tenant_id=DEMO_TENANT_ID,
+            files_info=files_info,
+            patient_id=patient_id,
+            template_id=template_id
+        )
+        
+        # Save files temporarily and prepare for processing
+        temp_dir = Path("storage/temp")
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        
+        files_data = []
+        
+        for idx, file in enumerate(files):
+            # Read file content
+            file_content = await file.read()
+            
+            # Generate unique file_id
+            file_id = batch_service.get_batch_status(batch_id)['files'][idx]['file_id']
+            
+            # Save temporarily
+            temp_file_path = temp_dir / f"{batch_id}_{file_id}_{file.filename}"
+            with open(temp_file_path, "wb") as f:
+                f.write(file_content)
+            
+            files_data.append({
+                'file_id': file_id,
+                'filename': file.filename,
+                'file_path': str(temp_file_path),
+                'file_content': file_content
+            })
+        
+        logger.info(f"✅ All files saved temporarily for batch {batch_id}")
+        
+        # Initialize processor
+        from app.services.gp_processor import GPDocumentProcessor
+        processor = GPDocumentProcessor(db_manager=type('obj', (object,), {
+            'db': db,
+            'connected': True
+        }))
+        
+        # Start background processing (fire and forget)
+        asyncio.create_task(
+            batch_service.process_batch(
+                batch_id=batch_id,
+                files_data=files_data,
+                processor=processor,
+                workspace_id=DEMO_WORKSPACE_ID,
+                tenant_id=DEMO_TENANT_ID,
+                patient_id=patient_id,
+                template_id=template_id,
+                encounter_id=encounter_id
+            )
+        )
+        
+        logger.info(f"🚀 Background processing started for batch {batch_id}")
+        
+        return JSONResponse(content={
+            'status': 'success',
+            'batch_id': batch_id,
+            'total_files': len(files),
+            'message': f'Batch upload initiated. Processing {len(files)} files in background.',
+            'tracking_url': f'/api/gp/batch-status/{batch_id}'
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Batch upload failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Batch upload failed: {str(e)}")
+
+
+@api_router.get("/gp/batch-status/{batch_id}")
+async def get_batch_status(batch_id: str):
+    """
+    Get current status of a batch upload
+    
+    Returns real-time progress including:
+    - Overall batch status
+    - Progress counts (pending, processing, completed, failed)
+    - Individual file statuses
+    - Results for completed files
+    """
+    try:
+        from app.services.batch_upload_service import get_batch_service
+        batch_service = get_batch_service()
+        
+        if not batch_service:
+            raise HTTPException(status_code=500, detail="Batch service not initialized")
+        
+        batch_status = batch_service.get_batch_status(batch_id)
+        
+        if not batch_status:
+            # Try to fetch from database
+            batch_record = await db['batch_uploads'].find_one({'id': batch_id})
+            if batch_record:
+                return JSONResponse(content={
+                    'status': 'success',
+                    'batch': batch_record
+                })
+            else:
+                raise HTTPException(status_code=404, detail="Batch not found")
+        
+        return JSONResponse(content={
+            'status': 'success',
+            'batch': batch_status
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get batch status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.get("/gp/batch-history")
+async def get_batch_history(workspace_id: str = DEMO_WORKSPACE_ID, limit: int = 20):
+    """
+    Get recent batch uploads for a workspace
+    """
+    try:
+        from app.services.batch_upload_service import get_batch_service
+        batch_service = get_batch_service()
+        
+        if not batch_service:
+            raise HTTPException(status_code=500, detail="Batch service not initialized")
+        
+        batches = await batch_service.get_batch_history(workspace_id, limit)
+        
+        return JSONResponse(content={
+            'status': 'success',
+            'batches': batches
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to get batch history: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @api_router.get("/documents/patient/{patient_id}")
 async def get_patient_documents(patient_id: str):
@@ -2680,6 +4298,50 @@ Return structured JSON with prescriptions, sick_note, and referral sections."""
         logger.error(f"Error extracting clinical actions: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+def parse_soap_notes(soap_text: str) -> dict:
+    """
+    Parse markdown-formatted SOAP notes into structured components
+    Handles various formats: **SUBJECTIVE:**, **S:**, S:, etc.
+    """
+    import re
+    
+    result = {
+        'subjective': '',
+        'objective': '',
+        'assessment': '',
+        'plan': ''
+    }
+    
+    # Remove markdown formatting
+    soap_text = soap_text.replace('**', '')
+    
+    # Patterns to match SOAP sections (case insensitive, various formats)
+    patterns = {
+        'subjective': r'(?:SUBJECTIVE|S):\s*\n(.*?)(?=(?:OBJECTIVE|O):|$)',
+        'objective': r'(?:OBJECTIVE|O):\s*\n(.*?)(?=(?:ASSESSMENT|A):|$)',
+        'assessment': r'(?:ASSESSMENT|A):\s*\n(.*?)(?=(?:PLAN|P):|$)',
+        'plan': r'(?:PLAN|P):\s*\n(.*?)$'
+    }
+    
+    for key, pattern in patterns.items():
+        match = re.search(pattern, soap_text, re.DOTALL | re.IGNORECASE)
+        if match:
+            result[key] = match.group(1).strip()
+    
+    # If no sections found, try splitting by common markers
+    if not any(result.values()):
+        # Split by common section headers
+        sections = re.split(r'\n\s*(?:SUBJECTIVE|OBJECTIVE|ASSESSMENT|PLAN):\s*\n', soap_text, flags=re.IGNORECASE)
+        if len(sections) >= 4:
+            result = {
+                'subjective': sections[1].strip() if len(sections) > 1 else '',
+                'objective': sections[2].strip() if len(sections) > 2 else '',
+                'assessment': sections[3].strip() if len(sections) > 3 else '',
+                'plan': sections[4].strip() if len(sections) > 4 else ''
+            }
+    
+    return result
+
 @api_router.post("/ai-scribe/save-consultation")
 async def save_consultation_to_ehr(request: dict):
     """Save AI Scribe consultation to EHR - creates encounter, extracts diagnosis, links documents"""
@@ -2737,6 +4399,32 @@ async def save_consultation_to_ehr(request: dict):
         }
         
         supabase.table('encounters').insert(encounter_data).execute()
+        
+        # Parse SOAP notes into structured format
+        parsed_soap = parse_soap_notes(soap_notes)
+        
+        # Create structured clinical note
+        clinical_note_data = {
+            'id': str(uuid.uuid4()),
+            'tenant_id': DEMO_TENANT_ID,
+            'workspace_id': DEMO_WORKSPACE_ID,
+            'encounter_id': encounter_id,
+            'patient_id': patient_id,
+            'format': 'soap',
+            'subjective': parsed_soap['subjective'],
+            'objective': parsed_soap['objective'],
+            'assessment': parsed_soap['assessment'],
+            'plan': parsed_soap['plan'],
+            'raw_text': soap_notes,  # Keep original for reference
+            'author': doctor_name,
+            'role': 'ai_scribe',
+            'source': 'ai_scribe',
+            'note_datetime': datetime.now(timezone.utc).isoformat(),
+            'created_at': datetime.now(timezone.utc).isoformat()
+        }
+        
+        supabase.table('clinical_notes').insert(clinical_note_data).execute()
+        logger.info(f"Structured clinical note created for encounter {encounter_id}")
         
         # Add diagnosis to patient's conditions (if not already present)
         diagnosis = extracted_info.get('diagnosis', '')
@@ -2833,6 +4521,8 @@ async def create_prescription(prescription: PrescriptionCreate):
                 'id': item_id,
                 'prescription_id': prescription_id,
                 'medication_name': item.medication_name,
+                'nappi_code': item.nappi_code,  # South African medication code
+                'generic_name': item.generic_name,  # Generic/active ingredient name
                 'dosage': item.dosage,
                 'frequency': item.frequency,
                 'duration': item.duration,
@@ -3061,6 +4751,43 @@ async def get_medication_details(medication_id: str):
 # ==================== Application Setup ====================
 
 # Include router
+# Include specialized API routers
+from api.allergies import router as allergies_router
+from api.icd10 import router as icd10_router
+from api.diagnoses import router as diagnoses_router
+from api.vitals import router as vitals_router
+from api.nappi import router as nappi_router
+from api.clinical_notes import router as clinical_notes_router
+from api.lab import router as lab_router
+from api.procedures import router as procedures_router
+from api.immunizations import router as immunizations_router
+from api.billing import router as billing_router
+from api.payfast import router as payfast_router
+from api.extraction_mappings import router as extraction_mappings_router
+from api.validation import router as validation_router
+
+api_router.include_router(allergies_router, tags=["Allergies"])
+api_router.include_router(icd10_router, tags=["ICD-10"])
+api_router.include_router(diagnoses_router, tags=["Diagnoses"])
+api_router.include_router(vitals_router, tags=["Vitals"])
+api_router.include_router(nappi_router, tags=["NAPPI Codes"])
+api_router.include_router(clinical_notes_router, tags=["Clinical Notes"])
+api_router.include_router(lab_router, tags=["Lab Orders & Results"])
+api_router.include_router(procedures_router, tags=["Procedures"])
+api_router.include_router(immunizations_router, tags=["Immunizations"])
+api_router.include_router(billing_router, tags=["Billing & Payments"])
+api_router.include_router(payfast_router, prefix="/payfast", tags=["PayFast Payment Gateway"])
+api_router.include_router(extraction_mappings_router, tags=["Extraction Mappings"])
+api_router.include_router(validation_router, tags=["Validation Workflow"])
+
+# ==================== Authentication & User Management ====================
+from app.api.auth import router as auth_router
+from app.api.users import router as users_router
+from app.api.workspaces import router as workspaces_router
+api_router.include_router(auth_router, tags=["Authentication"])
+api_router.include_router(users_router, tags=["User Management"])
+api_router.include_router(workspaces_router, tags=["Workspace Management"])
+
 app.include_router(api_router)
 
 # CORS middleware

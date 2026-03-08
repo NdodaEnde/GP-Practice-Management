@@ -1,0 +1,330 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
+import { 
+  Card, 
+  CardContent, 
+  CardHeader, 
+  CardTitle,
+  CardDescription 
+} from '../components/ui/card';
+import { Button } from '../components/ui/button';
+import { 
+  CheckCircle, 
+  XCircle,
+  Eye,
+  Clock,
+  TrendingUp,
+  AlertCircle,
+  FileText,
+  User
+} from 'lucide-react';
+import { useToast } from '../hooks/use-toast';
+
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
+const DEMO_WORKSPACE = 'demo-gp-workspace-001';
+
+const ValidationQueue = () => {
+  const { toast } = useToast();
+  const navigate = useNavigate();
+  const [queue, setQueue] = useState([]);
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadQueue();
+    loadStats();
+  }, []);
+
+  const loadQueue = async () => {
+    try {
+      setLoading(true);
+      // Fetch both 'parsed' and 'pending_validation' documents
+      const response = await axios.get(
+        `${BACKEND_URL}/api/validation/queue/list?status=&workspace_id=${DEMO_WORKSPACE}&limit=50`
+      );
+      
+      if (response.data.status === 'success') {
+        setQueue(response.data.data.queue || []);
+        setStats(response.data.data.stats || null);
+      }
+    } catch (error) {
+      console.error('Failed to load validation queue:', error);
+      setQueue([]); // Set to empty array on error
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to load validation queue"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadStats = async () => {
+    // Stats are now loaded with queue, so this can be a no-op
+    // or we can make a separate call if needed
+  };
+
+  const handleApprove = async (documentId) => {
+    try {
+      const formData = new FormData();
+      formData.append('validated_by', 'current-user'); // TODO: Get from auth context
+      formData.append('notes', 'Approved from queue');
+      
+      await axios.post(`${BACKEND_URL}/api/validation/approve/${documentId}`, formData);
+
+      toast({
+        title: "Document Approved ✅",
+        description: "Data has been validated and committed"
+      });
+
+      // Reload queue
+      loadQueue();
+    } catch (error) {
+      console.error('Failed to approve:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to approve document"
+      });
+    }
+  };
+
+  const handleReject = async (documentId) => {
+    const reason = prompt('Rejection reason:');
+    if (!reason) return;
+
+    try {
+      const formData = new FormData();
+      formData.append('validated_by', 'current-user'); // TODO: Get from auth context
+      formData.append('reason', reason);
+      
+      await axios.post(`${BACKEND_URL}/api/validation/reject/${documentId}`, formData);
+
+      toast({
+        title: "Document Rejected",
+        description: "Marked as rejected"
+      });
+
+      // Reload queue
+      loadQueue();
+    } catch (error) {
+      console.error('Failed to reject:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to reject document"
+      });
+    }
+  };
+
+  const handleReview = (doc) => {
+    // Navigate to the document validation review page
+    navigate(`/document-validation/${doc.id}`);
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleString();
+  };
+
+  const getConfidenceColor = (score) => {
+    if (score >= 0.8) return 'text-green-600';
+    if (score >= 0.6) return 'text-yellow-600';
+    return 'text-red-600';
+  };
+
+  return (
+    <div className="p-6 max-w-7xl mx-auto">
+      {/* Header */}
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold mb-2">Validation Queue</h1>
+        <p className="text-gray-600">
+          Review extracted data before committing to structured tables
+        </p>
+      </div>
+
+      {/* Stats Cards */}
+      {stats && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600">Pending</p>
+                  <p className="text-3xl font-bold text-yellow-600">
+                    {stats.pending_validation}
+                  </p>
+                </div>
+                <Clock className="w-8 h-8 text-yellow-500 opacity-50" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600">Approved</p>
+                  <p className="text-3xl font-bold text-green-600">
+                    {stats.approved}
+                  </p>
+                </div>
+                <CheckCircle className="w-8 h-8 text-green-500 opacity-50" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600">Rejected</p>
+                  <p className="text-3xl font-bold text-red-600">
+                    {stats.rejected}
+                  </p>
+                </div>
+                <XCircle className="w-8 h-8 text-red-500 opacity-50" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600">Approval Rate</p>
+                  <p className="text-3xl font-bold text-blue-600">
+                    {(stats.approval_rate * 100).toFixed(0)}%
+                  </p>
+                </div>
+                <TrendingUp className="w-8 h-8 text-blue-500 opacity-50" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Validation Queue */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Pending Validations ({queue?.length || 0})</CardTitle>
+          <CardDescription>
+            Documents awaiting human review
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="text-center py-8 text-gray-500">Loading...</div>
+          ) : !queue || queue.length === 0 ? (
+            <div className="text-center py-12 text-gray-500">
+              <CheckCircle className="w-16 h-16 mx-auto mb-4 opacity-30" />
+              <p className="text-lg font-medium">No pending validations</p>
+              <p className="text-sm mt-2">All extractions have been reviewed</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {queue.map((doc) => (
+                <div
+                  key={doc.id}
+                  className="border rounded-lg p-4 hover:bg-gray-50 transition-colors"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <FileText className="w-5 h-5 text-blue-500" />
+                        <div>
+                          <p className="font-medium">
+                            {doc.filename || 'Unknown Document'}
+                          </p>
+                          <p className="text-sm text-gray-500">
+                            Uploaded: {formatDate(doc.created_at || doc.upload_date)}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Quick Stats */}
+                      <div className="flex gap-4 text-sm text-gray-600 mt-3">
+                        <div>
+                          <span className="font-medium">Status:</span> {doc.status}
+                        </div>
+                        <div>
+                          <span className="font-medium">Records Created:</span> {doc.records_created || 0}
+                        </div>
+                        {doc.patient_id && (
+                          <div>
+                            <span className="font-medium">Patient:</span> {doc.patient_id.substring(0, 8)}...
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Tables Populated */}
+                      {doc.tables_populated && Object.keys(doc.tables_populated).length > 0 && (
+                        <div className="mt-3">
+                          <p className="text-sm font-medium mb-2">Tables Populated:</p>
+                          <div className="flex flex-wrap gap-2">
+                            {Object.entries(doc.tables_populated).map(([table, ids]) => (
+                              <span
+                                key={table}
+                                className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700"
+                              >
+                                {table}: {Array.isArray(ids) ? ids.length : 0} record(s)
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Error Message if any */}
+                      {doc.error_message && (
+                        <div className="mt-3">
+                          <div className="flex items-center gap-2 text-sm text-orange-700">
+                            <AlertCircle className="w-4 h-4" />
+                            <span>{doc.error_message}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-2 ml-4">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleReview(doc)}
+                      >
+                        <Eye className="w-4 h-4 mr-1" />
+                        Review
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleApprove(doc.id)}
+                        className="text-green-600 hover:text-green-700"
+                      >
+                        <CheckCircle className="w-4 h-4 mr-1" />
+                        Approve
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleReject(doc.id)}
+                        className="text-red-600 hover:text-red-700"
+                      >
+                        <XCircle className="w-4 h-4 mr-1" />
+                        Reject
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
+export default ValidationQueue;

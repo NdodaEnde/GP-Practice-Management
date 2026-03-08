@@ -1,13 +1,19 @@
 <analysis>
-The AI engineer's work commenced with debugging the AI Scribe feature, specifically resolving API key authentication issues for Whisper transcription (shifting from Emergent LLM Key to a direct OpenAI key) and later for SOAP note generation. This led to a refactor where transcription used  and SOAP generation initially used , then switched to  directly after a  DNS issue. Next, the Enhanced Prescription Module (Phase 4.2) was built, encompassing database schema, backend endpoints, and frontend components for prescriptions, sick notes, and referrals, integrated into the AI Scribe page and Patient EHR. Crucially, the workflow was extended to auto-extract data from SOAP notes to pre-fill these forms, streamlining doctor's administrative tasks. A significant EHR integration then linked AI Scribe consultations to patient records, creating encounters, logging diagnoses, and associating prescriptions. Finally, the agent returned to Phase 1.6 (Document-to-EHR integration), fixing data mapping for chronic care and vitals from LandingAI extraction, and resolving a PDF bidirectional scrolling bug. The trajectory concluded with addressing a bug in the Queue Management system where the reception search was not functioning, despite the Vitals Station search working correctly.
+The previous AI engineer successfully transitioned from implementing a comprehensive Phase 3 Billing system with PayFast integration to a strategic focus on enhancing the core Digitization Module. The trajectory details the iterative development of a client-agnostic, template-driven document extraction system (Phase 1). This involved creating a flexible field mapping system with dedicated backend APIs, database migrations, and a frontend configuration UI. Subsequent work extended this to an Enhanced Extraction System that dynamically applies these templates, integrates ICD-10 and NAPPI lookups, and supports batch uploads. The process included debugging frontend display issues, addressing critical user feedback on page consolidation for production, and creating dedicated documentation for each phase. The current work is focused on resolving a frontend JSX syntax error in the newly merged  page.
 </analysis>
 
 <product_requirements>
-SurgiScan is a multi-tenant healthcare SaaS for Occupational Health and GP Practices, emphasizing data isolation with a hybrid Supabase/MongoDB architecture. The GP Practice workflow MVP includes Patient & Encounter Management, Document Digitization (LandingAI microservice), and a Validation Interface with editable tabs (Demographics, Chronic Care, Vitals, Clinical Notes) and bi-directional grounding. Recent refinements focused on storing raw documents in MongoDB and validated structured data in Supabase upon Approve Document. Key implemented features include Patient Matching, automatic EHR population, a Document Archive Viewer, Access Audit Trail, Queue Management System (Reception Check-in, Queue Display, Workstation Dashboard), and Vitals Station. Most recently, the AI Scribe feature (real-time voice transcription and SOAP note generation using OpenAI Whisper and GPT-4o) was completed and integrated. The current focus is on enhancing the Consultation phase to reduce administrative overhead for doctors by automating the extraction of clinical actions from SOAP notes to pre-fill prescription, sick note, and referral forms, and ensuring comprehensive EHR integration, and finally fixing existing bugs.
+SurgiScan is a multi-tenant healthcare SaaS for Occupational Health and GP practices, providing Patient & Encounter Management and Document Digitization. It uses LandingAI for document extraction, storing raw documents in MongoDB and structured data in Supabase. The primary goal is to offer a comprehensive EHR system that is efficiently populated, managed, and billed.
+
+Key features include:
+1.  **Patient Safety**: Allergies, structured Diagnoses (ICD-10), Vitals, with an emphasis on auto-populating from digitized documents.
+2.  **Clinical Workflow (Phase 2)**: NAPPI codes for medications, Structured Clinical Notes (SOAP), Lab Orders & Results, Procedures, and Immunizations tracking.
+3.  **Billing System (Phase 3)**: Robust system for South African practices, including invoice generation (NAPPI/ICD-10), payment recording (split payments, receipts), basic financial reporting, claims management (ICD-10/NAPPI codes, export), claim status tracking, and PayFast payment gateway integration.
+4.  **Digitization Module Improvement**: This is the current focus, aiming for a client-agnostic system to capture diverse medical records (immunizations, lab results) from digitized documents and allocate them to structured tables without custom coding per client. It also includes batch uploading capabilities. The implementation so far includes a template-driven extraction system for flexible field mapping, an enhanced extraction engine, batch upload functionality, and a validation queue.
 </product_requirements>
 
 <key_technical_concepts>
-- **Backend:** FastAPI, Python-dotenv, Supabase (Postgres), MongoDB, , usage: openai [-h] [-v] [-b API_BASE] [-k API_KEY] [-p PROXY [PROXY ...]]
+-   **Backend**: FastAPI, Supabase (Postgres), MongoDB,  (PDF), , usage: openai [-h] [-v] [-b API_BASE] [-k API_KEY] [-p PROXY [PROXY ...]]
               [-o ORGANIZATION] [-t {openai,azure}]
               [--api-version API_VERSION] [--azure-endpoint AZURE_ENDPOINT]
               [--azure-ad-token AZURE_AD_TOKEN] [-V]
@@ -44,92 +50,101 @@ options:
                         https://www.microsoft.com/en-
                         us/security/business/identity-access/microsoft-entra-
                         id
-  -V, --version         show program's version number and exit (for direct OpenAI API calls),  (initially for Emergent LLM, later removed for SOAP gen).
-- **Frontend:** React, React Router DOM, Axios, , Shadcn UI components.
-- **APIs:** OpenAI (Whisper, GPT-4o), LandingAI Vision Agent.
-- **Data Handling:** UUIDs, ISO format for .
+  -V, --version         show program's version number and exit.
+-   **Frontend**: React, React Router DOM, Axios, Shadcn UI components.
+-   **Data Handling**: UUIDs for IDs, ISO datetime strings, environment variables.
+-   **Integrations**: PayFast Payment Gateway, LandingAI (ADE DPT-2) for document extraction.
+-   **Core Workflows**: Template-driven data extraction, batch processing, validation queues, ICD-10 and NAPPI lookup transformations.
 </key_technical_concepts>
 
 <code_architecture>
-The application uses a React frontend, FastAPI backend, and a hybrid Supabase (Postgres) for relational data and MongoDB for unstructured documents. A separate FastAPI/Flask microservice handles document processing.
+The application uses a React frontend, a FastAPI backend, and a hybrid database approach with Supabase (Postgres) for relational data and MongoDB for unstructured documents. Document processing is handled by a FastAPI/Flask microservice.
 
 
 
--   **/app/backend/server.py**: Main FastAPI application.
-    -   **Importance**: Centralizes API routes, handles data persistence, and orchestrates integrations.
-    -   **Changes**:  and  added. AI Scribe endpoints (, ) refactored to use  directly for both. New models (, , , , , ) and endpoints (, , , , ) for Enhanced Prescription Module and EHR integration.  updated.
--   **/app/backend/.env**: Environment variables.
-    -   **Importance**: Stores API keys, database credentials.
-    -   **Changes**:  added. Corrected newline issue with keys.
--   **/app/backend/init_phase42_db.py (new)**: Script to initialize Supabase tables.
-    -   **Importance**: Programmatically creates database schema.
-    -   **Changes**: Created to execute SQL schema for Phase 4.2.
--   **/app/backend/database/*.sql (new)**: SQL schema and seed data.
-    -   **Importance**: Defines database structure and initial data for Phase 4.2.
-    -   **Changes**:  (tables for prescriptions, templates, sick notes, referrals),  (sample drug data),  (for EHR integration).
--   **/app/frontend/src/App.js**: React router.
-    -   **Importance**: Manages application routes.
-    -   **Changes**: Added route for .
--   **/app/frontend/src/components/GPValidationInterface.jsx**: GP document validation.
-    -   **Importance**: Displays PDF and extracted data for human validation.
-    -   **Changes**: Added data normalization for  (mapping  and  to expected structure) and  (mapping  to ). Fixed PDF bidirectional scrolling issue (removed  on  and updated  for multi-page continuous scrolling). Added tab badges for data availability.
--   **/app/frontend/src/pages/AIScribe.jsx**: AI Scribe interface.
-    -   **Importance**: Provides real-time audio transcription and AI-driven SOAP note generation.
-    -   **Changes**: Integrated Prescription, Sick Note, and Referral Builders. Added Auto-Extract Forms functionality to parse SOAP notes and pre-fill builders. Added Save to Encounter button to trigger EHR integration. Normalized extracted data keys from uppercase to lowercase. Updated to trigger queue status update.
--   **/app/frontend/src/components/PrescriptionBuilder.jsx (new)**: Component for creating prescriptions.
-    -   **Importance**: Frontend interface for managing prescriptions.
-    -   **Changes**: Created. Updated  import path.
--   **/app/frontend/src/components/SickNoteBuilder.jsx (new)**: Component for creating sick notes.
-    -   **Importance**: Frontend interface for managing sick notes.
-    -   **Changes**: Created. Updated  import path.
--   **/app/frontend/src/components/ReferralBuilder.jsx (new)**: Component for creating referral letters.
-    -   **Importance**: Frontend interface for managing referrals.
-    -   **Changes**: Created. Updated  import path.
--   **/app/frontend/src/pages/PatientPrescriptions.jsx (new)**: New page.
-    -   **Importance**: Dedicated page to view a patient's prescriptions.
-    -   **Changes**: Created.
--   **/app/frontend/src/pages/PatientEHR.jsx**: Patient Electronic Health Record.
-    -   **Importance**: Displays patient's medical history.
-    -   **Changes**: Added Prescriptions button.
--   **/app/frontend/src/pages/WorkstationDashboard.jsx**: Doctor/nurse queue dashboard.
-    -   **Importance**: Manages patient queue for practitioners.
-    -   **Changes**: Added links to Patient EHR and AI Scribe, displayed vitals. Added auto-refresh polling.
--   **/app/frontend/src/pages/ReceptionCheckIn.jsx**: Patient check-in.
-    -   **Importance**: Interface for patient check-in and queue management.
-    -   **Changes**: Search functionality is being debugged.
--   **/app/IMPLEMENTATION_ROADMAP.md**: Project roadmap.
-    -   **Importance**: Tracks features and priorities.
-    -   **Changes**: Updated to reflect completion of AI Scribe, Enhanced Prescription Module, and EHR integration. Added Tab Badges as a completed item.
--   **/app/COMPLETED_FEATURES.md (new)**: Summary of completed features.
-    -   **Importance**: Provides an overview for stakeholders.
-    -   **Changes**: Created.
--   **/app/INVESTOR_UPDATE_AI_CONSULTATION.md (new)**: Investor update document.
-    -   **Importance**: Communication for investors about AI Consultation feature.
-    -   **Changes**: Created.
+-   ****: Main FastAPI application.
+    -   **Importance**: Central API router.
+    -   **Changes**: Integrated , , and a new template-driven  endpoint, and  endpoints.
+-   ** (new)**: SQL schema for  and .
+    -   **Importance**: Defines structure for the flexible data extraction system.
+    -   **Changes**: Newly created to store templates and their field mappings.
+-   ** (new)**: FastAPI router.
+    -   **Importance**: Manages CRUD operations for extraction templates and field mappings.
+    -   **Changes**: Newly created.
+-   ** (new)**: Script to apply .
+    -   **Importance**: Initializes database tables for extraction configuration.
+    -   **Changes**: Newly created.
+-   ** (new)**: Service for dynamic data extraction.
+    -   **Importance**: Implements the core logic for template-driven extraction, transformations, and auto-population.
+    -   **Changes**: Newly created, then updated to include ICD-10 and NAPPI lookup transformations.
+-   ****: GP Document Processor.
+    -   **Importance**: Orchestrates document parsing and data extraction.
+    -   **Changes**: Enhanced with a  method to utilize the new .
+-   ** (new)**: Script to seed initial extraction templates.
+    -   **Importance**: Provides out-of-the-box templates for common document types.
+    -   **Changes**: Newly created, includes logic to avoid re-seeding if templates exist.
+-   ** (new)**: Service for batch document processing.
+    -   **Importance**: Manages the queuing and processing of multiple document uploads.
+    -   **Changes**: Newly created.
+-   ** (new)**: FastAPI router.
+    -   **Importance**: Provides API for managing document validation queues.
+    -   **Changes**: Newly created.
+-   ****: React router configuration.
+    -   **Importance**: Defines application routes.
+    -   **Changes**: Added routes for , , , and the new . Old upload routes were commented out.
+-   ****: Main application layout.
+    -   **Importance**: Provides consistent navigation.
+    -   **Changes**: Added navigation links for Extraction Configuration, Batch Upload, Validation Queue, and Document Upload. Old upload links were commented out. Also fixed an import for the  icon.
+-   ** (new)**: Frontend page.
+    -   **Importance**: UI for administrators to create and manage extraction templates and field mappings.
+    -   **Changes**: Newly created.
+-   ****: Frontend page.
+    -   **Importance**: Original single file upload page.
+    -   **Changes**: Not directly modified recently, but its role has been superseded by .
+-   ****: Component for single file upload.
+    -   **Importance**: Handles the single file upload process.
+    -   **Changes**: Modified to include a toggle for template-driven extraction and display auto-population results.
+-   ****: Frontend API service.
+    -   **Importance**: Handles API calls to the GP backend endpoints.
+    -   **Changes**: Added new functions for template-driven upload and batch upload.
+-   ** (new)**: Frontend page.
+    -   **Importance**: UI for uploading multiple documents.
+    -   **Changes**: Newly created.
+-   ** (new)**: Frontend page.
+    -   **Importance**: UI for reviewing and validating extracted data.
+    -   **Changes**: Newly created, and subsequently fixed for a  runtime error.
+-   ** (new)**: Unified frontend page.
+    -   **Importance**: Merges single and batch document upload functionality into one interface.
+    -   **Changes**: Newly created, configured to handle both single and batch uploads, integrated the template-driven extraction toggle for both modes, and is currently experiencing a JSX syntax error.
+-   ****: Roadmap document.
+    -   **Importance**: Outlines the project's development path.
+    -   **Changes**: Updated to reflect completed digitization module phases and new priorities.
 </code_architecture>
 
 <pending_tasks>
-- Complete Phase 1.6: Access Audit Trail (full testing with processed documents)
-- Fine-tune analytics displays and metrics.
-- Implement human validation for AI Scribe notes (doctor review).
-- Implement the Workstation Dashboard (full testing).
-- Add Empty State Messages and Extraction Summary Banner for UI feedback.
-- Further testing of the EHR integration with various medical records.
+-   Complete Phase 1.6: Access Audit Trail.
+-   Fine-tune analytics displays and metrics.
+-   Implement human validation for AI Scribe notes.
+-   Implement the Workstation Dashboard.
+-   Add Empty State Messages and Extraction Summary Banner for UI feedback.
+-   Further testing of the EHR integration with various medical records (user waiting for files).
+-   Automated EDI submission to medical aids.
+-   Patient SMS/Email invoices.
+-   Automated payment reminders.
+-   Advanced analytics.
+-   Implement **Document Preview with PDF Viewer**.
+-   Add **Dashboard Integration** (Pending validations, Recent uploads widgets).
 </pending_tasks>
 
 <current_work>
-Immediately before this summary request, the AI engineer was debugging a critical issue in the **Reception Check-in** page. The user reported that the patient search functionality on  was not working for existing patients, while noting that the search on the  page worked perfectly.
+Immediately before this summary request, the AI engineer was consolidating the document upload process into a single, unified  page. This involved:
+1.  Creating the new  component to replace  and .
+2.  Updating  and  to route to  and comment out the old upload page links.
+3.  Ensuring the  toggle functionality, previously only in single-file mode, is now applicable to both single and batch upload modes within the new  component.
 
-The AI engineer's actions focused on:
-1.  **Examining **: Reviewed the search implementation in  to understand its working logic ().
-2.  **Examining **: Reviewed the search implementation in  to identify discrepancies or issues ().
-3.  **Comparative Analysis**: Noted that The search implementation looks identical! Both use the same endpoint and logic. ().
-4.  **UI Code Review**: Started to check the UI part of  to see how the search is triggered and results are displayed (, ).
-
-The goal is to understand why the seemingly identical search logic is failing in  but working in  and then apply a fix. The work ended with the AI engineer attempting to find where the search is triggered in the  UI.
+The current work is paused due to a  in  at line 594:12, as reported by the compiler in Chat Message 335. This indicates a structural issue in the JSX within the newly merged component.
 </current_work>
 
 <optional_next_step>
-Investigate the UI event handlers and state management in  that trigger the patient search.
+Fix the  in .
 </optional_next_step>
-

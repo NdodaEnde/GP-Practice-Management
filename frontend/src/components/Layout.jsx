@@ -1,18 +1,48 @@
 import React from 'react';
-import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Activity, Users, FileText, DollarSign, ClipboardCheck, LayoutDashboard, BarChart3, Stethoscope, UserCheck, HeartPulse } from 'lucide-react';
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
+import { Activity, Users, FileText, DollarSign, ClipboardCheck, LayoutDashboard, BarChart3, Stethoscope, UserCheck, HeartPulse, Code, Package, Syringe, Receipt, TrendingUp, Shield, Settings, Layers, ClipboardList, Upload, Archive, FolderKanban, LogOut, User, UserCog, Building2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 const Layout = () => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login');
+  };
 
   const navigation = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { name: 'Reception Check-In', path: '/reception', icon: UserCheck },
     { name: 'Vitals Station', path: '/vitals', icon: HeartPulse },
-    { name: 'Digitize Documents', path: '/digitize', icon: FileText },
-    { name: 'GP Patient Digitization', path: '/gp-digitize', icon: Stethoscope },
+    // ===== DIGITIZATION MODULE (NEW UNIFIED INTERFACE) =====
+    { name: '📁 Digitization Module', path: '/digitization', icon: FolderKanban }, // NEW - Unified DaaS Interface
+    // ===== Individual Digitization Pages (Keep for compatibility) =====
+    // { name: 'Digitize Documents', path: '/digitize', icon: FileText }, // OLD - Replaced
+    // { name: 'GP Patient Digitization', path: '/gp-digitize', icon: Stethoscope }, // OLD - Replaced
+    // { name: 'Batch Upload', path: '/batch-upload', icon: Layers }, // OLD - Replaced
+    { name: 'Document Upload', path: '/document-upload', icon: Upload }, // Still accessible
+    { name: 'Validation Queue', path: '/validation-queue', icon: ClipboardList }, // Still accessible
+    { name: 'Document Archive', path: '/digitization-archive', icon: Archive }, // Still accessible
+    { name: 'Digitised Documents', path: '/gp/documents', icon: FileText },
+    { name: 'Extraction Config', path: '/extraction-config', icon: Settings },
+    // ===== ADMIN ONLY =====
+    ...(user?.role === 'admin' ? [
+      { name: '👤 User Management', path: '/user-management', icon: UserCog },
+      { name: '🏢 Workspace Management', path: '/workspace-management', icon: Building2 }
+    ] : []),
     { name: 'Patients', path: '/patients', icon: Users },
+    { name: 'ICD-10 Test', path: '/icd10-test', icon: Code },
+    { name: 'NAPPI Test', path: '/nappi-test', icon: Package },
+    { name: 'Lab Test', path: '/lab-test', icon: Activity },
+    { name: 'Immunizations', path: '/immunizations-test', icon: Syringe },
+    { name: 'Billing Test', path: '/billing-test', icon: Receipt },
     { name: 'Billing', path: '/billing', icon: DollarSign },
+    { name: 'Financial Dashboard', path: '/financial-dashboard', icon: TrendingUp },
+    { name: 'Claims Management', path: '/claims-management', icon: Shield },
     { name: 'Analytics', path: '/analytics', icon: BarChart3 },
   ];
 
@@ -57,8 +87,35 @@ const Layout = () => {
             })}
           </nav>
 
-          {/* Workspace Info */}
-          <div className="mt-auto pt-6 border-t border-slate-200">
+          {/* Workspace Info & User Profile */}
+          <div className="mt-auto pt-6 border-t border-slate-200 space-y-3">
+            {/* User Profile */}
+            {user && (
+              <div className="px-4 py-3 bg-slate-50 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center">
+                    <User className="w-4 h-4 text-teal-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-slate-700 truncate">
+                      {user.first_name} {user.last_name}
+                    </p>
+                    <p className="text-xs text-slate-500 capitalize">{user.role}</p>
+                  </div>
+                </div>
+                <Button
+                  onClick={handleLogout}
+                  variant="outline"
+                  size="sm"
+                  className="w-full gap-2 text-xs"
+                >
+                  <LogOut className="w-3 h-3" />
+                  Logout
+                </Button>
+              </div>
+            )}
+            
+            {/* Workspace Info */}
             <div className="px-4 py-3 bg-slate-50 rounded-lg">
               <p className="text-xs font-medium text-slate-500 mb-1">Active Workspace</p>
               <p className="text-sm font-semibold text-slate-700">Demo GP Practice</p>

@@ -27,6 +27,7 @@ const GPPatientUpload = ({ onProcessingComplete }) => {
     result: null
   });
   const [patientIdInput, setPatientIdInput] = useState('');
+  const [useTemplates, setUseTemplates] = useState(true); // NEW: Enable template-driven extraction by default
   const { toast } = useToast();
 
   const onDrop = useCallback((acceptedFiles) => {
@@ -73,20 +74,25 @@ const GPPatientUpload = ({ onProcessingComplete }) => {
         setUploadState(prev => ({ ...prev, status: 'processing', progress: 95 }));
       }, 2000);
 
-      const result = await gpAPI.uploadPatientFile(
-        uploadState.file,
-        patientIdInput || undefined,
-        'full'
-      );
+      // Use template-driven API or legacy API based on user preference
+      const result = useTemplates 
+        ? await gpAPI.uploadWithTemplate(
+            uploadState.file,
+            patientIdInput || undefined
+          )
+        : await gpAPI.uploadPatientFile(
+            uploadState.file,
+            patientIdInput || undefined,
+            'full'
+          );
 
       clearInterval(progressInterval);
 
       if (result.success) {
         console.log('=== GPPatientUpload Debug ===');
         console.log('1. Upload result:', result);
-        console.log('2. result.data:', result.data);
-        console.log('3. result.data.chunks:', result.data?.chunks);
-        console.log('4. Chunks length:', result.data?.chunks?.length);
+        console.log('2. Template used:', result.data?.template_used);
+        console.log('3. Auto-population:', result.data?.auto_population);
         
         setUploadState(prev => ({
           ...prev,
@@ -95,9 +101,19 @@ const GPPatientUpload = ({ onProcessingComplete }) => {
           result
         }));
 
+        // Show success message with auto-population info
+        const autoPopulation = result.data?.auto_population;
+        const recordsCreated = autoPopulation?.records_created || 0;
+        const tablesPopulated = Object.keys(autoPopulation?.tables_populated || {});
+        
+        let description = `Patient file processed successfully`;
+        if (useTemplates && recordsCreated > 0) {
+          description = `✅ Created ${recordsCreated} records across ${tablesPopulated.length} tables: ${tablesPopulated.join(', ')}`;
+        }
+
         toast({
           title: "Processing Complete! 🎉",
-          description: `Patient file processed successfully`,
+          description,
         });
 
         // Call parent callback
@@ -202,6 +218,24 @@ const GPPatientUpload = ({ onProcessingComplete }) => {
             />
           </div>
 
+          {/* Template-Driven Extraction Toggle */}
+          <div className="flex items-center space-x-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
+            <input
+              type="checkbox"
+              id="use-templates"
+              checked={useTemplates}
+              onChange={(e) => setUseTemplates(e.target.checked)}
+              disabled={uploadState.status === 'uploading' || uploadState.status === 'processing'}
+              className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+            />
+            <Label htmlFor="use-templates" className="text-sm font-medium text-blue-900 cursor-pointer">
+              Use Template-Driven Extraction (Phase 1.2)
+              <span className="block text-xs font-normal text-blue-700 mt-1">
+                Automatically populates immunizations, prescriptions, lab results, and more based on your configured templates
+              </span>
+            </Label>
+          </div>
+
           {/* File Drop Zone */}
           <div
             {...getRootProps()}
@@ -265,11 +299,35 @@ const GPPatientUpload = ({ onProcessingComplete }) => {
                 {/* Success Message */}
                 {uploadState.result && (
                   <Alert className="border-green-200 bg-green-50">
-                    <CheckCircle className="h-4 w-4 text-green-600" />
+                    <CheckCircle className="h-4 h-4 text-green-600" />
                     <AlertDescription className="text-green-800">
-                      <div className="space-y-1">
+                      <div className="space-y-2">
                         <p><strong>Processing Complete!</strong></p>
                         <p className="text-sm">File processed successfully</p>
+                        
+                        {/* Show auto-population results if templates were used */}
+                        {useTemplates && uploadState.result.data?.auto_population && (
+                          <div className="mt-3 pt-3 border-t border-green-200">
+                            <p className="text-sm font-semibold mb-2">📊 Auto-Population Results:</p>
+                            {uploadState.result.data.auto_population.records_created > 0 ? (
+                              <div className="space-y-1 text-xs">
+                                <p>✅ Created <strong>{uploadState.result.data.auto_population.records_created}</strong> records</p>
+                                {Object.entries(uploadState.result.data.auto_population.tables_populated || {}).map(([table, ids]) => (
+                                  <p key={table} className="ml-4">
+                                    • <span className="font-medium capitalize">{table.replace('_', ' ')}</span>: {ids.length} record(s)
+                                  </p>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-xs">ℹ️ No additional records created (template mappings may need configuration)</p>
+                            )}
+                            {uploadState.result.data.auto_population.errors?.length > 0 && (
+                              <p className="text-xs text-orange-700 mt-2">
+                                ⚠️ {uploadState.result.data.auto_population.errors.length} warning(s) during processing
+                              </p>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </AlertDescription>
                   </Alert>

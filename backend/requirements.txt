@@ -63,3 +63,4 @@ black
 isort
 flake8emergentintegrations
 openai
+reportlab==4.4.4
