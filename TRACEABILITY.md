@@ -385,6 +385,54 @@ Two-tier inference. Tier 1 (lexicon) is live; Tier 2 (LLM) is still ahead.
   `xrayStatus`, `xrayAnalyze`) — flip to real endpoints when the
   Intelligence Layer ships.
 
+### 9. Unified semantic search — *NOT transferred from groundtruth-clean-gp*
+
+- **What.** Embedding-based search across the whole digitisation corpus
+  (and ultimately across structured data + clinical notes). User asks in
+  natural language ("patients on metformin with HbA1c > 8 in the last
+  6 months", "all referrals to ortho with knee pain") and the system
+  returns ranked matches.
+- **Why this is on TRACEABILITY.** The strategy doc §10b lists it as
+  deferred to Q4 2026 / Module 02 Phase 2. The Pricing page sells it
+  via the `analytics_semantic_search` capability. Customer expectation
+  exists but the implementation does not — that gap is invisible
+  unless someone trips over it (sales demo, prospect question).
+- **Status.** ❌ The whole backend stack is **untransferred from
+  `groundtruth-clean-gp`**:
+    - `backend/vector_store.py` (273 lines) — `VectorStore` with Qdrant
+    - `backend/embeddings.py` (200 lines) — multi-provider embedding service
+    - `backend/knowledge.py` (368 lines) — knowledge / insight CRUD
+    - `GET /api/documents/search` — the semantic search endpoint
+    - Total ~840 lines of working code.
+- **What's already in this codebase:**
+    - The capability flag `analytics_semantic_search` referenced in
+      `frontend/src/components/CapabilityUpsell.jsx` and
+      `frontend/src/pages/Pricing.jsx` (the *pricing UI* sells it)
+    - The HTML mockup at `Complete Doctor Suite/unifiedschemasearch.html`
+    - Nothing else.
+- **Trigger to revisit.** First sales prospect specifically asks "show
+  me semantic search" → can't demo it. OR when Module 02 Phase 2 work
+  starts in Q4 2026.
+- **Implementation hint.** When ready:
+    1. Lift `vector_store.py` + `embeddings.py` from
+       `/Users/luzuko/groundtruth-clean-gp/backend/` into this repo's
+       `backend/app/services/`
+    2. Pick an embedding provider — strategy doc specifically calls
+       out "the right embedding model for SA medical English"; that
+       decision is pending. Default options: OpenAI `text-embedding-3-large`,
+       Cohere `embed-english-v3.0`, or a self-hosted BioBERT variant.
+    3. Add `/api/digitisation/search?q=...` endpoint
+    4. Index over `gp_validation_sessions.extractions` + (post-promotion)
+       the structured tables. Re-index trigger: on doc approval, queue
+       the patient bundle for embedding (mirror the export-job pattern).
+    5. New page at `/digitisation/search` matching the
+       `unifiedschemasearch.html` mockup
+- **Vector DB choice.** `groundtruth-clean-gp` uses Qdrant. Supabase
+  has `pgvector` first-class — could either use Qdrant as a separate
+  service (groundtruth's choice) or embed the vectors in Postgres via
+  `pgvector` (one fewer service to run). pgvector is fine up to
+  ~10M vectors; switch to Qdrant beyond.
+
 ---
 
 ## How to use this document
