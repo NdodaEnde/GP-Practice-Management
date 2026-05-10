@@ -1,128 +1,87 @@
-# Session handoff — 2026-05-10 (final)
+# Session handoff — 2026-05-10 (production-ready)
 
 > **Use this file when starting a fresh Claude Code session to pick up where the
 > previous one left off.** Delete it after the next session is up to speed.
 
 ---
 
-## What this session accomplished
+## Where the platform is right now
 
-Type C Digitisation now has a **complete data flow**: PDF → AI extraction →
-reviewer validation → **structured EHR tables** → analytics + downstream
-FHIR push. Three commits over two days landed it.
+**Type C Digitisation is production-ready code-side.** A friendly design-partner
+practice can be onboarded today; the per-customer setup is ~30 minutes.
 
-### Wave 1 (committed earlier — `52d8227`)
-TRACEABILITY 6b/6c: ATC code backfill (119 Rx + 54 OTC) + matcher infra +
-WHO ATC index + tests + verification SQL.
+### What a user actually experiences
 
-### Wave 2 (committed earlier — `d4168a5`)
-Surface honesty pass: Dashboard wired to API, EHR confidence cleanup,
-Export job tracking (Phase A), FHIR Connection Wizard skeleton.
+| Step | URL | What happens |
+|---|---|---|
+| Upload | `/digitisation/documents` | PDFs land in Supabase Storage `medical-records` |
+| AI extraction | (background) | LandingAI ADE → `gp_validation_sessions.extractions` JSONB with per-field grounding metadata |
+| Review | `/digitisation/validation/:id` | PDF + extracted EHR side-by-side; NAPPI+ATC chips, ICD-10 chips, click-to-source PDF highlighting; every edit audit-logged |
+| Approve | (modal) | Patient match-confirmation modal forces explicit pick (existing patient OR create new) before any structured data lands |
+| Promote | (server-side, sync) | patients, encounters, diagnoses, vitals, allergies, prescriptions + items written to relational tables. ICD-10 + NAPPI/ATC inferred at promotion time. Idempotent on re-approval. |
+| Index | (background) | OpenAI text-embedding-3-large (1536 dims) → pgvector via `document_embeddings`. Failures persisted on `digitised_documents.search_index_*`. |
+| Search | `/digitisation/search` | Plain-English query → cosine-ANN ranked snippets; click-through to source doc. Rate-limited 30/min/user. |
+| Configure FHIR | `/digitisation/export/connect` | 4-step wizard with live `GET /metadata` test; bearer tokens redacted from API responses |
+| Export | `/digitisation/export` | Worker generates FHIR R4 Bundle → Supabase Storage `digitisation-exports` → auto-POSTs to configured endpoint. Push status tracked separately from bundle generation. |
 
-### Wave 3 (this commit)
-**Phase B FHIR work** + **structured-data promotion** — the substantive
-plumbing that makes everything downstream possible.
-
-1. **FHIR bundle worker** — POST /exports queues a job; BackgroundTasks
-   fires the worker; worker pulls validated extractions, runs them through
-   `fhir_export.py` mappers per-document, writes a real FHIR R4 batch
-   Bundle to `backend/storage/exports/`, marks the job `success` with a
-   `bundle_url`. Download endpoint streams `application/fhir+json`.
-   Smoke-tested: 1 doc → 35KB FHIR bundle with 1 Patient + 9 Conditions +
-   36 MedicationStatements + 13 Encounters.
-2. **Real connection test** — replaces the Phase A stub with a proper
-   `GET {fhir_url}/metadata` probe. Records `last_test_ok` /
-   `last_test_error` on the connection row. Verified against the HAPI
-   public sandbox.
-3. **Wizard Steps 02-04** — Authentication form (none / bearer; basic /
-   OAuth / SMART tagged Phase C), Resource Mapping (toggleable categories
-   stored on the connection's metadata), Test & Save (summary + run-test
-   + commit).
-4. **Migration 010** — fixes the §10c blocker by converting `diagnoses`,
-   `vitals`, `allergies` `workspace_id` / `tenant_id` / `patient_id` /
-   `encounter_id` from UUID → TEXT to match the rest of the schema.
-   Adds source / source_document_id / hba1c / blood_glucose_fasting
-   columns. Existing UUID values become TEXT, no data loss.
-5. **Migration 010b** — adds `encounters.source_document_id` for promoter
-   idempotency.
-6. **`extraction_promoter.py`** — idempotent JSONB → structured tables
-   service. Match-or-create patient (by SA ID number, fallback to
-   surname+dob), one encounter per consultation date, per-category
-   writers for allergies / diagnoses / vitals / prescriptions +
-   prescription_items. Wipe-and-reinsert keyed on `source_document_id`
-   so re-approving a doc never duplicates. Handles digitised_documents
-   FK back-link cleanly.
-7. **/approve wired to promoter** — every document approval now
-   promotes the validated extractions into the structured tables. The
-   document's `patient_id` + `encounter_id` get linked. Promotion
-   summary is returned in the response and persisted to the audit log.
-8. **Validation History Drawer** renders a green "Promoted to EHR"
-   card on `approve` events showing per-category counts, plus an
-   `inferred` count for icd10/nappi.
-9. **Inference layer in the promoter:**
-   - **ICD-10:** curated SA-GP abbreviation lexicon (URTI, HPT, DM, OA,
-     etc) → ICD code, with a fuzzy fallback that's tightened to avoid
-     false positives on short ambiguous abbreviations.
-   - **NAPPI/ATC:** at promotion time, looks up `medication_name`
-     against `nappi_codes` (brand or generic). When matched, copies
-     `nappi_code`, `atc_code`, `generic_name` onto the prescription
-     item. Cached per-promotion run.
-
-## Smoke-test snapshot (typec workspace, demo doc)
+### Today's commit arc (10 commits)
 
 ```
-Patient: MAMELLO MOTSOENENG (id 9102030347687) — created
-Encounters:                  16  (one per consultation date 2023-2025)
-Diagnoses:                    9  (6 with ICD-10 codes from inference)
-Vitals:                       5  (HR + BP across visits)
-Allergies:                    0  (chart had none)
-Prescriptions:               10  (one per visit)
-Prescription items:          36  (4 NAPPI/ATC matched, mostly Paracetamol)
-
-ICD-10 inferred:  6 / 9
-NAPPI inferred:   4 / 36 (data-bottlenecked; lifts to 70%+ with BHF MPP licence)
+0f37fa8  docs: §10 FHIR push bundle profile per downstream EHR
+0133648  docs: key already rotated 2025; migration 012 applied
+757e32e  feat: patient match-confirmation modal
+61ee44d  feat: production-readiness pass (security/observability/Phase C/schema)
+25b0e06  feat: semantic search v1 (TRACEABILITY §9)
+fb5267e  docs: §9 untransferred (now obsolete)
+3b57811  docs: §1 lexicon + §6f promotion
+00ee562  feat: Phase B FHIR + structured-data promotion
+d4168a5  feat: Type C cleanup + FHIR Wizard skeleton
+52d8227  feat: ATC code backfill (TRACEABILITY 6b/6c)
 ```
 
-Re-approval is idempotent — second run produces identical counts, no
-duplicates.
+## Production-readiness gates — all closed
 
-## What's data-bottlenecked vs. algorithm-bottlenecked
+| Gate | Status |
+|---|---|
+| Hardcoded JWTs removed from 12 backend scripts | ✅ Shipped (`61ee44d`) |
+| Supabase service-role key | ✅ Already rotated by owner (2025) |
+| FHIR bearer tokens redacted from API responses | ✅ Shipped |
+| Patient match-confirmation modal (no silent wrong-patient promotion) | ✅ Shipped (`757e32e`) |
+| Indexer / promoter failure visibility | ✅ Persisted on `digitised_documents.search_index_*` + `validation_edit_log.metadata` |
+| /search rate limiting (30/min/user) | ✅ Shipped |
+| FHIR bundle storage on Supabase Storage | ✅ `digitisation-exports` bucket created + verified |
+| Schema completion (encounters.doctor_id, gp_invoices.workspace_id) | ✅ Migration 012 applied |
+| Auto-POST FHIR bundle to configured endpoint | ✅ Shipped (per-EHR bundle shaping is §10 deferred) |
+| Backfill script for pre-existing approved docs | ✅ `backend/scripts/backfill_semantic_index.py` |
+| Production checklist | ✅ `PRODUCTION_CHECKLIST.md` |
+
+## What's still deferred (TRACEABILITY-tracked)
+
+| # | Item | Trigger |
+|---|---|---|
+| **§1 Tier 2** | LLM-based ICD-10 fallback | Reviewer-edit rate >20% in `validation_edit_log` |
+| **§6a** | BHF NAPPI MPP licence | Procurement; lifts NAPPI match ~10% → ~70-90% |
+| **§6d** | Drug-drug interactions (now feasible thanks to ATC infra) | Clinical lead available to review |
+| **§7** | Mongo consolidation (~5-10 endpoints still on Mongo) | Anytime — tech debt |
+| **§8** | ML risk scores / X-ray AI panels | First Beta-tier customer |
+| **§10** | FHIR push bundle profile per downstream EHR | First real customer endpoint |
+| Patient EHR view of promoted data (`/patients/:id`) | Small UI ~45 min | Anytime |
+
+## What's data-bottlenecked vs algorithm-bottlenecked
 
 | Today's leftover | Real cause | Fix |
 |---|---|---|
-| Many extracted meds have no NAPPI/ATC | nappi_codes table is small (173 rows) | Wait for BHF MPP licence (~30k rows) — no code change needed |
-| Some diagnoses unmapped (Arthrog, Chat Nais) | Cryptic abbreviations / typos in source PDF | Either expand the lexicon or LLM-based ICD-10 fallback (TRACEABILITY 5) |
-| ATC source data is CC BY-NC-SA | NonCommercial mirror | Replace 119 `atcd-2026-04-25`-stamped rows when commercial licence lands |
+| Many extracted meds have no NAPPI/ATC | nappi_codes table is small (173 rows: 119 Rx + 54 OTC) | BHF MPP licence (~30k rows) — no code change needed |
+| Some diagnoses unmapped (Arthrog, Chat Nais) | Cryptic OCR / handwritten abbreviations | Either expand the lexicon or LLM fallback (§1 Tier 2) |
+| ATC source data is CC BY-NC-SA | NonCommercial mirror (atcd) | Replace 119 `atcd-2026-04-25`-tagged rows when commercial licence lands |
 
-## What's open / parked for next session
+## Onboarding a new customer (~30 min)
 
-| Item | Notes |
-|---|---|
-| **TRACEABILITY 6d (drug-drug interactions)** | Now feasible — patients have ATC-coded medication histories. Class-level DDI rules + reviewer alerts. ~3-4 hr. |
-| **Phase C FHIR push** | Today the bundle is downloadable; auto-POST to the configured endpoint is the polish. Needs Vault for credential storage. ~half day. |
-| **Semantic-search backfill** | Indexer runs on new approvals and the on-demand reindex endpoint exists; a one-time script that walks every validated doc and indexes it would be useful. ~30 min. |
-| **226 review-pile rows from Wave 1** | Manual disambiguation per row → lifts ATC coverage on existing nappi_codes. ~30-60 min. |
-| **Patient EHR view of promoted data** | The data is now structured but `/patients/:id` page doesn't read from `gp_validation_sessions` to show the doc-of-truth lineage. UI surface 3 from earlier. ~45 min. |
-| **Mongo consolidation** | TRACEABILITY 7. Unrelated tech debt. ~4-6 hr. |
-
-## Files in this commit
-
-**New:**
-```
-backend/app/services/digitisation_export_worker.py     — Phase B FHIR bundle worker
-backend/app/services/extraction_promoter.py            — Promotion service
-backend/migrations/010_extraction_promotion_schema.sql — UUID/TEXT schema fix
-backend/migrations/010b_encounters_source_doc.sql      — Encounter idempotency
-frontend/src/components/groundtruth/ValidationHistoryDrawer.jsx — promotion summary card (was untracked; included)
-```
-
-**Modified:**
-```
-backend/app/api/digitisation.py                          — exports endpoints + FHIR connections + real /metadata test + BackgroundTasks worker trigger + download endpoint + approve_validation promoter wiring
-frontend/src/pages/DigitisationExportCentre.jsx          — Phase B download button, default conn display
-frontend/src/pages/DigitisationFHIRConnectionWizard.jsx  — Steps 02-04 functional (auth + resource mapping + test+save)
-SESSION_HANDOFF.md                                       — replaced
-```
+1. **Provision workspace** in Supabase (tenants + workspaces + practice_capabilities row + first user)
+2. **Apply migrations 001–012** if it's a new project (paste each into SQL editor)
+3. **Create Storage buckets** (private): `medical-records` + `digitisation-exports`
+4. **Decide ATC source** if commercial GA — replace dev-tagged rows per `backend/data/atc/NOTICE.md`
+5. **Optional:** configure their downstream FHIR endpoint via `/digitisation/export/connect`
 
 ## Demo workspaces (unchanged)
 
@@ -138,31 +97,13 @@ backend  — http://localhost:8002 (FastAPI, --reload)
 frontend — http://localhost:3001 (CRA)
 ```
 
-If both aren't running:
-```bash
-cd /Users/luzuko/GP-Practice-Management/backend && .venv/bin/uvicorn server:app --host 127.0.0.1 --port 8002 --reload
-cd /Users/luzuko/GP-Practice-Management/frontend && PORT=3001 BROWSER=none npm run start
-```
+## Suggested next focus (when you come back)
 
-## End-to-end demo path (works today)
+In order of leverage:
 
-1. Login as typec → `/digitisation` shows real KPIs.
-2. Upload a PDF; wait for status → `extracted`.
-3. Open in Validation Queue → review → **Approve**.
-4. History drawer shows: edits, AI baseline, **Promoted to EHR** card with
-   per-category counts.
-5. Patient + encounters + diagnoses + vitals + medications now in the
-   structured tables. Querying any class (J chapter, ATC C09AA*, etc)
-   returns the promoted rows.
-6. Configure a FHIR Connection (HAPI sandbox) → run real `/metadata` test.
-7. Export Centre → Queue → wait ~1s → **Download** the FHIR bundle.
+1. **TRACEABILITY §6d (drug-drug interactions)** — strategic capstone. Patients now have ATC-coded medication histories; class-level DDI rules + reviewer alerts in the Medications tab. ~3-4 hr. Adds *actual safety value* to the platform — not just "we digitise records" but "we catch dangerous combos."
+2. **Patient EHR view of promoted data** — `/patients/:id` doesn't yet read from the structured tables for digitisation-sourced patients. ~45 min UI work.
+3. **§1 Tier 2 LLM ICD-10 fallback** — only if reviewers start editing codes a lot. Triggered by data, not speculation.
+4. **§7 Mongo consolidation** — tech debt; pure cleanup. ~4-6 hr.
 
-## Suggested next focus
-
-**TRACEABILITY 6d (drug-drug interactions)** — biggest strategic capstone.
-The promoter has built the substrate (every patient has an ATC-coded
-medication history); the DDI checker is now practical. Reviewer-facing
-alerts in the Medications tab.
-
-Failing that, **Phase C FHIR push** to actually send bundles to the
-customer's EHR endpoint instead of letting them download.
+User signal at end of this session: **production-ready stop**.
