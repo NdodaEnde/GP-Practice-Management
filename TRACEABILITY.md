@@ -598,6 +598,81 @@ Two-tier inference. Tier 1 (lexicon) is live; Tier 2 (LLM) is still ahead.
   branch independently as your needs change. Group rollups and
   central admin land Q1 2027."*
 
+### 12. Auto-ingest pipeline (scan agent + storage watcher) — *shipped (single-workspace), needs multi-workspace lift*
+
+- **What.** Two-piece system that turns "drag-and-drop a PDF" into
+  "walk into work, validation queue is already populated":
+
+    1. **Client-side scan agent** (`scan-agent/scan_sync.py`) — runs
+       on the practice's scanning workstation as a background script
+       (Windows service, NSSM, or systray). Watches a local folder
+       (default `~/GP-Scans`), uploads new files to the Supabase
+       Storage `medical-records` bucket every 5s. Designed for the
+       receptionist's scanner: she scans a stack, files land in the
+       folder, the agent uploads them. Allowed extensions: pdf, png,
+       jpg, jpeg, tiff, tif.
+    2. **Server-side document watcher** (`backend/app/services/
+       document_watcher.py`, 448 LOC, anti-runaway-aware) — polls
+       Storage every 60s for files without a `digitised_documents`
+       row, registers them with `status='uploaded'`. A separate 15s
+       loop picks up rows with `status='queued_for_processing'` and
+       runs the LandingAI parse + extract pipeline. Concurrency
+       bounded (`WATCHER_MAX_CONCURRENT=2` default). Critical safety
+       comment in the code: *"does NOT auto-process on startup —
+       prevents accidental credit consumption on every server
+       restart."*
+
+- **Why this matters.** The customer demo flips from "open the app,
+  drag PDFs onto the upload zone, wait for parsing, validate" to
+  "open the app, your queue is already there." Reception doesn't
+  need to know the platform; she just feeds the scanner. By the time
+  the doctor sits down, validation work is queued.
+- **Status.** Built and in production use (per `backend/scan_sync.log`
+  — actual upload activity 2026-03-08). Migration
+  `database/document_watcher_migration.sql` adds the
+  `source TEXT DEFAULT 'manual_upload'` column with values
+  `manual_upload | storage_watcher | batch_upload | api` so every
+  document carries provenance.
+- **Known limitations / what's NOT yet done.**
+    - **Single-workspace binding today.** The watcher in `server.py`
+      starts with `start_document_watcher(supabase, DEMO_WORKSPACE_ID)`
+      — one watcher process per backend, hardcoded to one workspace.
+      Multi-tenant deploys need either: (a) one watcher per workspace
+      spawned at boot from the `workspaces` table, or (b) one watcher
+      that scans all `medical-records/<workspace_id>/*` paths and
+      routes by prefix. ~2-3 hr to lift.
+    - **No queueing-policy UI.** "Auto-process this folder" vs
+      "register but don't burn credits" is currently a backend
+      env-var decision (`WATCHER_*` knobs). Customers can't toggle
+      it per workspace.
+    - **No per-workspace scan-agent config helper.** Customers
+      installing the scan agent today have to copy a `.env` from
+      backend; future polish: a generated `.env` from the workspace
+      settings page (one-click "download my scan-agent config").
+- **Trigger to revisit.**
+    - Multi-workspace lift triggers when the second customer signs up
+      (single hardcoded workspace stops working immediately).
+    - UI knobs trigger when a customer asks to pause auto-processing
+      (e.g., end-of-month archive run they don't want auto-extracted).
+- **Implementation hint.**
+    - For multi-workspace: change `start_document_watcher` to take a
+      list of workspace_ids (or no list = all active workspaces),
+      spawn one async task per workspace. Each watcher already takes
+      `workspace_id` as a constructor arg — the lift is mainly the
+      bootstrap.
+    - For per-workspace toggles: add `auto_process_enabled BOOLEAN`
+      and `auto_process_after TIMESTAMPTZ` to `workspaces`. Watcher
+      respects these per-workspace.
+    - For scan-agent config download: small Settings page that
+      generates a pre-populated `.env` (Supabase URL + the user's
+      workspace_id + a scoped service-role-or-anon key with upload
+      rights to `medical-records/<workspace_id>/`).
+- **Sales positioning today.** *"Your scanner doesn't need to know
+  about the platform. Install our scan agent on whichever workstation
+  the receptionist scans from — it watches the folder, uploads new
+  files automatically. By the time you log in, the documents are
+  parsed and queued for your review."*
+
 ---
 
 ## How to use this document
