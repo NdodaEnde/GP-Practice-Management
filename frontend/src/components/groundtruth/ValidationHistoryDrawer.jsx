@@ -236,29 +236,73 @@ export default function ValidationHistoryDrawer({
                 {/* Promotion summary — only on approve actions when the
                     promoter ran. metadata.promotion shape comes from
                     extraction_promoter.PromotionResult.to_dict(). */}
-                {row.action === 'approve' && row.metadata?.promotion && (
-                  <div style={{
-                    marginTop: 8, padding: 8, background: '#f0fdf4',
-                    border: '1px solid #bbf7d0', borderRadius: 6, fontSize: 11,
-                  }}>
-                    <div style={{ fontWeight: 700, color: '#15803d', marginBottom: 4 }}>
-                      Promoted to EHR — patient {row.metadata.promotion.patient_kind}
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 12px', color: '#374151' }}>
-                      {Object.entries(row.metadata.promotion.counts || {}).map(([k, v]) => (
-                        <div key={k}>
-                          <span style={{ color: '#6b7280' }}>{k}:</span>{' '}
-                          <span style={{ fontWeight: 600 }}>{v}</span>
-                        </div>
-                      ))}
-                    </div>
-                    {row.metadata.promotion.warnings?.length > 0 && (
-                      <div style={{ marginTop: 4, color: '#a16207', fontStyle: 'italic' }}>
-                        {row.metadata.promotion.warnings.length} warning(s)
+                {row.action === 'approve' && row.metadata?.promotion && (() => {
+                  const p = row.metadata.promotion;
+                  const ps = p.patient_summary || {};
+                  const conf = p.match_confidence || 'n/a';
+                  // Confidence pill: high (id_number) green, medium (name_dob)
+                  // amber, ambiguous warning red, created neutral.
+                  let confColor = '#6b7280', confLabel = 'NEW PATIENT';
+                  if (conf === 'id_number')      { confColor = '#15803d'; confLabel = 'MATCHED · SA ID'; }
+                  else if (conf === 'name_dob') {
+                    confColor = ps.ambiguous ? '#dc2626' : '#a16207';
+                    confLabel = ps.ambiguous ? 'AMBIGUOUS · NAME+DOB' : 'MATCHED · NAME+DOB';
+                  }
+                  return (
+                    <div style={{
+                      marginTop: 8, padding: 8, background: '#f0fdf4',
+                      border: '1px solid #bbf7d0', borderRadius: 6, fontSize: 11,
+                    }}>
+                      <div style={{ fontWeight: 700, color: '#15803d', marginBottom: 4 }}>
+                        Promoted to EHR
                       </div>
-                    )}
-                  </div>
-                )}
+                      {/* Patient match summary */}
+                      <div style={{
+                        marginBottom: 6, padding: '4px 6px',
+                        background: '#fff', border: '1px solid #d1fae5', borderRadius: 4,
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        gap: 6,
+                      }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {[ps.first_name, ps.last_name].filter(Boolean).join(' ') || '(unknown name)'}
+                          </div>
+                          <div style={{ color: '#6b7280', fontSize: 10 }}>
+                            DOB {ps.dob || '—'}{ps.id_number ? ` · ID ${ps.id_number}` : ''}
+                          </div>
+                        </div>
+                        <span style={{
+                          fontSize: 9, fontWeight: 700, letterSpacing: '0.04em',
+                          color: confColor, padding: '2px 6px',
+                          background: '#fff', border: `1px solid ${confColor}`,
+                          borderRadius: 3, whiteSpace: 'nowrap',
+                        }}>{confLabel}</span>
+                      </div>
+                      {ps.ambiguous && (
+                        <div style={{
+                          marginBottom: 6, padding: '4px 6px',
+                          background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 4,
+                          color: '#991b1b', fontSize: 10,
+                        }}>
+                          ⚠ {ps.other_candidates || 0} other patient(s) share this surname + DOB. Verify the right one was matched.
+                        </div>
+                      )}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 12px', color: '#374151' }}>
+                        {Object.entries(p.counts || {}).map(([k, v]) => (
+                          <div key={k}>
+                            <span style={{ color: '#6b7280' }}>{k}:</span>{' '}
+                            <span style={{ fontWeight: 600 }}>{v}</span>
+                          </div>
+                        ))}
+                      </div>
+                      {p.warnings?.length > 0 && (
+                        <div style={{ marginTop: 4, color: '#a16207', fontStyle: 'italic' }}>
+                          {p.warnings.length} warning(s)
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
                 {row.action === 'approve' && row.metadata?.promotion_error && (
                   <div style={{
                     marginTop: 8, padding: 8, background: '#fef2f2',

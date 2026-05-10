@@ -292,17 +292,21 @@ class PromotionResult:
     """What landed where after a promote_extractions call."""
     patient_id:    str
     patient_kind:  str                       # 'matched' | 'created'
+    match_confidence: str = "n/a"            # 'id_number' | 'name_dob' | 'n/a' (created)
+    patient_summary: Optional[Dict[str, Any]] = None    # name, dob, id_number — for reviewer visibility
     encounter_ids: List[str]               = field(default_factory=list)
     counts:        Dict[str, int]          = field(default_factory=dict)
     warnings:      List[str]               = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "patient_id":    self.patient_id,
-            "patient_kind":  self.patient_kind,
-            "encounter_ids": self.encounter_ids,
-            "counts":        self.counts,
-            "warnings":      self.warnings,
+            "patient_id":       self.patient_id,
+            "patient_kind":     self.patient_kind,
+            "match_confidence": self.match_confidence,
+            "patient_summary":  self.patient_summary,
+            "encounter_ids":    self.encounter_ids,
+            "counts":           self.counts,
+            "warnings":         self.warnings,
         }
 
 
@@ -461,12 +465,61 @@ def _tenant_for_workspace(supabase, workspace_id: str) -> str:
 
 def _match_or_create_patient(
     supabase, workspace_id: str, demographics: Dict[str, Any]
-) -> Tuple[str, str]:
-    """Returns (patient_id, kind) where kind is 'matched' | 'created'."""
-    existing = _match_patient(supabase, workspace_id, demographics)
-    if existing:
-        return existing["id"], "matched"
+) -> Tuple[str, str, str, Dict[str, Any]]:
+    """Returns (patient_id, kind, match_confidence, patient_summary).
+    kind = 'matched' | 'created'.
+    match_confidence = 'id_number' (matched on SA ID — high), 'name_dob'
+    (matched on surname + DOB — medium, can collide with twins), or 'n/a'
+    (newly created)."""
+    id_number = (demographics.get("id_number") or "").strip()
+    surname   = (demographics.get("surname")   or "").strip()
+    dob       = _normalise_date(demographics.get("date_of_birth"))
 
+    # Tier 1: SA ID number (13 unique digits — high confidence)
+    if id_number:
+        res = (
+            supabase.table("patients")
+            .select("id, first_name, last_name, id_number, dob")
+            .eq("workspace_id", workspace_id)
+            .eq("id_number", id_number)
+            .limit(1)
+            .execute()
+        )
+        if res.data:
+            r = res.data[0]
+            return r["id"], "matched", "id_number", {
+                "first_name": r.get("first_name"),
+                "last_name":  r.get("last_name"),
+                "dob":        r.get("dob"),
+                "id_number":  r.get("id_number"),
+            }
+
+    # Tier 2: surname + DOB (medium — can collide with twins)
+    if surname and dob:
+        res = (
+            supabase.table("patients")
+            .select("id, first_name, last_name, id_number, dob")
+            .eq("workspace_id", workspace_id)
+            .ilike("last_name", surname)
+            .eq("dob", dob)
+            .limit(2)
+            .execute()
+        )
+        if res.data:
+            # If multiple, take first but warn via patient_summary having .ambiguous
+            r = res.data[0]
+            summary = {
+                "first_name": r.get("first_name"),
+                "last_name":  r.get("last_name"),
+                "dob":        r.get("dob"),
+                "id_number":  r.get("id_number"),
+            }
+            if len(res.data) > 1:
+                summary["ambiguous"] = True
+                summary["other_candidates"] = len(res.data) - 1
+            return r["id"], "matched", "name_dob", summary
+
+    # No match — create
     first_name, _ = _split_full_name(demographics.get("full_names"))
     last_name = demographics.get("surname") or "Unknown"
     medical_aid_blob = (demographics.get("medical_aid")
@@ -489,7 +542,12 @@ def _match_or_create_patient(
     }
     supabase.table("patients").insert(row).execute()
     logger.info(f"[promoter] created patient {new_id} in workspace {workspace_id}")
-    return new_id, "created"
+    return new_id, "created", "n/a", {
+        "first_name": row["first_name"],
+        "last_name":  row["last_name"],
+        "dob":        row["dob"],
+        "id_number":  row["id_number"],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -840,7 +898,7 @@ def promote_extractions(
     # All cleanup of prior rows happens upfront in reverse-FK order.
     _wipe_prior_promotion(supabase, document_id)
 
-    patient_id, kind = _match_or_create_patient(
+    patient_id, kind, confidence, summary = _match_or_create_patient(
         supabase, workspace_id, demographics
     )
     encounter_map = _create_encounters(
@@ -890,6 +948,8 @@ def promote_extractions(
     return PromotionResult(
         patient_id=patient_id,
         patient_kind=kind,
+        match_confidence=confidence,
+        patient_summary=summary,
         encounter_ids=list(encounter_map.values()),
         counts={**counts, **inference_summary},
     )

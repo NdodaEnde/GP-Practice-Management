@@ -145,7 +145,24 @@ def _chunks_from_extractions(extractions: Dict[str, Any]) -> List[Chunk]:
 def index_document(supabase, document_id: str) -> Dict[str, Any]:
     """Re-index a document. Idempotent: wipes prior embeddings keyed by
     document_id, fetches the latest validated extractions, chunks + embeds +
-    inserts. Returns a small summary dict."""
+    inserts. Returns a small summary dict.
+
+    On completion (success OR failure) updates digitised_documents.
+    search_indexed_at / search_index_chunks / search_index_error so the
+    validation panel can surface silent BackgroundTasks failures."""
+    from datetime import datetime, timezone
+
+    def _record_index_result(chunks: int, error: Optional[str]) -> None:
+        try:
+            supabase.table("digitised_documents").update({
+                "search_indexed_at":  datetime.now(tz=timezone.utc).isoformat(),
+                "search_index_chunks": chunks,
+                "search_index_error":  error,
+            }).eq("id", document_id).execute()
+        except Exception as e:
+            # Newer schema may not be applied yet — log and move on.
+            logger.warning(f"[semantic-search] could not update doc index status: {e}")
+
     logger.info(f"[semantic-search] indexing doc {document_id[:8]}…")
 
     # 1. Resolve workspace + patient_id from the doc row
@@ -177,6 +194,7 @@ def index_document(supabase, document_id: str) -> Dict[str, Any]:
         # Wipe whatever was there so the doc isn't searchable with stale data
         supabase.table("document_embeddings") \
             .delete().eq("document_id", document_id).execute()
+        _record_index_result(0, None)
         return {"document_id": document_id, "chunks_indexed": 0, "skipped": "no extractable text"}
 
     # 3. Idempotency wipe
@@ -188,6 +206,7 @@ def index_document(supabase, document_id: str) -> Dict[str, Any]:
         vectors = _embed_batch([c.text for c in chunks])
     except Exception as e:
         logger.error(f"[semantic-search] embedding failed for {document_id}: {e}")
+        _record_index_result(0, f"embedding failed: {e}")
         return {"document_id": document_id, "error": f"embedding failed: {e}"}
 
     # 5. Insert. Supabase Python SDK handles vector lists as arrays — pgvector
@@ -204,9 +223,15 @@ def index_document(supabase, document_id: str) -> Dict[str, Any]:
             "embedding":    vec,
         })
     # Insert in slices of 200 to keep individual requests small
-    for i in range(0, len(rows), 200):
-        supabase.table("document_embeddings").insert(rows[i:i + 200]).execute()
+    try:
+        for i in range(0, len(rows), 200):
+            supabase.table("document_embeddings").insert(rows[i:i + 200]).execute()
+    except Exception as e:
+        logger.error(f"[semantic-search] insert failed for {document_id}: {e}")
+        _record_index_result(0, f"insert failed: {e}")
+        return {"document_id": document_id, "error": f"insert failed: {e}"}
 
+    _record_index_result(len(rows), None)
     logger.info(
         f"[semantic-search] indexed doc {document_id[:8]}…: {len(rows)} chunks"
     )

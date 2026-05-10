@@ -35,23 +35,150 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Storage
 # ---------------------------------------------------------------------------
+#
+# Production: Supabase Storage bucket `digitisation-exports`. One-time setup
+# in Supabase Studio → Storage → Create bucket → name 'digitisation-exports',
+# private (no public access — the API proxies via the download endpoint).
+#
+# Dev fallback: local disk under backend/storage/exports/. Used automatically
+# when the Storage bucket isn't reachable (so a fresh checkout doesn't break).
 
-# Local on-disk path for generated FHIR bundles. Lives next to the document
-# storage. Each export gets its own file.
-EXPORTS_DIR = Path(__file__).resolve().parent.parent.parent / "storage" / "exports"
+EXPORTS_DIR    = Path(__file__).resolve().parent.parent.parent / "storage" / "exports"
+EXPORTS_BUCKET = "digitisation-exports"
+
+
+def _bundle_storage_key(workspace_id: str, batch_id: str) -> str:
+    """Object key inside the Supabase Storage bucket."""
+    return f"{workspace_id.replace('/', '_')}/{batch_id.replace('/', '_')}.json"
 
 
 def _bundle_path(workspace_id: str, batch_id: str) -> Path:
-    """Where this batch's bundle lives on disk."""
-    safe_ws = workspace_id.replace("/", "_")
+    """Local-disk fallback path."""
+    safe_ws    = workspace_id.replace("/", "_")
     safe_batch = batch_id.replace("/", "_")
     return EXPORTS_DIR / safe_ws / f"{safe_batch}.json"
 
 
 def _bundle_url(job_id: str) -> str:
     """The URL the frontend should fetch to download the bundle. Routes to
-    GET /api/digitisation/exports/{job_id}/download which serves the file."""
+    GET /api/digitisation/exports/{job_id}/download which serves it after
+    auth + tenancy check."""
     return f"/api/digitisation/exports/{job_id}/download"
+
+
+def _store_bundle(supabase, workspace_id: str, batch_id: str, content: str) -> str:
+    """Write the generated bundle content somewhere durable. Tries Supabase
+    Storage first; falls back to local disk if the bucket isn't reachable.
+    Returns the storage location for diagnostic logging — not user-facing."""
+    key = _bundle_storage_key(workspace_id, batch_id)
+    bytes_ = content.encode("utf-8")
+    try:
+        # Use upsert so re-runs of the same batch_id overwrite cleanly.
+        supabase.storage.from_(EXPORTS_BUCKET).upload(
+            path=key,
+            file=bytes_,
+            file_options={"content-type": "application/fhir+json", "upsert": "true"},
+        )
+        return f"supabase://{EXPORTS_BUCKET}/{key}"
+    except Exception as e:
+        logger.warning(
+            f"[export-worker] Supabase Storage upload failed (falling back "
+            f"to disk): {e}"
+        )
+        path = _bundle_path(workspace_id, batch_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        return f"file://{path}"
+
+
+def fetch_bundle(supabase, workspace_id: str, batch_id: str) -> Optional[bytes]:
+    """Read the bundle content for download. Tries Supabase Storage first,
+    then local disk. Returns None if neither has it."""
+    key = _bundle_storage_key(workspace_id, batch_id)
+    # Try Storage
+    try:
+        return supabase.storage.from_(EXPORTS_BUCKET).download(key)
+    except Exception as e:
+        logger.debug(f"[export-worker] Storage download miss for {key}: {e}")
+    # Fall back to local disk
+    path = _bundle_path(workspace_id, batch_id)
+    if path.exists():
+        return path.read_bytes()
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Phase C — auto-POST to configured FHIR endpoint
+# ---------------------------------------------------------------------------
+
+def _attempt_push(
+    supabase,
+    job_id: str,
+    workspace_id: str,
+    bundle_content: str,
+    connection: Optional[Dict[str, Any]],
+) -> None:
+    """Best-effort push of the generated bundle to the workspace's default
+    FHIR connection. Records push_status / push_status_code / push_error /
+    pushed_at on the job row. Push failure does NOT change the job's
+    overall `status` — the bundle is still downloadable.
+
+    No connection configured → push_status='not_attempted'.
+    """
+    import httpx
+
+    if not connection:
+        supabase.table("digitisation_export_jobs").update({
+            "push_status":        "not_attempted",
+            "push_error":         "No default FHIR connection configured",
+            "pushed_at":          datetime.now(tz=timezone.utc).isoformat(),
+        }).eq("id", job_id).execute()
+        return
+
+    fhir_url = (connection.get("fhir_url") or "").rstrip("/")
+    if not fhir_url:
+        return
+
+    headers = {
+        "Content-Type": "application/fhir+json",
+        "Accept":       "application/fhir+json,application/json",
+    }
+    creds = (connection.get("metadata") or {}).get("credentials") or {}
+    if connection.get("auth_method") == "bearer" and creds.get("token"):
+        headers["Authorization"] = f"Bearer {creds['token']}"
+
+    pushed_at_iso = datetime.now(tz=timezone.utc).isoformat()
+    status_code: Optional[int] = None
+    error: Optional[str] = None
+    ok = False
+    try:
+        with httpx.Client(timeout=30.0, follow_redirects=True) as client:
+            r = client.post(fhir_url, headers=headers, content=bundle_content)
+        status_code = r.status_code
+        # FHIR transaction success: 200 OK with OperationOutcome bundle response.
+        # 201/202 also acceptable for some servers.
+        if 200 <= r.status_code < 300:
+            ok = True
+        else:
+            error = f"HTTP {r.status_code}: {r.text[:200].strip()}"
+    except httpx.ConnectError as e:
+        error = f"Could not reach {fhir_url}: {e}"
+    except httpx.TimeoutException:
+        error = f"Timeout after 30s pushing to {fhir_url}"
+    except Exception as e:
+        error = f"{type(e).__name__}: {e}"
+
+    supabase.table("digitisation_export_jobs").update({
+        "push_status":        "success" if ok else "failed",
+        "push_status_code":   status_code,
+        "push_error":         error,
+        "pushed_at":          pushed_at_iso,
+        "push_connection_id": connection.get("id"),
+    }).eq("id", job_id).execute()
+    logger.info(
+        f"[export-worker] push to {fhir_url}: "
+        f"{'OK' if ok else 'FAIL'} ({status_code}) {error or ''}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -312,7 +439,7 @@ def run_export_job(supabase, job_id: str) -> None:
                 logger.warning(f"[export-worker] doc {doc_id} mapping failed: {e}")
                 failed_docs.append((doc_id, str(e)))
 
-        # 5. Write batch bundle
+        # 5. Write batch bundle (Supabase Storage with local-disk fallback)
         outer_bundle = {
             "resourceType": "Bundle",
             "type":         "batch",
@@ -326,9 +453,13 @@ def run_export_job(supabase, job_id: str) -> None:
             },
             "entry": [{"resource": b} for b in per_doc_bundles],
         }
-        path = _bundle_path(workspace_id, job["batch_id"])
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(outer_bundle, indent=2), encoding="utf-8")
+        bundle_json = json.dumps(outer_bundle, indent=2)
+        storage_loc = _store_bundle(supabase, workspace_id, job["batch_id"], bundle_json)
+
+        # Phase C — auto-POST to the workspace's default FHIR connection.
+        # Best-effort: failure is recorded on the job row but does NOT
+        # change the overall job status (bundle remains downloadable).
+        _attempt_push(supabase, job_id, workspace_id, bundle_json, connection)
 
         # 6. Final status
         completed_iso = datetime.now(tz=timezone.utc).isoformat()
@@ -357,7 +488,7 @@ def run_export_job(supabase, job_id: str) -> None:
         supabase.table("digitisation_export_jobs").update(update).eq("id", job_id).execute()
         logger.info(
             f"[export-worker] job {job_id} {final_status}: "
-            f"{len(per_doc_bundles)}/{len(document_ids)} documents → {path}"
+            f"{len(per_doc_bundles)}/{len(document_ids)} documents → {storage_loc}"
         )
 
     except Exception as e:

@@ -1481,8 +1481,10 @@ async def download_export_bundle(
 ):
     """Stream the generated FHIR bundle JSON. Only available once the
     job has run (bundle_url is set). Returns 409 if the job exists but
-    isn't done yet, 404 if the file is missing on disk."""
-    from app.services.digitisation_export_worker import _bundle_path
+    isn't done yet, 404 if neither Supabase Storage nor local disk has
+    the bundle."""
+    from fastapi.responses import Response
+    from app.services.digitisation_export_worker import fetch_bundle
 
     workspace_id = current_user.get("workspace_id")
     if not workspace_id:
@@ -1504,14 +1506,14 @@ async def download_export_bundle(
     if job["status"] == "failed" or not job.get("bundle_url"):
         raise HTTPException(status_code=404, detail="No bundle was generated for this job")
 
-    path = _bundle_path(workspace_id, job["batch_id"])
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="Bundle file missing on disk")
+    content = fetch_bundle(supabase, workspace_id, job["batch_id"])
+    if content is None:
+        raise HTTPException(status_code=404, detail="Bundle missing from Storage and disk")
 
-    return FileResponse(
-        path,
+    return Response(
+        content=content,
         media_type="application/fhir+json",
-        filename=f"{job['batch_id']}.fhir.json",
+        headers={"Content-Disposition": f'attachment; filename="{job["batch_id"]}.fhir.json"'},
     )
 
 
@@ -1524,6 +1526,31 @@ async def download_export_bundle(
 _FHIR_ENVIRONMENTS = {"sandbox", "staging", "production"}
 _FHIR_AUTH_METHODS = {"none", "basic", "bearer",
                        "oauth2_client_credentials", "smart_on_fhir"}
+
+
+def _redact_fhir_connection(row: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Strip secrets from a connection row before returning it via the API.
+
+    Bearer tokens (and any future basic / OAuth credentials) live under
+    `metadata.credentials.*`. The DB stores them in plaintext JSONB until
+    Supabase Vault lands; the API surface MUST never echo them back so
+    they don't leak via tool inspect, browser dev-tools, frontend caches,
+    or screenshots. The connection-test endpoint reads credentials from
+    the table directly, so the redaction here doesn't break test flow.
+    """
+    if not row:
+        return row
+    redacted = dict(row)
+    md = redacted.get("metadata")
+    if isinstance(md, dict) and "credentials" in md:
+        md = dict(md)
+        creds = md.get("credentials") or {}
+        if isinstance(creds, dict) and creds:
+            md["credentials"] = {
+                "configured": list(creds.keys()),  # which fields are stored
+            }
+        redacted["metadata"] = md
+    return redacted
 
 
 def _validate_fhir_payload(payload: dict, *, partial: bool = False) -> dict:
@@ -1614,7 +1641,7 @@ async def create_fhir_connection(
     }
     res = supabase.table("digitisation_fhir_connections").insert(row).execute()
     conn = (res.data or [{}])[0]
-    return {"connection": conn}
+    return {"connection": _redact_fhir_connection(conn)}
 
 
 @router.patch("/fhir/connections/{conn_id}")
@@ -1649,7 +1676,7 @@ async def update_fhir_connection(
     )
     if not res.data:
         raise HTTPException(status_code=404, detail="Connection not found")
-    return {"connection": res.data[0]}
+    return {"connection": _redact_fhir_connection(res.data[0])}
 
 
 @router.delete("/fhir/connections/{conn_id}")
@@ -1749,6 +1776,37 @@ async def test_fhir_connection(
 # Semantic search (TRACEABILITY §9)
 # ---------------------------------------------------------------------------
 
+# Naive in-process rate limiter for /search. OpenAI embedding cost is small
+# (~$0.0000013/query) but a runaway frontend bug or malicious actor could
+# still rack up bills. 30 queries / minute / user is generous for human
+# typing, blocks robots cheaply. Replace with Redis-backed limiter for
+# multi-instance deploy.
+import time as _time
+from collections import deque as _deque
+from threading import Lock as _Lock
+_search_rate_lock  = _Lock()
+_search_rate_state: Dict[str, _deque] = {}
+_SEARCH_RATE_WINDOW_S  = 60
+_SEARCH_RATE_MAX       = 30
+
+
+def _enforce_search_rate_limit(user_email: str) -> None:
+    now = _time.monotonic()
+    with _search_rate_lock:
+        bucket = _search_rate_state.setdefault(user_email, _deque())
+        # drop old hits
+        while bucket and now - bucket[0] > _SEARCH_RATE_WINDOW_S:
+            bucket.popleft()
+        if len(bucket) >= _SEARCH_RATE_MAX:
+            retry = int(_SEARCH_RATE_WINDOW_S - (now - bucket[0])) + 1
+            raise HTTPException(
+                status_code=429,
+                detail=f"Search rate limit: {_SEARCH_RATE_MAX}/min. Retry in {retry}s.",
+                headers={"Retry-After": str(retry)},
+            )
+        bucket.append(now)
+
+
 @router.get("/search")
 async def search_documents(
     q:           str  = Query(..., min_length=2, description="natural-language query"),
@@ -1756,6 +1814,7 @@ async def search_documents(
     patient_id:  Optional[str] = Query(None, description="restrict to one patient"),
     current_user: dict = Depends(require_capability("digitisation_validation")),
 ):
+    _enforce_search_rate_limit(current_user.get("email") or "anonymous")
     """Embed the query and return ranked chunks across the workspace's
     indexed documents. Results include the source document_id +
     patient_id so the caller can deep-link into the validation panel
