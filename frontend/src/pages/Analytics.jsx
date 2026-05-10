@@ -17,6 +17,7 @@ const Analytics = () => {
   const [operationalData, setOperationalData] = useState(null);
   const [clinicalData, setClinicalData] = useState(null);
   const [financialData, setFinancialData] = useState(null);
+  const [medicationsData, setMedicationsData] = useState(null);
 
   useEffect(() => {
     loadAllAnalytics();
@@ -25,17 +26,19 @@ const Analytics = () => {
   const loadAllAnalytics = async () => {
     try {
       setLoading(true);
-      const [summaryRes, operationalRes, clinicalRes, financialRes] = await Promise.all([
+      const [summaryRes, operationalRes, clinicalRes, financialRes, medicationsRes] = await Promise.all([
         analyticsAPI.getSummary(),
         analyticsAPI.getOperational(),
         analyticsAPI.getClinical(),
         analyticsAPI.getFinancial(),
+        analyticsAPI.getMedications(365).catch(() => ({ data: null })),
       ]);
-      
+
       setStats(summaryRes.data);
       setOperationalData(operationalRes.data);
       setClinicalData(clinicalRes.data);
       setFinancialData(financialRes.data);
+      setMedicationsData(medicationsRes.data);
     } catch (error) {
       console.error('Error loading analytics:', error);
       toast({
@@ -226,6 +229,61 @@ const Analytics = () => {
     }]
   };
 
+  // ATC anatomical-group distribution (donut). Uses real backfilled data
+  // from nappi_codes.atc_code (TRACEABILITY 6b/6c).
+  const atcAnatomical = medicationsData?.by_atc_anatomical || [];
+  const atcClasses    = medicationsData?.by_atc_class || [];
+  const atcCoverage   = medicationsData?.atc_coverage_pct ?? 0;
+
+  const atcAnatomicalChart = {
+    title: {
+      text: 'Prescribing by ATC anatomical group',
+      subtext: `Coverage: ${atcCoverage}% of NAPPI-coded items have an ATC class`,
+      textStyle: { fontSize: 16, fontWeight: 'bold', color: '#1e293b' },
+      subtextStyle: { fontSize: 11, color: '#64748b' },
+    },
+    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+    legend: { type: 'scroll', orient: 'horizontal', bottom: 0, textStyle: { fontSize: 11 } },
+    series: [{
+      type: 'pie',
+      radius: ['45%', '70%'],
+      center: ['50%', '48%'],
+      avoidLabelOverlap: true,
+      itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 },
+      label: { show: false },
+      data: atcAnatomical.map(g => ({ name: g.group_name, value: g.count })),
+    }],
+  };
+
+  const atcClassesChart = {
+    title: {
+      text: 'Top 15 therapeutic classes (ATC level-3)',
+      textStyle: { fontSize: 16, fontWeight: 'bold', color: '#1e293b' },
+    },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' },
+      formatter: (params) => {
+        const p = params[0];
+        const cls = atcClasses[atcClasses.length - 1 - p.dataIndex];
+        const sub = cls?.sample_substance ? `<br/><span style="color:#64748b">e.g. ${cls.sample_substance}</span>` : '';
+        return `<b>${p.name}</b>: ${p.value} items${sub}`;
+      },
+    },
+    grid: { left: '20%', right: '5%', top: 50, bottom: 20 },
+    xAxis: { type: 'value', name: 'Items' },
+    yAxis: {
+      type: 'category',
+      data: atcClasses.map(c => c.atc_class_code).reverse(),
+      axisLabel: { fontSize: 11 },
+    },
+    series: [{
+      data: atcClasses.map(c => c.count).reverse(),
+      type: 'bar',
+      itemStyle: { color: '#0d9488', borderRadius: [0, 4, 4, 0] },
+    }],
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -335,6 +393,31 @@ const Analytics = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Charts Row 3 — ATC drug-class breakdown (TRACEABILITY 6b/6c) */}
+      {atcAnatomical.length > 0 ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6" data-testid="atc-class-row">
+          <Card className="border-0 shadow-lg">
+            <CardContent className="pt-6">
+              <ReactECharts option={atcAnatomicalChart} style={{ height: '380px' }} />
+            </CardContent>
+          </Card>
+
+          <Card className="border-0 shadow-lg">
+            <CardContent className="pt-6">
+              <ReactECharts option={atcClassesChart} style={{ height: '380px' }} />
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        <Card className="border-0 shadow-lg">
+          <CardContent className="pt-6 text-center text-slate-500">
+            <Pill className="w-8 h-8 mx-auto mb-2 text-slate-400" />
+            <p className="font-medium text-slate-700">Drug-class analytics</p>
+            <p className="text-sm">No ATC-coded prescriptions in the last 90 days yet. Codes appear here once prescriptions reference NAPPI rows that have an <code>atc_code</code> assigned.</p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Additional Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

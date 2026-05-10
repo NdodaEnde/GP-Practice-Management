@@ -1,0 +1,215 @@
+/* EHRValidationPanel.css — clinical, precise, trustworthy */
+
+.ehr-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #FAFAFA;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  color: #1A1A2E;
+}
+
+/* Identity strip — restyled to M3 Clinical Integrity tokens
+   (primary navy #00478d, on-primary white, Manrope/Public Sans). */
+.ehr-identity-strip {
+  background: #00478d;
+  color: #ffffff;
+  padding: 10px 14px;
+  flex-shrink: 0;
+  font-family: 'Public Sans', system-ui, sans-serif;
+}
+.ehr-identity-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px; }
+.patient-name { font-size: 14px; font-weight: 700; font-family: 'Manrope', system-ui, sans-serif; letter-spacing: -0.01em; }
+.patient-meta { display: flex; gap: 14px; font-size: 11px; opacity: 0.85; font-family: 'Public Sans', system-ui, sans-serif; }
+.patient-meta > * { letter-spacing: 0.02em; }
+.doc-type-selector { display: flex; align-items: center; gap: 6px; }
+.doc-type-select {
+  padding: 3px 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.30);
+  background: rgba(255,255,255,0.12); color: white; font-size: 11px; cursor: pointer;
+  font-family: 'Public Sans', system-ui, sans-serif;
+  transition: background 0.15s, border-color 0.15s;
+}
+.doc-type-select:hover { background: rgba(255,255,255,0.18); border-color: rgba(255,255,255,0.45); }
+.doc-type-select option { background: #00478d; color: white; }
+.btn-re-extract {
+  display: flex; align-items: center; gap: 4px;
+  padding: 3px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.30);
+  background: rgba(255,255,255,0.12); color: white; font-size: 11px; font-weight: 600; cursor: pointer;
+  font-family: 'Public Sans', system-ui, sans-serif;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn-re-extract:hover { background: rgba(255,255,255,0.18); border-color: rgba(255,255,255,0.45); }
+.btn-re-extract:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Tab bar */
+.ehr-tab-bar {
+  display: flex;
+  overflow-x: auto;
+  background: white;
+  border-bottom: 1px solid #E5E7EB;
+  flex-shrink: 0;
+  scrollbar-width: none;
+}
+.ehr-tab-bar::-webkit-scrollbar { display: none; }
+.ehr-tab {
+  display: flex; align-items: center; gap: 4px;
+  padding: 7px 10px;
+  border: none; border-bottom: 2px solid transparent;
+  background: none; color: #6B7280;
+  font-size: 11px; font-weight: 500;
+  white-space: nowrap; cursor: pointer; flex-shrink: 0;
+  transition: color 0.15s, border-color 0.15s;
+}
+.ehr-tab:hover { color: #374151; background: #F9FAFB; }
+.ehr-tab-active { font-weight: 700; background: #F0F9FF; }
+
+/* Status messages */
+.ehr-status {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 14px; font-size: 12px; font-weight: 500;
+  flex-shrink: 0;
+}
+.ehr-status-success { background: #D1FAE5; color: #065F46; border-bottom: 1px solid #A7F3D0; }
+.ehr-status-error   { background: #FEE2E2; color: #991B1B; border-bottom: 1px solid #FECACA; }
+
+/* Content area */
+.ehr-content-area { flex: 1; overflow-y: auto; min-height: 0; padding-bottom: 52px; }
+.tab-content { padding: 10px 12px; display: flex; flex-direction: column; gap: 5px; }
+
+/* Section headers */
+.ehr-section-header {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.08em; color: #6B7280;
+  padding: 5px 0 2px; border-bottom: 1px solid #E5E7EB;
+}
+
+/* Row layout */
+.ehr-row { display: flex; gap: 5px; }
+.ehr-row .ehr-field { flex: 1; min-width: 0; }
+
+/* Individual field */
+.ehr-field {
+  border: 1px solid #E5E7EB; border-radius: 5px;
+  padding: 5px 7px; background: white;
+  cursor: pointer; transition: box-shadow 0.15s;
+}
+.ehr-field:hover { box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+.field-high    { border-left: 3px solid #10B981; }
+.field-med     { border-left: 3px solid #F59E0B; }
+.field-low     { border-left: 3px solid #EF4444; }
+.field-missing { border-left: 3px solid #9CA3AF; background: #FAFAFA; }
+.ehr-field-accepted { background: #F0FDF4; border-color: #BBF7D0; }
+
+.ehr-field-header { display: flex; align-items: center; gap: 5px; margin-bottom: 2px; }
+.ehr-field-label { font-size: 10px; font-weight: 600; color: #6B7280; text-transform: uppercase; letter-spacing: 0.05em; flex: 1; }
+.ehr-required { color: #EF4444; margin-left: 2px; }
+.ehr-field-controls { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+
+/* Confidence badges */
+.conf-badge { font-size: 9px; font-weight: 700; padding: 1px 4px; border-radius: 8px; font-family: 'Courier New', monospace; }
+.conf-high    { background: #DCFCE7; color: #166534; }
+.conf-med     { background: #FEF3C7; color: #92400E; }
+.conf-low     { background: #FEE2E2; color: #991B1B; }
+.conf-missing { background: #F3F4F6; color: #9CA3AF; }
+
+/* Icon buttons */
+.btn-icon { width: 20px; height: 20px; border: none; border-radius: 3px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.1s; }
+.btn-accept   { background: #DCFCE7; color: #166534; }
+.btn-accept:hover { background: #BBF7D0; }
+.btn-edit     { background: #EFF6FF; color: #1D4ED8; }
+.btn-edit:hover { background: #DBEAFE; }
+.btn-accepted { background: #10B981; color: white; }
+
+/* Field values */
+.ehr-field-value { font-size: 12px; color: #111827; font-family: 'Courier New', monospace; min-height: 16px; word-break: break-word; line-height: 1.4; }
+.value-empty    { color: #D1D5DB; font-style: italic; font-family: sans-serif; }
+.value-accepted { color: #065F46; font-weight: 600; }
+
+/* Inputs */
+.ehr-input { width: 100%; border: 1px solid #93C5FD; border-radius: 3px; padding: 3px 6px; font-size: 12px; font-family: 'Courier New', monospace; background: #EFF6FF; color: #1E3A5F; outline: none; box-sizing: border-box; }
+.ehr-input:focus { border-color: #3B82F6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
+.ehr-textarea { resize: vertical; min-height: 56px; }
+
+/* ICD-10 badges */
+.icd-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 4px; font-family: 'Courier New', monospace; margin-right: 4px; }
+.icd-pending  { background: #F3F4F6; color: #6B7280; }
+.icd-valid    { background: #D1FAE5; color: #065F46; }
+.icd-category { background: #FEF3C7; color: #92400E; }
+.icd-invalid  { background: #FEE2E2; color: #991B1B; }
+.icd-desc     { font-size: 10px; color: #6B7280; font-family: sans-serif; margin-left: 4px; }
+
+/* NAPPI badges */
+.nappi-badge { display: inline-flex; align-items: center; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 3px; font-family: 'Courier New', monospace; }
+.nappi-badge-group { margin-left: 4px; }
+.nappi-found     { background: #DBEAFE; color: #1E40AF; }
+.nappi-not-found { background: #F3F4F6; color: #9CA3AF; }
+.nappi-curated   { background: #FEF3C7; color: #92400E; }
+.nappi-schedule  { background: #E0E7FF; color: #3730A3; }
+.nappi-atc       { background: #CCFBF1; color: #115E59; font-weight: 600; }
+
+/* Array sections */
+.ehr-array-section { border: 1px solid #E5E7EB; border-radius: 7px; overflow: hidden; margin-bottom: 6px; }
+.ehr-array-header { display: flex; align-items: center; justify-content: space-between; padding: 7px 10px; background: #F9FAFB; border-left: 3px solid currentColor; cursor: pointer; user-select: none; }
+.ehr-array-header:hover { background: #F3F4F6; }
+.ehr-array-title { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: #374151; }
+.ehr-array-count { background: #E5E7EB; color: #4B5563; font-size: 10px; font-weight: 700; padding: 0 5px; border-radius: 8px; }
+.ehr-array-body { padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.ehr-array-item { display: flex; gap: 6px; padding: 8px; background: #FAFAFA; border: 1px solid #F0F0F0; border-radius: 5px; }
+.ehr-item-index { width: 18px; height: 18px; background: #E5E7EB; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; color: #6B7280; flex-shrink: 0; margin-top: 2px; }
+.ehr-item-content { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+
+/* Vitals */
+.ehr-vitals-card { border: 1px solid #E5E7EB; border-radius: 7px; overflow: hidden; margin-bottom: 8px; }
+.vitals-date { background: linear-gradient(90deg, #0F3460, #16213E); color: white; padding: 5px 10px; font-size: 11px; font-weight: 700; font-family: 'Courier New', monospace; }
+.vitals-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; padding: 7px; background: #FAFFF8; }
+
+/* SOAP notes */
+.ehr-soap-card { border: 1px solid #E5E7EB; border-radius: 7px; overflow: hidden; margin-bottom: 8px; }
+.soap-date { background: linear-gradient(90deg, #1A1A2E, #0F3460); color: white; padding: 5px 10px; font-size: 11px; font-weight: 700; font-family: 'Courier New', monospace; }
+.soap-row { display: flex; gap: 6px; padding: 5px 8px; border-bottom: 1px solid #F3F4F6; }
+.soap-row:last-child { border-bottom: none; }
+.soap-s { background: #FFFBEB; }
+.soap-o { background: #F0FFF4; }
+.soap-a { background: #FFF0F0; }
+.soap-p { background: #F0F4FF; }
+.soap-lbl { width: 16px; height: 16px; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 900; flex-shrink: 0; margin-top: 13px; font-family: 'Courier New', monospace; }
+.soap-lbl-s { background: #F59E0B; color: white; }
+.soap-lbl-o { background: #10B981; color: white; }
+.soap-lbl-a { background: #EF4444; color: white; }
+.soap-lbl-p { background: #3B82F6; color: white; }
+.soap-row .ehr-field { flex: 1; border: none; padding: 0; background: transparent; box-shadow: none; }
+
+/* Dependents */
+.ehr-dep-row { display: flex; gap: 6px; padding: 7px; background: #F9FAFB; border: 1px solid #F0F0F0; border-radius: 5px; }
+.dep-index { width: 18px; height: 18px; background: #DBEAFE; color: #1D4ED8; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; flex-shrink: 0; margin-top: 2px; }
+
+/* Save bar */
+.ehr-save-bar { display: flex; align-items: center; justify-content: space-between; padding: 9px 12px; background: white; border-top: 1px solid #E5E7EB; gap: 8px; z-index: 100; box-shadow: 0 -2px 8px rgba(0,0,0,0.08); position: fixed; bottom: 0; left: 280px; right: 0; }
+.save-hint { display: flex; align-items: center; gap: 4px; font-size: 10px; color: #F59E0B; }
+.save-actions { display: flex; gap: 6px; }
+.btn-save-secondary { border: 1px solid #D1D5DB; background: white; color: #374151; padding: 6px 10px; border-radius: 5px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+.btn-save-secondary:hover { background: #F9FAFB; border-color: #9CA3AF; }
+.btn-save-primary { display: flex; align-items: center; gap: 5px; background: linear-gradient(135deg, #1A1A2E, #0F3460); color: white; border: none; padding: 6px 14px; border-radius: 5px; font-size: 12px; font-weight: 700; cursor: pointer; transition: opacity 0.15s; }
+.btn-save-primary:hover { opacity: 0.88; }
+.btn-analyze { display: flex; align-items: center; gap: 5px; border: 1px solid #7C3AED; background: white; color: #7C3AED; padding: 6px 12px; border-radius: 5px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+.btn-analyze:hover { background: #F5F3FF; }
+.btn-analyze:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-save-primary:disabled, .btn-save-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* States */
+.ehr-state-center { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 10px; color: #6B7280; }
+.btn-retry { border: 1px solid #D1D5DB; background: white; padding: 6px 14px; border-radius: 5px; cursor: pointer; font-size: 12px; }
+.ehr-empty { color: #9CA3AF; font-style: italic; font-size: 11px; text-align: center; padding: 12px; }
+
+/* Animations */
+.spinning { animation: spin 0.8s linear infinite; }
+.spinning-tiny { animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Scrollbar */
+.ehr-content-area::-webkit-scrollbar { width: 5px; }
+.ehr-content-area::-webkit-scrollbar-track { background: #F3F4F6; }
+.ehr-content-area::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 3px; }

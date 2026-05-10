@@ -54,6 +54,7 @@ export const analyticsAPI = {
   getOperational: () => api.get('/analytics/operational'),
   getClinical: () => api.get('/analytics/clinical'),
   getFinancial: () => api.get('/analytics/financial'),
+  getMedications: (days = 90) => api.get('/analytics/medications', { params: { days } }),
 };
 
 export default api;

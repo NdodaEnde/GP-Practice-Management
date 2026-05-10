@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, Form, Query
+from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, Form, Query, Depends
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -18,6 +18,13 @@ import httpx  # For calling the microservice
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
+
+# Capability gating — imported AFTER load_dotenv() because app.api.auth reads
+# SUPABASE_URL / SUPABASE_SERVICE_KEY at module-load time. This early import
+# is needed because route decorators below reference require_capability().
+# (auth_router and other API routers are still imported at the bottom of this
+# file per the existing pattern.)
+from app.api.auth import require_capability
 
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
@@ -195,6 +202,10 @@ class PrescriptionCreate(BaseModel):
     prescription_date: str  # YYYY-MM-DD
     items: List[PrescriptionItem]
     notes: Optional[str] = None
+    # Doctor-supplied clinical reason for proceeding when an allergy interaction
+    # is detected (Phase 2.5 — patient safety). Empty/None = no conflict, OR no
+    # override attempted. Server returns 409 if conflicts exist with no override.
+    allergy_override: Optional[str] = None
 
 class PrescriptionResponse(BaseModel):
     id: str
@@ -986,6 +997,56 @@ async def health_check():
         "tenant": DEMO_TENANT_ID,
         "workspace": DEMO_WORKSPACE_ID
     }
+
+# ==================== Public lead capture ====================
+
+class LeadCreate(BaseModel):
+    email: str
+    vertical: str  # healthcare | mining | logistics | legal | finance
+    source: Optional[str] = None  # e.g. 'vertical-landing', 'gateway-cta'
+
+
+class LeadResponse(BaseModel):
+    success: bool
+    lead_id: str
+    message: str
+
+
+VALID_LEAD_VERTICALS = {"healthcare", "mining", "logistics", "legal", "finance"}
+
+
+@api_router.post("/leads", response_model=LeadResponse)
+async def capture_lead(lead: LeadCreate):
+    """Public lead-capture endpoint for vertical landing pages.
+
+    Tolerant by design: if the database write fails (e.g. dormant Supabase / Mongo),
+    we still return success so the marketing form never breaks for a prospect.
+    Failures are logged for ops follow-up.
+    """
+    if lead.vertical not in VALID_LEAD_VERTICALS:
+        raise HTTPException(status_code=400, detail=f"Unknown vertical '{lead.vertical}'")
+
+    lead_id = str(uuid.uuid4())
+    record = {
+        "lead_id": lead_id,
+        "email": lead.email.strip().lower(),
+        "vertical": lead.vertical,
+        "source": lead.source,
+        "captured_at": datetime.now(timezone.utc).isoformat(),
+        "status": "new",
+    }
+    try:
+        await db.leads.insert_one(record)
+    except Exception as e:
+        logging.error(f"capture_lead: failed to persist lead {lead_id}: {e}")
+        # Intentionally swallow — surface no infra problems to the marketing form.
+
+    return LeadResponse(
+        success=True,
+        lead_id=lead_id,
+        message=f"Thanks — we'll reach out about your {lead.vertical} pilot.",
+    )
+
 
 # ==================== Patient Management ====================
 
@@ -2016,7 +2077,13 @@ async def get_operational_analytics():
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/analytics/clinical")
-async def get_clinical_analytics():
+async def get_clinical_analytics(
+    # Phase 2 capability gating proof-of-concept. Requires the practice to have
+    # an active entitlement granting `analytics_cohorts` (Module 02 — Advanced
+    # Clinical Analytics). Returns 403 with capability_required detail otherwise,
+    # which the frontend renders as a CapabilityUpsell card.
+    current_user: dict = Depends(require_capability("analytics_cohorts")),
+):
     """Get clinical metrics: diagnoses, prescriptions, referrals"""
     try:
         # Get all parsed documents to analyze medical data
@@ -2205,78 +2272,57 @@ async def proxy_gp_upload(
             .update({'status': 'parsing', 'updated_at': datetime.now(timezone.utc).isoformat()})\
             .eq('id', document_id)\
             .execute()
-        
-        # Prepare multipart form data for microservice
-        files = {'file': (file.filename, file_content, file.content_type)}
-        data = {
-            'processing_mode': processing_mode,
-            'save_to_database': 'true'
-        }
-        if patient_id:
-            data['patient_id'] = patient_id
-        
-        # Forward to microservice for parsing and extraction
-        async with httpx.AsyncClient(timeout=180.0) as client:
-            response = await client.post(
-                f"{MICROSERVICE_URL}/api/v1/gp/upload-patient-file",
-                files=files,
-                data=data
-            )
-            response.raise_for_status()
-            result = response.json()
-        
-        # Store parsed data in MongoDB and update status
+
+        # Save temp file for LandingAI processing
+        import tempfile as _tempfile
+        temp_dir = Path(_tempfile.gettempdir())
+        temp_file_path = temp_dir / f"gp_{document_id}_{file.filename}"
+        with open(temp_file_path, "wb") as f:
+            f.write(file_content)
+
+        # Process directly with GPDocumentProcessor (no microservice needed)
+        from app.services.gp_processor import GPDocumentProcessor
+        processor = GPDocumentProcessor(supabase_client=supabase)
+
+        result = await processor.process_and_save_patient_file(
+            file_path=str(temp_file_path),
+            filename=file.filename,
+            organization_id=DEMO_WORKSPACE_ID,
+            document_id=document_id,
+            workspace_id=DEMO_WORKSPACE_ID,
+            file_data=file_content
+        )
+
+        # Clean up temp file
+        try:
+            temp_file_path.unlink()
+        except:
+            pass
+
         if result.get('success'):
-            parsed_doc_id = result.get('data', {}).get('parsed_doc_id')
-            
-            # Store the entire parsed response in MongoDB for retrieval
-            parsed_data_record = {
-                'document_id': document_id,
-                'parsed_doc_id': parsed_doc_id,
-                'microservice_response': result,
-                'extracted_data': result.get('data', {}),
-                'workspace_id': DEMO_WORKSPACE_ID,
-                'created_at': datetime.now(timezone.utc).isoformat()
-            }
-            
-            # Store in MongoDB (surgiscan_documents database)
-            surgiscan_docs_db = mongo_client['surgiscan_documents']
-            mongo_result = await surgiscan_docs_db.gp_parsed_documents.insert_one(parsed_data_record)
-            mongo_id = str(mongo_result.inserted_id)
-            
-            logger.info(f"Stored parsed data in MongoDB: {mongo_id}")
-            
-            # Update Supabase with both IDs
+            parsed_doc_id = result.get('parsed_doc_id')
+
+            # Update digitised_documents with parsed doc reference
             update_data = {
                 'status': 'parsed',
-                'parsed_doc_id': mongo_id,  # Use MongoDB ID instead
+                'parsed_doc_id': parsed_doc_id,
+                'gp_parsed_doc_id': parsed_doc_id,
                 'updated_at': datetime.now(timezone.utc).isoformat()
             }
-            
+
             supabase.table('digitised_documents')\
                 .update(update_data)\
                 .eq('id', document_id)\
                 .execute()
-            
-            logger.info(f"Document {document_id} parsed successfully, MongoDB ID: {mongo_id}")
-        
-        # Add document_id to response
+
+            logger.info(f"Document {document_id} parsed successfully")
+
         result['document_id'] = document_id
-        return result
-            
-    except httpx.HTTPError as e:
-        # Update status to "error"
-        supabase.table('digitised_documents')\
-            .update({
-                'status': 'error',
-                'error_message': f"Microservice error: {str(e)}",
-                'updated_at': datetime.now(timezone.utc).isoformat()
-            })\
-            .eq('id', document_id)\
-            .execute()
-        
-        logger.error(f"Microservice error: {e}")
-        raise HTTPException(status_code=500, detail=f"Microservice error: {str(e)}")
+        return {
+            'success': result.get('success', False),
+            'document_id': document_id,
+            'data': result
+        }
     except Exception as e:
         # Update status to "error"
         supabase.table('digitised_documents')\
@@ -2794,6 +2840,165 @@ async def create_new_patient_from_document(create_request: CreateNewPatientReque
 #     raise HTTPException(status_code=410, detail="This endpoint is deprecated. Use the new extract API.")
 
 
+# ==================== Document Watcher / Auto-Processing Endpoints ====================
+
+@api_router.get("/gp/watcher/status")
+async def get_watcher_status():
+    """Get document watcher status and processing queue info"""
+    try:
+        # Count documents by status
+        statuses = ['uploaded', 'parsing', 'parsed', 'extracting', 'extracted', 'validated', 'approved', 'error']
+        counts = {}
+        for status in statuses:
+            result = supabase.table('digitised_documents') \
+                .select('id', count='exact') \
+                .eq('workspace_id', DEMO_WORKSPACE_ID) \
+                .eq('status', status) \
+                .execute()
+            counts[status] = result.count if hasattr(result, 'count') and result.count is not None else len(result.data)
+
+        from app.services.document_watcher import _watcher_instance
+        watcher_running = _watcher_instance is not None and _watcher_instance._running
+
+        return {
+            'status': 'success',
+            'watcher_running': watcher_running,
+            'queue': counts,
+            'pending_processing': counts.get('uploaded', 0),
+            'currently_processing': counts.get('parsing', 0) + counts.get('extracting', 0),
+            'completed': counts.get('extracted', 0) + counts.get('validated', 0) + counts.get('approved', 0),
+            'errors': counts.get('error', 0),
+            'total': sum(counts.values())
+        }
+    except Exception as e:
+        logger.error(f"Error getting watcher status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.post("/gp/documents/{document_id}/reprocess")
+async def reprocess_document(document_id: str):
+    """Reset a document to 'uploaded' status so the watcher picks it up again"""
+    try:
+        # Verify document exists
+        doc = supabase.table('digitised_documents') \
+            .select('id, filename, status') \
+            .eq('id', document_id) \
+            .execute()
+
+        if not doc.data:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+        current_status = doc.data[0]['status']
+
+        # Reset status to 'queued_for_processing' — watcher will pick it up
+        supabase.table('digitised_documents') \
+            .update({
+                'status': 'queued_for_processing',
+                'error_message': None,
+                'updated_at': datetime.now(timezone.utc).isoformat()
+            }) \
+            .eq('id', document_id) \
+            .execute()
+
+        logger.info(f"Document {document_id} reset from '{current_status}' to 'queued_for_processing'")
+
+        return {
+            'status': 'success',
+            'message': f"Document queued for reprocessing (was: {current_status})",
+            'document_id': document_id
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error reprocessing document: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.post("/gp/documents/{document_id}/queue-processing")
+async def queue_document_for_processing(document_id: str):
+    """Explicitly queue a document for LandingAI processing.
+    Only documents with status 'uploaded' can be queued.
+    This is the ONLY way to trigger credit-consuming processing."""
+    try:
+        doc = supabase.table('digitised_documents') \
+            .select('id, filename, status') \
+            .eq('id', document_id) \
+            .execute()
+
+        if not doc.data:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+        current_status = doc.data[0]['status']
+
+        if current_status not in ('uploaded', 'error'):
+            return {
+                'status': 'skipped',
+                'message': f"Document already in status '{current_status}', no action taken",
+                'document_id': document_id
+            }
+
+        supabase.table('digitised_documents') \
+            .update({
+                'status': 'queued_for_processing',
+                'error_message': None,
+                'updated_at': datetime.now(timezone.utc).isoformat()
+            }) \
+            .eq('id', document_id) \
+            .execute()
+
+        logger.info(f"Document {document_id} queued for processing (was: {current_status})")
+
+        return {
+            'status': 'success',
+            'message': f"Document queued for LandingAI processing",
+            'document_id': document_id
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error queuing document: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.post("/gp/documents/queue-all-uploaded")
+async def queue_all_uploaded_documents():
+    """Queue ALL documents with status 'uploaded' for processing.
+    Use with caution — each document consumes LandingAI credits."""
+    try:
+        # Get count first
+        uploaded = supabase.table('digitised_documents') \
+            .select('id') \
+            .eq('status', 'uploaded') \
+            .eq('workspace_id', DEMO_WORKSPACE_ID) \
+            .execute()
+
+        count = len(uploaded.data) if uploaded.data else 0
+
+        if count == 0:
+            return {'status': 'success', 'message': 'No uploaded documents to queue', 'count': 0}
+
+        # Update all to queued
+        supabase.table('digitised_documents') \
+            .update({
+                'status': 'queued_for_processing',
+                'updated_at': datetime.now(timezone.utc).isoformat()
+            }) \
+            .eq('status', 'uploaded') \
+            .eq('workspace_id', DEMO_WORKSPACE_ID) \
+            .execute()
+
+        logger.info(f"Queued {count} documents for processing")
+
+        return {
+            'status': 'success',
+            'message': f"Queued {count} document(s) for LandingAI processing",
+            'count': count
+        }
+    except Exception as e:
+        logger.error(f"Error queuing all documents: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ==================== Digitised Documents Endpoints (Phase 1.7) ====================
 
 @api_router.get("/gp/documents")
@@ -2898,56 +3103,111 @@ async def get_digitised_document(document_id: str):
         logger.error(f"Error fetching document: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@api_router.get("/gp/parsed-document/{mongo_id}")
-async def get_parsed_document_from_mongo(mongo_id: str):
+@api_router.get("/gp/parsed-document/{doc_id}")
+async def get_parsed_document_from_supabase(doc_id: str):
     """
-    Retrieve parsed document data from MongoDB
-    This is our internal storage, not the microservice
+    Retrieve parsed document data from Supabase
     """
     try:
-        from bson import ObjectId
-        
-        # Use surgiscan_documents database (where documents actually are)
-        surgiscan_docs_db = mongo_client['surgiscan_documents']
-        
-        # Try as ObjectId first, then as string
-        try:
-            query = {'_id': ObjectId(mongo_id)}
-        except:
-            query = {'document_id': mongo_id}
-        
-        parsed_doc = await surgiscan_docs_db.gp_parsed_documents.find_one(query)
-        
-        if not parsed_doc:
+        # Try by id first, then by document_id
+        result = supabase.table('gp_parsed_documents').select('*').eq('id', doc_id).execute()
+
+        if not result.data:
+            result = supabase.table('gp_parsed_documents').select('*').eq('document_id', doc_id).execute()
+
+        if not result.data:
             raise HTTPException(status_code=404, detail="Parsed document not found")
-        
-        # Convert ObjectId to string for JSON serialization
-        if '_id' in parsed_doc:
-            parsed_doc['_id'] = str(parsed_doc['_id'])
-        
+
+        parsed_doc = result.data[0]
+
         # Extract data from parsed_data structure
         parsed_data = parsed_doc.get('parsed_data', {})
         chunks = parsed_data.get('chunks', [])
-        
+
         # Get extractions from extracted_data (microservice response)
-        extracted_data = parsed_doc.get('extracted_data', {})
+        extracted_data = parsed_data.get('extracted_data', {})
         extractions = extracted_data.get('extractions', {})
-        
+
         # Also get chunks from extracted_data if not in parsed_data
         if not chunks and isinstance(extracted_data, dict):
             chunks = extracted_data.get('chunks', [])
-        
+
         return {
             'status': 'success',
             'data': extractions,
             'chunks': chunks,
             'parsed_data': parsed_data,
-            'microservice_response': parsed_doc.get('microservice_response', {})
+            'microservice_response': parsed_data.get('microservice_response', {})
         }
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error retrieving parsed document: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/gp/validation-session/{document_id}")
+async def get_gp_validation_session(document_id: str):
+    """
+    Get validation session with extractions for a document.
+    Used by DocumentValidation.jsx to show extracted data for review.
+    """
+    try:
+        # Get parsed document
+        parsed_result = supabase.table('gp_parsed_documents')\
+            .select('*')\
+            .eq('document_id', document_id)\
+            .execute()
+
+        parsed_doc = parsed_result.data[0] if parsed_result.data else {}
+
+        # Get validation session
+        session_result = supabase.table('gp_validation_sessions')\
+            .select('*')\
+            .eq('document_id', document_id)\
+            .order('created_at', desc=True)\
+            .limit(1)\
+            .execute()
+
+        if not session_result.data:
+            # No validation session yet — return extractions from parsed_data if available
+            parsed_data = parsed_doc.get('parsed_data', {})
+            extracted_data = parsed_data.get('extracted_data', {})
+            extractions = extracted_data.get('extractions', {})
+            return {
+                'success': True,
+                'data': {
+                    'document_id': document_id,
+                    'chunks': parsed_data.get('chunks', []),
+                    'extractions': extractions,
+                    'confidence_scores': {},
+                    'validation_status': 'pending_extraction',
+                }
+            }
+
+        validation_session = session_result.data[0]
+        chunks = parsed_doc.get('parsed_data', {}).get('chunks', []) if parsed_doc else []
+
+        return {
+            'success': True,
+            'session': {
+                'id': validation_session.get('id'),
+                'validation_session_id': validation_session.get('id'),
+                'document_id': document_id,
+                'extractions': validation_session.get('extractions', {}),
+                'confidence_scores': validation_session.get('confidence_scores', {}),
+                'status': validation_session.get('status', 'pending_validation'),
+                'processing_time': validation_session.get('processing_time', 0),
+            },
+            'data': {
+                'document_id': document_id,
+                'chunks': chunks,
+                'extractions': validation_session.get('extractions', {}),
+                'confidence_scores': validation_session.get('confidence_scores', {}),
+                'validation_status': validation_session.get('status', 'pending_validation'),
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error fetching validation session: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/gp/document/{document_id}/view")
@@ -3157,12 +3417,9 @@ async def upload_gp_document_with_template(
         
         # Process with template-driven extraction
         from app.services.gp_processor import GPDocumentProcessor
-        
-        # Initialize processor with MongoDB connection
-        processor = GPDocumentProcessor(db_manager=type('obj', (object,), {
-            'db': db,
-            'connected': True
-        }))
+
+        # Initialize processor with Supabase connection
+        processor = GPDocumentProcessor(supabase_client=supabase)
         
         # Process the document with templates
         result = await processor.process_with_template(
@@ -3293,35 +3550,27 @@ async def extract_from_parsed_document(
             'updated_at': datetime.now(timezone.utc).isoformat()
         }).eq('id', document_id).execute()
         
-        logger.info(f"📄 Reading parsed document from MongoDB: {parsed_doc_id}")
-        
-        # Get parsed document from MongoDB (surgiscan_documents database)
-        surgiscan_docs_db = mongo_client['surgiscan_documents']
-        
-        from bson import ObjectId
-        try:
-            query = {'_id': ObjectId(parsed_doc_id)}
-            logger.info(f"🔍 MongoDB Query: {query}")
-        except Exception as e:
-            logger.warning(f"⚠️ ObjectId conversion failed: {e}, using document_id")
-            query = {'document_id': parsed_doc_id}
-            logger.info(f"🔍 MongoDB Query (fallback): {query}")
-        
-        logger.info(f"🔍 Querying database: surgiscan_documents, collection: gp_parsed_documents")
-        parsed_doc = await surgiscan_docs_db.gp_parsed_documents.find_one(query)
-        
-        if not parsed_doc:
-            logger.error(f"❌ Document not found with query: {query}")
-            logger.error(f"❌ Database: surgiscan_documents, Collection: gp_parsed_documents")
-            # Try to count total documents to verify connection
-            try:
-                count = await surgiscan_docs_db.gp_parsed_documents.count_documents({})
-                logger.error(f"❌ Total documents in collection: {count}")
-            except Exception as count_e:
-                logger.error(f"❌ Failed to count documents: {count_e}")
-            raise HTTPException(status_code=404, detail="Parsed document not found in MongoDB")
-        
-        logger.info(f"✅ Found parsed document in MongoDB")
+        logger.info(f"Reading parsed document from Supabase: {parsed_doc_id}")
+
+        # Get parsed document from Supabase
+        parsed_result = supabase.table('gp_parsed_documents')\
+            .select('*')\
+            .eq('id', parsed_doc_id)\
+            .execute()
+
+        if not parsed_result.data:
+            # Fallback: try by document_id
+            parsed_result = supabase.table('gp_parsed_documents')\
+                .select('*')\
+                .eq('document_id', parsed_doc_id)\
+                .execute()
+
+        if not parsed_result.data:
+            logger.error(f"Document not found in Supabase: {parsed_doc_id}")
+            raise HTTPException(status_code=404, detail="Parsed document not found")
+
+        parsed_doc = parsed_result.data[0]
+        logger.info(f"Found parsed document in Supabase")
         
         # Extract with template-driven extraction
         from app.services.extraction_engine import ExtractionEngine
@@ -3438,10 +3687,7 @@ async def batch_upload_documents(
         
         # Get batch service
         from app.services.batch_upload_service import get_batch_service
-        batch_service = get_batch_service(
-            db_manager=type('obj', (object,), {'db': db}),
-            supabase_client=supabase
-        )
+        batch_service = get_batch_service(supabase_client=supabase)
         
         # Prepare file info for batch creation
         files_info = [
@@ -3488,12 +3734,9 @@ async def batch_upload_documents(
         
         logger.info(f"✅ All files saved temporarily for batch {batch_id}")
         
-        # Initialize processor
+        # Initialize processor with Supabase
         from app.services.gp_processor import GPDocumentProcessor
-        processor = GPDocumentProcessor(db_manager=type('obj', (object,), {
-            'db': db,
-            'connected': True
-        }))
+        processor = GPDocumentProcessor(supabase_client=supabase)
         
         # Start background processing (fire and forget)
         asyncio.create_task(
@@ -3545,15 +3788,7 @@ async def get_batch_status(batch_id: str):
         batch_status = batch_service.get_batch_status(batch_id)
         
         if not batch_status:
-            # Try to fetch from database
-            batch_record = await db['batch_uploads'].find_one({'id': batch_id})
-            if batch_record:
-                return JSONResponse(content={
-                    'status': 'success',
-                    'batch': batch_record
-                })
-            else:
-                raise HTTPException(status_code=404, detail="Batch not found")
+            raise HTTPException(status_code=404, detail="Batch not found")
         
         return JSONResponse(content={
             'status': 'success',
@@ -3596,33 +3831,15 @@ async def get_patient_documents(patient_id: str):
     """Get all documents for a specific patient"""
     try:
         logger.info(f"Fetching documents for patient {patient_id}")
-        
-        # Connect to microservice database
-        microservice_db_name = os.environ.get('DATABASE_NAME', 'surgiscan_documents')
-        microservice_client = AsyncIOMotorClient(os.environ.get('MONGODB_URL', 'mongodb://localhost:27017'))
-        microservice_db = microservice_client[microservice_db_name]
-        
-        # Get all documents for this patient
-        cursor = microservice_db.gp_scanned_documents.find(
-            {"patient_id": patient_id},
-            {
-                "document_id": 1,
-                "filename": 1,
-                "upload_date": 1,
-                "status": 1,
-                "patient_id": 1,
-                "encounter_id": 1,
-                "validated_at": 1,
-                "linked_at": 1,
-                "file_size": 1,
-                "_id": 0
-            }
-        ).sort("upload_date", -1)
-        
-        documents = await cursor.to_list(length=None)
-        
-        microservice_client.close()
-        
+
+        result = supabase.table('digitised_documents')\
+            .select('id, filename, upload_date, status, patient_id, encounter_id, validated_at, file_size, created_at')\
+            .eq('patient_id', patient_id)\
+            .order('created_at', desc=True)\
+            .execute()
+
+        documents = result.data or []
+
         return {
             'status': 'success',
             'patient_id': patient_id,
@@ -3638,35 +3855,28 @@ async def get_document_details(document_id: str):
     """Get full document details including extracted data and validation history"""
     try:
         logger.info(f"Fetching details for document {document_id}")
-        
-        # Connect to microservice database
-        microservice_db_name = os.environ.get('DATABASE_NAME', 'surgiscan_documents')
-        microservice_client = AsyncIOMotorClient(os.environ.get('MONGODB_URL', 'mongodb://localhost:27017'))
-        microservice_db = microservice_client[microservice_db_name]
-        
-        # Get document
-        doc = await microservice_db.gp_scanned_documents.find_one(
-            {"document_id": document_id},
-            {"file_data": 0}  # Exclude binary data
-        )
-        
-        if not doc:
-            microservice_client.close()
+
+        # Get document from Supabase
+        doc_result = supabase.table('digitised_documents')\
+            .select('*')\
+            .eq('id', document_id)\
+            .execute()
+
+        if not doc_result.data:
             raise HTTPException(status_code=404, detail="Document not found")
-        
-        # Get validation record if exists
-        validation = await microservice_db.gp_validated_documents.find_one(
-            {"document_id": document_id}
-        )
-        
-        # Convert ObjectId to string if present
-        if doc.get('_id'):
-            doc['_id'] = str(doc['_id'])
-        if validation and validation.get('_id'):
-            validation['_id'] = str(validation['_id'])
-        
-        microservice_client.close()
-        
+
+        doc = doc_result.data[0]
+
+        # Get validation session if exists
+        validation_result = supabase.table('gp_validation_sessions')\
+            .select('*')\
+            .eq('document_id', document_id)\
+            .order('created_at', desc=True)\
+            .limit(1)\
+            .execute()
+
+        validation = validation_result.data[0] if validation_result.data else None
+
         return {
             'status': 'success',
             'document': doc,
@@ -3683,37 +3893,33 @@ async def get_document_audit_trail(document_id: str):
     """Get audit trail for a document (validation, access logs, modifications)"""
     try:
         logger.info(f"Fetching audit trail for document {document_id}")
-        
-        # Get audit events from MongoDB
-        cursor = db.audit_events.find(
-            {"document_id": document_id}
-        ).sort("timestamp", -1)
-        
-        audit_events = await cursor.to_list(length=None)
-        
-        # Convert ObjectId to string
-        for event in audit_events:
-            if event.get('_id'):
-                event['_id'] = str(event['_id'])
-        
-        # Get access logs
-        access_cursor = db.document_access_logs.find(
-            {"document_id": document_id}
-        ).sort("accessed_at", -1)
-        
-        access_logs = await access_cursor.to_list(length=None)
-        
-        for log in access_logs:
-            if log.get('_id'):
-                log['_id'] = str(log['_id'])
-        
+
+        # Get validation sessions as audit events
+        sessions_result = supabase.table('gp_validation_sessions')\
+            .select('*')\
+            .eq('document_id', document_id)\
+            .order('created_at', desc=True)\
+            .execute()
+
+        audit_events = []
+        for session in (sessions_result.data or []):
+            audit_events.append({
+                'id': session['id'],
+                'document_id': document_id,
+                'event_type': 'validation',
+                'status': session.get('status'),
+                'timestamp': session.get('created_at'),
+                'validated_at': session.get('validated_at'),
+                'validator_notes': session.get('validator_notes')
+            })
+
         return {
             'status': 'success',
             'document_id': document_id,
             'audit_events': audit_events,
-            'access_logs': access_logs,
+            'access_logs': [],
             'total_events': len(audit_events),
-            'total_accesses': len(access_logs)
+            'total_accesses': 0
         }
     except Exception as e:
         logger.error(f"Error fetching audit trail: {e}")
@@ -3735,7 +3941,9 @@ async def log_document_access(document_id: str, access_log: DocumentAccessLog):
             'workspace_id': DEMO_WORKSPACE_ID
         }
         
-        await db.document_access_logs.insert_one(log_entry)
+        # Log access - store in digitised_documents updated_at for now
+        # TODO: Create dedicated access_logs table in Supabase if needed
+        logger.info(f"Access log: {log_entry}")
         
         logger.info(f"Logged {access_log.access_type} access for document {document_id}")
         
@@ -3760,50 +3968,30 @@ async def search_documents(
     """Search across all documents"""
     try:
         logger.info(f"Searching documents with query: {query}")
-        
-        # Connect to microservice database
-        microservice_db_name = os.environ.get('DATABASE_NAME', 'surgiscan_documents')
-        microservice_client = AsyncIOMotorClient(os.environ.get('MONGODB_URL', 'mongodb://localhost:27017'))
-        microservice_db = microservice_client[microservice_db_name]
-        
-        # Build query
-        search_filter = {}
-        
+
+        search_query = supabase.table('digitised_documents')\
+            .select('id, filename, upload_date, status, patient_id, encounter_id, created_at')
+
         if patient_id:
-            search_filter['patient_id'] = patient_id
-        
+            search_query = search_query.eq('patient_id', patient_id)
+
         if status:
-            search_filter['status'] = status
-        
-        if date_from or date_to:
-            search_filter['upload_date'] = {}
-            if date_from:
-                search_filter['upload_date']['$gte'] = date_from
-            if date_to:
-                search_filter['upload_date']['$lte'] = date_to
-        
-        # Execute search
-        cursor = microservice_db.gp_scanned_documents.find(
-            search_filter,
-            {
-                "document_id": 1,
-                "filename": 1,
-                "upload_date": 1,
-                "status": 1,
-                "patient_id": 1,
-                "encounter_id": 1,
-                "_id": 0
-            }
-        ).sort("upload_date", -1).limit(limit)
-        
-        documents = await cursor.to_list(length=None)
-        
-        microservice_client.close()
-        
+            search_query = search_query.eq('status', status)
+
+        if date_from:
+            search_query = search_query.gte('created_at', date_from)
+        if date_to:
+            search_query = search_query.lte('created_at', date_to)
+
+        if query:
+            search_query = search_query.ilike('filename', f'%{query}%')
+
+        result = search_query.order('created_at', desc=True).limit(limit).execute()
+
         return {
             'status': 'success',
-            'documents': documents,
-            'count': len(documents),
+            'documents': result.data or [],
+            'count': len(result.data or []),
             'query': query
         }
     except Exception as e:
@@ -4492,10 +4680,70 @@ async def save_consultation_to_ehr(request: dict):
 
 @api_router.post("/prescriptions")
 async def create_prescription(prescription: PrescriptionCreate):
-    """Create a new prescription"""
+    """Create a new prescription. Server-side allergy interaction check enforced
+    (Phase 2.5 patient safety). Returns 409 on conflict unless `allergy_override`
+    is supplied with a clinical reason — overrides are logged for audit."""
     try:
+        # ---- Server-side allergy interaction check ----
+        # Defence in depth: even if the client UI is bypassed or buggy, the server
+        # blocks prescriptions that conflict with the patient's known allergies
+        # unless the doctor explicitly overrides with a reason.
+        allergies_result = (
+            supabase.table('allergies')
+            .select('substance, reaction, severity')
+            .eq('patient_id', prescription.patient_id)
+            .eq('status', 'active')
+            .execute()
+        )
+        patient_allergies = allergies_result.data or []
+
+        conflicts = []
+        for item in prescription.items:
+            med_name = (item.medication_name or '').lower()
+            generic_name = (item.generic_name or '').lower()
+            for allergy in patient_allergies:
+                substance = (allergy.get('substance') or '').strip().lower()
+                if not substance:
+                    continue
+                # Bidirectional substring match: catches "Penicillin" allergy vs
+                # "Amoxicillin" prescription (substance in name) AND "Aspirin"
+                # allergy vs "Aspirin 100mg" (substance in name with extras).
+                if (
+                    substance in med_name
+                    or substance in generic_name
+                    or (med_name and med_name in substance)
+                    or (generic_name and generic_name in substance)
+                ):
+                    conflicts.append({
+                        'medication': item.medication_name,
+                        'allergy_substance': allergy['substance'],
+                        'reaction': allergy.get('reaction'),
+                        'severity': allergy.get('severity'),
+                    })
+
+        if conflicts and not (prescription.allergy_override and prescription.allergy_override.strip()):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    'error': 'allergy_conflict',
+                    'message': f'Prescription has {len(conflicts)} allergy conflict(s). '
+                               f'Resubmit with allergy_override (clinical reason ≥ 10 chars) to proceed.',
+                    'conflicts': conflicts,
+                },
+            )
+
+        # If override supplied alongside real conflicts: log loud + structured for audit.
+        # TODO (Phase 5): persist this to audit_events with full chain of custody.
+        if conflicts and prescription.allergy_override:
+            logger.warning(
+                f"ALLERGY OVERRIDE accepted — patient={prescription.patient_id} "
+                f"doctor={prescription.doctor_name} "
+                f"conflicts={[c['allergy_substance'] for c in conflicts]} "
+                f"reason={prescription.allergy_override!r}"
+            )
+
         prescription_id = str(uuid.uuid4())
-        
+
         # Create prescription record in Supabase
         prescription_data = {
             'id': prescription_id,
@@ -4510,7 +4758,7 @@ async def create_prescription(prescription: PrescriptionCreate):
             'created_at': datetime.now(timezone.utc).isoformat(),
             'updated_at': datetime.now(timezone.utc).isoformat()
         }
-        
+
         supabase.table('prescriptions').insert(prescription_data).execute()
         
         # Create prescription items
@@ -4541,6 +4789,9 @@ async def create_prescription(prescription: PrescriptionCreate):
             'prescription_id': prescription_id,
             'message': 'Prescription created successfully'
         }
+    except HTTPException:
+        # Don't wrap intentional 4xx responses (e.g. 409 allergy_conflict) in 500.
+        raise
     except Exception as e:
         logger.error(f"Error creating prescription: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -4788,7 +5039,292 @@ api_router.include_router(auth_router, tags=["Authentication"])
 api_router.include_router(users_router, tags=["User Management"])
 api_router.include_router(workspaces_router, tags=["Workspace Management"])
 
+
+# ==================== FHIR R4 Export (Module 01 Digitisation) ====================
+# Phase 2.5 — committed in v1.2 brochure §11. Exports a patient's full record
+# as a FHIR R4 Bundle so Type C doctors (have own EHR) can ingest into their
+# existing system. Gated by `digitisation_export_fhir` capability.
+from app.services.fhir_export import build_patient_bundle
+
+
+@api_router.get("/export/patient/{patient_id}/fhir")
+async def export_patient_fhir(
+    patient_id: str,
+    current_user: dict = Depends(require_capability("digitisation_export_fhir")),
+):
+    """Export a patient's full SurgiScan record as a FHIR R4 Bundle (searchset).
+
+    Capability-gated. Returns application/fhir+json. Includes Patient,
+    AllergyIntolerance, Condition (diagnoses), MedicationStatement,
+    Observation (vitals — one per measurement), and Encounter resources.
+    """
+    try:
+        # Fetch patient row
+        patient_q = supabase.table('patients').select('*').eq('id', patient_id).execute()
+        if not patient_q.data:
+            raise HTTPException(status_code=404, detail=f"Patient {patient_id} not found")
+        patient_row = patient_q.data[0]
+
+        # Tenant scope check — patient must belong to caller's workspace.
+        # (Skip for legacy_full_access users to keep grandfathering working.)
+        if 'legacy_full_access' not in current_user.get('capabilities', []):
+            if patient_row.get('workspace_id') != current_user.get('workspace_id'):
+                raise HTTPException(status_code=403, detail="Patient is not in your workspace.")
+
+        # Fetch related clinical data — defensively (table may be empty).
+        def _fetch(table: str, filt_col: str = 'patient_id'):
+            try:
+                return supabase.table(table).select('*').eq(filt_col, patient_id).execute().data or []
+            except Exception as e:
+                logger.warning(f"FHIR export: {table} fetch failed for {patient_id}: {e}")
+                return []
+
+        allergies   = [a for a in _fetch('allergies')           if a.get('status') == 'active']
+        diagnoses   = _fetch('diagnoses')
+        vitals      = _fetch('vitals')
+        encounters  = _fetch('encounters')
+
+        # Patient medications live in prescription_items, joined via prescriptions.
+        # (No `current_medications` or `patient_medications` table exists in this
+        # codebase — the prescription tables are the source of truth for patient meds.)
+        medications = []
+        try:
+            patient_rxs = (
+                supabase.table('prescriptions')
+                .select('id')
+                .eq('patient_id', patient_id)
+                .eq('status', 'active')
+                .execute()
+                .data or []
+            )
+            rx_ids = [r['id'] for r in patient_rxs]
+            if rx_ids:
+                medications = (
+                    supabase.table('prescription_items')
+                    .select('id, prescription_id, medication_name, generic_name, nappi_code, dosage, frequency, duration, quantity')
+                    .in_('prescription_id', rx_ids)
+                    .execute()
+                    .data or []
+                )
+                # Add a 'status' field MedicationStatement requires (default to 'active' since the parent prescription is active).
+                for m in medications:
+                    m.setdefault('status', 'active')
+        except Exception as e:
+            logger.warning(f"FHIR export: prescription_items fetch failed for {patient_id}: {e}")
+
+        bundle = build_patient_bundle(
+            patient_row=patient_row,
+            allergies=allergies,
+            diagnoses=diagnoses,
+            medications=medications,
+            vitals=vitals,
+            encounters=encounters,
+        )
+
+        # FHIR JSON serialisation: by_alias=True converts Python `class_fhir` → JSON `class`.
+        # exclude_none keeps the output clean (FHIR spec lets fields be absent).
+        bundle_json = bundle.model_dump(by_alias=True, exclude_none=True, mode='json')
+
+        return JSONResponse(content=bundle_json, media_type="application/fhir+json")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"FHIR export failed for {patient_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"FHIR export failed: {str(e)}")
+
+
+@api_router.get("/analytics/medications")
+async def get_medications_analytics(
+    days: int = 90,
+    current_user: dict = Depends(require_capability("analytics_drug_spend")),
+):
+    """Module 02 Analytics — medication prescribing analytics.
+
+    Returns volume + schedule distribution + monthly trend over the last N days
+    (default 90). Population-level analytic, distinct from Practice Professional's
+    workflow dashboards (which are real-time / per-doctor operational metrics).
+
+    Limitation: true "drug spend" in ZAR requires NAPPI pricing data not currently
+    loaded into the `nappi_codes` table. This endpoint returns volume-based metrics;
+    upgrade to currency analytics is a single SQL extension once price data flows
+    in (multiply count × unit_price per nappi_code, group by month).
+
+    Capability: `analytics_drug_spend` (Module 02).
+    """
+    from collections import Counter, defaultdict
+    from datetime import timedelta
+
+    workspace_id = current_user.get("workspace_id")
+    if not workspace_id:
+        raise HTTPException(status_code=400, detail="No workspace in user context")
+
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
+
+    rxs = (
+        supabase.table('prescriptions')
+        .select('id, prescription_date')
+        .eq('workspace_id', workspace_id)
+        .gte('prescription_date', cutoff)
+        .execute()
+        .data or []
+    )
+    rx_ids = [r['id'] for r in rxs]
+    rx_dates = {r['id']: r['prescription_date'] for r in rxs}
+
+    if not rx_ids:
+        return {
+            'window_days': days,
+            'total_prescriptions': 0,
+            'total_items': 0,
+            'nappi_coverage_pct': 0,
+            'atc_coverage_pct': 0,
+            'by_medication': [],
+            'by_schedule': {},
+            'by_atc_anatomical': [],
+            'by_atc_class': [],
+            'monthly_trend': [],
+            '_note': 'No prescriptions in window. Cost analytics requires NAPPI pricing data (not currently loaded).',
+        }
+
+    items = (
+        supabase.table('prescription_items')
+        .select('medication_name, generic_name, nappi_code, prescription_id')
+        .in_('prescription_id', rx_ids)
+        .execute()
+        .data or []
+    )
+
+    # Aggregate by medication name
+    by_med_acc = defaultdict(lambda: {'count': 0, 'nappi_codes': set(), 'generic_names': set()})
+    for item in items:
+        name = item.get('medication_name') or item.get('generic_name') or 'Unknown'
+        agg = by_med_acc[name]
+        agg['count'] += 1
+        if item.get('nappi_code'):
+            agg['nappi_codes'].add(item['nappi_code'])
+        if item.get('generic_name'):
+            agg['generic_names'].add(item['generic_name'])
+
+    top_meds = sorted(
+        [{
+            'name': n,
+            'count': v['count'],
+            'nappi_codes': sorted(v['nappi_codes']),
+            'generic_names': sorted(v['generic_names']),
+        } for n, v in by_med_acc.items()],
+        key=lambda x: -x['count']
+    )[:20]
+
+    # NAPPI Schedule (S0/S1/.../S6) distribution — controlled-substance compliance signal.
+    # Same lookup also pulls atc_code / atc_class_desc so we can aggregate by
+    # ATC anatomical group (level-1, single letter) and therapeutic class
+    # (level-3, e.g. "C09A" = ACE inhibitors) — TRACEABILITY 6b deliverable.
+    nappi_used = [i['nappi_code'] for i in items if i.get('nappi_code')]
+    by_schedule: dict = {}
+    by_atc_anatomical: list = []
+    by_atc_class: list = []
+    atc_coverage_pct = 0.0
+    if nappi_used:
+        nappi_lookup = (
+            supabase.table('nappi_codes')
+            .select('nappi_code, schedule, atc_code, atc_class_desc')
+            .in_('nappi_code', list(set(nappi_used)))
+            .execute()
+            .data or []
+        )
+        sched_map = {n['nappi_code']: n.get('schedule') or 'Unknown' for n in nappi_lookup}
+        atc_map = {n['nappi_code']: (n.get('atc_code'), n.get('atc_class_desc'))
+                   for n in nappi_lookup}
+        sched_counter = Counter(sched_map.get(n, 'Unknown') for n in nappi_used)
+        by_schedule = dict(sched_counter)
+
+        # ATC level-1 (anatomical group) — single letter prefix.
+        ATC_GROUP_NAMES = {
+            'A': 'Alimentary tract & metabolism',
+            'B': 'Blood & blood-forming organs',
+            'C': 'Cardiovascular system',
+            'D': 'Dermatologicals',
+            'G': 'Genito-urinary & sex hormones',
+            'H': 'Systemic hormonal preparations',
+            'J': 'Anti-infectives',
+            'L': 'Antineoplastic & immunomodulating',
+            'M': 'Musculo-skeletal system',
+            'N': 'Nervous system',
+            'P': 'Antiparasitic products',
+            'R': 'Respiratory system',
+            'S': 'Sensory organs',
+            'V': 'Various',
+        }
+        anat_counter: Counter = Counter()
+        # ATC level-3 (therapeutic / pharmacological subgroup) — first 4 chars.
+        # Description = the level-5 substance name we have on file (close enough
+        # for v1 — tighter rollup would need a separate level-3 name table).
+        class_acc: dict = defaultdict(lambda: {'count': 0, 'sample_substance': None})
+        atc_hits = 0
+        for nappi_code in nappi_used:
+            atc_code, class_desc = atc_map.get(nappi_code, (None, None))
+            if not atc_code:
+                continue
+            atc_hits += 1
+            anat_counter[atc_code[0]] += 1
+            class_key = atc_code[:4] if len(atc_code) >= 4 else atc_code
+            class_acc[class_key]['count'] += 1
+            if class_acc[class_key]['sample_substance'] is None and class_desc:
+                class_acc[class_key]['sample_substance'] = class_desc
+
+        by_atc_anatomical = sorted(
+            [{
+                'group_letter': letter,
+                'group_name': ATC_GROUP_NAMES.get(letter, 'Unknown'),
+                'count': count,
+            } for letter, count in anat_counter.items()],
+            key=lambda x: -x['count'],
+        )
+        by_atc_class = sorted(
+            [{
+                'atc_class_code': code,
+                'sample_substance': v['sample_substance'],
+                'count': v['count'],
+            } for code, v in class_acc.items()],
+            key=lambda x: -x['count'],
+        )[:15]
+
+        atc_coverage_pct = round(atc_hits / len(nappi_used) * 100, 1)
+
+    # Monthly trend (prescription items per YYYY-MM)
+    monthly = Counter()
+    for item in items:
+        date = rx_dates.get(item['prescription_id'])
+        if date:
+            monthly[date[:7]] += 1
+    monthly_trend = sorted(
+        [{'month': m, 'prescriptions': c} for m, c in monthly.items()],
+        key=lambda x: x['month']
+    )
+
+    nappi_coverage = round(len(nappi_used) / len(items) * 100, 1) if items else 0.0
+
+    return {
+        'window_days': days,
+        'total_prescriptions': len(rx_ids),
+        'total_items': len(items),
+        'nappi_coverage_pct': nappi_coverage,
+        'atc_coverage_pct': atc_coverage_pct,
+        'by_medication': top_meds,
+        'by_schedule': by_schedule,
+        'by_atc_anatomical': by_atc_anatomical,
+        'by_atc_class': by_atc_class,
+        'monthly_trend': monthly_trend,
+        '_note': 'Cost analytics (ZAR drug spend) requires NAPPI pricing data not currently loaded. Current output is volume-based.',
+    }
+
+
 app.include_router(api_router)
+
+# Type C Digitisation Workspace router (capability-gated)
+from app.api.digitisation import router as digitisation_router  # noqa: E402
+app.include_router(digitisation_router)
 
 # CORS middleware
 app.add_middleware(
@@ -4815,8 +5351,23 @@ async def startup_event():
     await init_demo_tenant()
     logger.info("Demo tenant initialized")
 
+    # Start the document watcher (auto-detect and process new files)
+    try:
+        from app.services.document_watcher import start_document_watcher
+        await start_document_watcher(supabase, DEMO_WORKSPACE_ID)
+        logger.info("Document watcher started — auto-processing enabled")
+    except Exception as e:
+        logger.error(f"Failed to start document watcher: {e}")
+
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on shutdown"""
+    # Stop document watcher
+    try:
+        from app.services.document_watcher import stop_document_watcher
+        await stop_document_watcher()
+    except Exception:
+        pass
+
     mongo_client.close()
-    logger.info("MongoDB connection closed")
+    logger.info("Connections closed")

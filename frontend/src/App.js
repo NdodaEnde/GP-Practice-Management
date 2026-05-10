@@ -35,10 +35,68 @@ import ValidationReview from './pages/ValidationReview';
 import DocumentUpload from './pages/DocumentUpload';
 import DigitizationArchive from './pages/DigitizationArchive';
 import DigitizationModule from './pages/DigitizationModule';
+import DigitisationDashboard from './pages/DigitisationDashboard';
+import DigitisationStub from './pages/DigitisationStub';
+import DocumentsPipeline from './pages/DocumentsPipeline';
+import DigitisationValidationQueue from './pages/DigitisationValidationQueue';
+import DigitisationValidationDetail from './pages/DigitisationValidationDetail';
+import DigitisationArchive from './pages/DigitisationArchive';
+import DigitisationExportCentre from './pages/DigitisationExportCentre';
+import DigitisationFHIRConnectionWizard from './pages/DigitisationFHIRConnectionWizard';
+import DigitisationOperationalInsights from './pages/DigitisationOperationalInsights';
+import __PreviewDigitisation from './pages/__PreviewDigitisation';
+
+// TEMPORARY: auto-login helper for the demo admin (workspace with real docs).
+const AdminAutoLogin = () => {
+  React.useEffect(() => {
+    const url = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8002';
+    const params = new URLSearchParams(window.location.search);
+    const next = params.get('next') || '/dashboard';
+    fetch(`${url}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'admin@surgiscan.com', password: 'password123' }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (!d.access_token) { document.title = 'autologin failed'; return; }
+        localStorage.setItem('access_token', d.access_token);
+        localStorage.setItem('refresh_token', d.refresh_token);
+        window.location.replace(next);
+      });
+  }, []);
+  return null;
+};
+
+// TEMPORARY: auto-login helper for headless verification. Delete after Phase B.
+const TypeCAutoLogin = () => {
+  React.useEffect(() => {
+    const url = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8002';
+    const params = new URLSearchParams(window.location.search);
+    const next = params.get('next') || '/digitisation';
+    fetch(`${url}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'typec@surgiscan.com', password: 'password123' }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (!d.access_token) { document.title = 'autologin failed'; return; }
+        localStorage.setItem('access_token', d.access_token);
+        localStorage.setItem('refresh_token', d.refresh_token);
+        window.location.replace(next);
+      });
+  }, []);
+  return null;
+};
 import UserManagement from './pages/UserManagement';
 import WorkspaceManagement from './pages/WorkspaceManagement';
 import Login from './pages/Login';
+import IndustryGateway from './pages/IndustryGateway';
+import VerticalLanding from './pages/VerticalLanding';
+import Pricing from './pages/Pricing';
 import Layout from './components/Layout';
+import ProtectedRoute from './components/ProtectedRoute';
 import '@/App.css';
 
 function App() {
@@ -47,12 +105,25 @@ function App() {
       <AuthProvider>
         <BrowserRouter>
           <Routes>
-            {/* Login Route (outside Layout) */}
+            {/* Public marketing routes (no Layout sidebar) */}
+            <Route path="/" element={<IndustryGateway />} />
+            <Route path="/healthcare" element={<VerticalLanding vertical="healthcare" />} />
+            <Route path="/mining" element={<VerticalLanding vertical="mining" />} />
+            <Route path="/logistics" element={<VerticalLanding vertical="logistics" />} />
+            <Route path="/legal" element={<VerticalLanding vertical="legal" />} />
+            <Route path="/finance" element={<VerticalLanding vertical="finance" />} />
+            <Route path="/pricing" element={<Pricing />} />
             <Route path="/login" element={<Login />} />
-            
-            {/* Main App Routes */}
-            <Route path="/" element={<Layout />}>
-            <Route index element={<Navigate to="/dashboard" replace />} />
+
+            {/* TEMPORARY: visual preview of Type C dashboard. Delete once Type C provisioning is live. */}
+            <Route path="/__preview/digitisation" element={<__PreviewDigitisation />} />
+
+            {/* TEMPORARY: auto-login as Type C demo user for headless verification. Delete after Phase B. */}
+            <Route path="/__typec-autologin" element={<TypeCAutoLogin />} />
+            <Route path="/__admin-autologin" element={<AdminAutoLogin />} />
+
+            {/* Authenticated app routes (wrapped in Layout, gated by ProtectedRoute) */}
+            <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="digitize" element={<DocumentDigitization />} />
             <Route path="gp-digitize" element={<GPPatientDigitization />} />
@@ -85,6 +156,17 @@ function App() {
             <Route path="document-upload" element={<DocumentUpload />} />
             <Route path="digitization-archive" element={<DigitizationArchive />} />
             <Route path="digitization" element={<DigitizationModule />} />
+
+            {/* Type C Digitisation Workspace (no EHR; capability-gated nav) */}
+            <Route path="digitisation" element={<DigitisationDashboard />} />
+            <Route path="digitisation/documents" element={<DocumentsPipeline />} />
+            <Route path="digitisation/validation" element={<DigitisationValidationQueue />} />
+            <Route path="digitisation/validation/:documentId" element={<DigitisationValidationDetail />} />
+            <Route path="digitisation/archive"  element={<DigitisationArchive />} />
+            <Route path="digitisation/export"          element={<DigitisationExportCentre />} />
+            <Route path="digitisation/export/connect"  element={<DigitisationFHIRConnectionWizard />} />
+            <Route path="digitisation/insights"        element={<DigitisationOperationalInsights />} />
+
             <Route path="user-management" element={<UserManagement />} />
             <Route path="workspace-management" element={<WorkspaceManagement />} />
           </Route>
@@ -92,6 +174,9 @@ function App() {
           {/* Payment routes (outside Layout for clean pages) */}
           <Route path="payment/success" element={<PaymentSuccess />} />
           <Route path="payment/cancelled" element={<PaymentCancelled />} />
+
+          {/* Catch-all → Industry Gateway */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
