@@ -66,23 +66,51 @@ moment, not after a doctor has already lost trust.
 Each item lists **what**, **why deferred**, **trigger to revisit**, and
 **implementation hint**. Prioritise by trigger, not by appearance order.
 
-### 1. ICD-10 inference fallback — `/api/digitisation/icd10/suggest`
+### 1. ICD-10 inference — *partially shipped 2026-05-10*
 
-- **What.** When the doctor wrote a description but no code AND LandingAI
-  failed to infer one (i.e., `description` is set but `icd10_code` is empty),
-  the system should suggest the top 3 SA-edition ICD-10 codes that match the
-  description, with confidence per suggestion. Reviewer picks one.
-- **Why deferred.** Today's pipeline already does inference inside LandingAI's
-  extract step (LLM general knowledge → ICD-10 code). Test data
-  (`demo_patient_full.pdf`, 2026-05-07) shows all 4 diagnoses got inferred
-  codes in one pass; no "vague text" case to repro yet.
-- **Trigger to revisit.** First production document where Diagnoses tab shows
-  a row with non-empty `description` but empty `icd10_code`. OR when sales
-  prospect explicitly asks "what if the doctor doesn't know the codes?"
-- **Implementation hint.** `POST /api/digitisation/icd10/suggest {description: str}`
-  → GPT-4o prompt that constrains output to the SA `icd10_codes` table. Validate
-  each candidate via the existing `/icd10/validate` endpoint before returning.
-  Return shape: `{suggestions: [{code, description, confidence, valid_clinical_use}]}`.
+Two-tier inference. Tier 1 (lexicon) is live; Tier 2 (LLM) is still ahead.
+
+#### Tier 1 — SA-GP abbreviation lexicon — *shipped 2026-05-10*
+
+- **What.** Curated map of common SA primary-care shorthand
+  (URTI → J06.9, HPT → I10, DM → E11.9, OA → M19.9, …) used by the
+  promoter at approval time to assign ICD-10 codes when LandingAI
+  extracted a description but no code. Lives in
+  `backend/app/services/extraction_promoter.py::ICD10_ABBREVIATIONS`.
+- **Status.** ~70 entries. On the typec demo doc this lifts diagnoses-
+  with-codes from 0/9 → 6/9. Tier 2 fuzzy fallback (ilike against
+  `icd10_codes.who_full_desc`) is constrained to ≥10-char or multi-
+  word descriptions to avoid short-abbreviation false positives like
+  `Arthrog → Q74.3 (arthrogryposis multiplex congenita)`.
+- **Codes are validated against the live `icd10_codes` table** at
+  lookup time — entries that point at codes the table doesn't carry
+  silently fall through (no broken FK).
+- **Maintenance task.** The lexicon is intended to grow as production
+  documents surface new abbreviations. Reviewers should append entries
+  to `ICD10_ABBREVIATIONS` when they edit a NULL `code` field on the
+  patient EHR. A future enhancement could promote frequent reviewer-
+  applied codes into the lexicon automatically (mining
+  `validation_edit_log`).
+- **Known unmapped on demo doc:** "Arthrog", "Chest + Exigestion",
+  "Chat Nais" — cryptic OCR / handwriting artefacts. The reviewer step
+  on the patient EHR will catch these.
+
+#### Tier 2 — LLM-based fallback — *deferred*
+
+- **What.** When neither the lexicon nor the constrained fuzzy match
+  produce a code, fall back to an LLM call (Claude / GPT-4o) that
+  picks the best ICD-10 code from `icd10_codes` given the description.
+- **Why deferred.** Tier 1 covers the high-frequency cases for free;
+  Tier 2 burns API credits per row. Worth it once Tier 1 stabilises
+  and the residue is genuinely cryptic.
+- **Trigger to revisit.** When `validation_edit_log` rows show >20%
+  of approved diagnoses had their code edited by reviewers — the
+  lexicon isn't keeping up and an LLM fallback would lift recovery.
+- **Implementation hint.** `POST /api/digitisation/icd10/suggest
+  {description: str}` → Claude prompt constrained to the SA
+  `icd10_codes` table; validate each suggestion via `/icd10/validate`;
+  return top 3 with confidence. Wire into the promoter as Tier 3
+  (after lexicon and fuzzy).
 
 ### 2. Per-field confidence scores
 
@@ -206,6 +234,16 @@ Each item lists **what**, **why deferred**, **trigger to revisit**, and
   `backend/data/atc/run_2026-05-10/matched_review.csv` waiting for a
   human to pick the right anatomical-group code from the alternatives
   column. Free recovery if/when prioritised.
+- **Promotion-time inference (shipped 2026-05-10):** the
+  `extraction_promoter` looks up every digitised medication's
+  `medication_name` against `nappi_codes` (brand or generic, exact
+  case-insensitive) and copies `nappi_code` + `atc_code` +
+  `generic_name` onto the `prescription_items` row. Coverage today is
+  data-bottlenecked (~10% on handwritten chart with 36 meds) — lifts
+  to ~70-90% on typed/clean docs once the BHF MPP licence brings the
+  full ~30k row dataset. No code change needed when that lands; the
+  matcher and the promoter both work as-is on whatever's in
+  `nappi_codes`.
 - **License caveat.** Source data is the atcd GitHub mirror
   (CC BY-NC-SA 4.0, **NonCommercial**) — every row stamped
   `atc_source='atcd-2026-04-25'` for findability. Replace with a
@@ -286,6 +324,42 @@ Each item lists **what**, **why deferred**, **trigger to revisit**, and
   no clean public substitute.
 - **Trigger to revisit.** When BHF MPP licence is in place (item 6a) — comes
   for free with the licensed dataset.
+
+### 6f. Structured-data promotion (extractions → relational tables) — *shipped 2026-05-10*
+
+- **What.** Validated digitisation extractions used to live forever as
+  JSONB on `gp_validation_sessions.extractions`. The relational tables
+  (`patients`, `encounters`, `diagnoses`, `vitals`, `allergies`,
+  `prescriptions`, `prescription_items`) stayed empty for digitised
+  patients, so analytics, the patient EHR view, and TRACEABILITY 6d
+  (drug-drug interactions) all saw an empty world.
+- **Status.** **`extraction_promoter` now runs on every approval** —
+  match-or-create patient (by SA ID number, fallback to surname+dob),
+  one encounter per consultation date, per-category writers tagging
+  every row with `source_document_id`. Idempotent: re-approving the
+  same doc wipes prior promotion artifacts and re-inserts. Migrations
+  010 (UUID→TEXT schema fix per §10c of strategy doc) and 010b
+  (encounters.source_document_id) are applied. Smoke-tested: doc with
+  16 consultation dates → 1 patient + 16 encounters + 9 diagnoses +
+  5 vitals + 36 prescription items.
+- **Inference layer at promotion time:**
+    - ICD-10 via the §1 lexicon (Tier 1) + tightened fuzzy (Tier 2).
+    - NAPPI/ATC via lookup against `nappi_codes` (brand or generic).
+- **What's NOT done:**
+    - **Patient EHR view of promoted data** — `/patients/:id` doesn't
+      yet read from these tables for digitisation-sourced patients.
+      ~45 min UI work.
+    - **Cross-document patient timelines** — multiple PDFs for the
+      same patient match by ID number and layer onto one record, but
+      there's no UI yet that surfaces "this Rx came from doc A,
+      this one from doc B".
+- **Files.**
+    - `backend/migrations/010_extraction_promotion_schema.sql`
+    - `backend/migrations/010b_encounters_source_doc.sql`
+    - `backend/app/services/extraction_promoter.py`
+    - approve handler in `backend/app/api/digitisation.py`
+    - `frontend/src/components/groundtruth/ValidationHistoryDrawer.jsx`
+      (renders the green "Promoted to EHR" card)
 
 ### 7. Mongo consolidation
 
