@@ -15,6 +15,8 @@ from supabase import create_client, Client
 import os
 import logging
 
+from app.services.entitlements import practice_capabilities, practice_has_capability
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -109,6 +111,81 @@ def decode_token(token: str) -> dict:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+
+# ==================== Multi-workspace helpers (TRACEABILITY §11) ====================
+
+def list_user_workspaces(user_id: str) -> list:
+    """Return every workspace this user has access to via user_workspaces,
+    with role + is_primary + workspace name. Sorted with primary first.
+
+    Two-step lookup (rather than PostgREST embedded select) because we
+    haven't declared a FK constraint between user_workspaces.workspace_id
+    and workspaces.id — the embedded variant returns only rows where
+    PostgREST happens to infer the relationship.
+
+    Empty list ⇒ user is single-workspace (legacy users.workspace_id only)
+    or has no workspace at all. Caller should fall back to
+    users.workspace_id when this returns empty.
+    """
+    try:
+        rows = (
+            supabase.table("user_workspaces")
+            .select("workspace_id, role, is_primary")
+            .eq("user_id", user_id)
+            .execute()
+            .data or []
+        )
+    except Exception as e:
+        logger.error(f"list_user_workspaces failed for {user_id}: {e}")
+        return []
+    if not rows:
+        return []
+
+    workspace_ids = list({r["workspace_id"] for r in rows})
+    ws_meta: dict = {}
+    try:
+        meta = (
+            supabase.table("workspaces")
+            .select("id, name, type, tenant_id")
+            .in_("id", workspace_ids)
+            .execute()
+            .data or []
+        )
+        ws_meta = {w["id"]: w for w in meta}
+    except Exception as e:
+        logger.error(f"workspace metadata fetch failed: {e}")
+
+    out = []
+    for r in rows:
+        ws = ws_meta.get(r["workspace_id"]) or {}
+        out.append({
+            "workspace_id": r["workspace_id"],
+            "name":         ws.get("name") or r["workspace_id"],
+            "type":         ws.get("type"),
+            "tenant_id":    ws.get("tenant_id"),
+            "role":         r.get("role"),
+            "is_primary":   bool(r.get("is_primary")),
+        })
+    out.sort(key=lambda x: (not x["is_primary"], x["name"] or ""))
+    return out
+
+
+def user_has_workspace_access(user_id: str, workspace_id: str) -> bool:
+    """True if user_workspaces grants this user access to this workspace."""
+    try:
+        res = (
+            supabase.table("user_workspaces")
+            .select("user_id")
+            .eq("user_id", user_id)
+            .eq("workspace_id", workspace_id)
+            .limit(1)
+            .execute()
+        )
+        return bool(res.data)
+    except Exception as e:
+        logger.error(f"user_has_workspace_access failed: {e}")
+        return False
+
 # ==================== Dependencies ====================
 
 async def get_current_user(
@@ -135,14 +212,32 @@ async def get_current_user(
             detail="Could not validate credentials"
         )
     
+    workspace_id = payload.get("workspace_id")
+
+    # Hydrate capabilities for the active workspace (Phase 2 — capability gating).
+    # One Supabase RPC per request; acceptable for v1. When scale demands, cache
+    # by (workspace_id, last_entitlement_change_at) or embed a capability hash
+    # in the JWT itself.
+    capabilities = []
+    if workspace_id:
+        try:
+            capabilities = practice_capabilities(supabase, workspace_id)
+        except Exception as e:
+            # Fail-closed but loud — never silently grant access on entitlement-fetch failure.
+            logger.error(f"Failed to fetch capabilities for workspace {workspace_id}: {e}")
+            capabilities = []
+
     # In production, fetch user from database here
     # For now, return payload data
     return {
         "user_id": user_id,
         "email": payload.get("email"),
         "role": payload.get("role"),
-        "workspace_id": payload.get("workspace_id"),
-        "tenant_id": payload.get("tenant_id")
+        "workspace_id": workspace_id,
+        "tenant_id": payload.get("tenant_id"),
+        "first_name": payload.get("first_name"),
+        "last_name": payload.get("last_name"),
+        "capabilities": capabilities,
     }
 
 async def get_current_admin_user(
@@ -155,6 +250,41 @@ async def get_current_admin_user(
             detail="Not enough permissions"
         )
     return current_user
+
+
+def require_capability(capability_id: str):
+    """FastAPI dependency factory — gate a route on a single capability.
+
+    Usage:
+        @router.post("/encounters/ai-scribe", ...)
+        async def create_scribe(
+            ...,
+            user: dict = Depends(require_capability("ai_scribe")),
+        ):
+            ...
+
+    Returns 403 with a structured error body that names the missing capability,
+    so the frontend can render a tier-specific upsell card naming exactly which
+    Module the doctor would buy to unlock it.
+
+    NOTE: relies on get_current_user having hydrated `capabilities` into the
+    user dict. Reads the in-memory list rather than re-querying Supabase per
+    dependency invocation.
+    """
+    async def _dep(current_user: dict = Depends(get_current_user)) -> dict:
+        granted = current_user.get("capabilities", [])
+        if capability_id not in granted:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "error": "capability_required",
+                    "capability": capability_id,
+                    "message": f"This feature requires the '{capability_id}' capability. "
+                               f"Contact sales@surgiscan.co.za to add the corresponding module to your plan.",
+                },
+            )
+        return current_user
+    return _dep
 
 # ==================== Routes ====================
 
@@ -209,9 +339,26 @@ async def login(login_data: LoginRequest):
         # Create tokens
         access_token = create_access_token(user_data)
         refresh_token = create_refresh_token(user_data)
-        
+
+        # Hydrate capabilities so the frontend can route by entitlement shape
+        # immediately on login (Type C lands on /digitisation, not /dashboard).
+        try:
+            capabilities = practice_capabilities(supabase, user['workspace_id']) if user.get('workspace_id') else []
+        except Exception as e:
+            logger.error(f"Failed to fetch capabilities for {user.get('workspace_id')}: {e}")
+            capabilities = []
+
+        # Workspace name for sidebar subtitle / dashboard greeting.
+        workspace_name = None
+        try:
+            ws = supabase.table('workspaces').select('name').eq('id', user['workspace_id']).execute()
+            if ws.data:
+                workspace_name = ws.data[0].get('name')
+        except Exception as e:
+            logger.error(f"Failed to fetch workspace name for {user.get('workspace_id')}: {e}")
+
         logger.info(f"User logged in: {login_data.email} (role: {user['role']})")
-        
+
         return LoginResponse(
             access_token=access_token,
             refresh_token=refresh_token,
@@ -222,7 +369,9 @@ async def login(login_data: LoginRequest):
                 "last_name": user['last_name'],
                 "role": user['role'],
                 "workspace_id": user['workspace_id'],
-                "tenant_id": user['tenant_id']
+                "tenant_id": user['tenant_id'],
+                "workspace_name": workspace_name,
+                "capabilities": capabilities,
             }
         )
         
@@ -292,12 +441,157 @@ async def logout(current_user: dict = Depends(get_current_user)):
 @router.get("/me")
 async def get_current_user_info(current_user: dict = Depends(get_current_user)):
     """
-    Get current authenticated user information
+    Get current authenticated user information.
+    Hydrates workspace_name so the sidebar subtitle / dashboard greeting can
+    render after a hard refresh (login response carries it on first load).
     """
+    workspace_name = None
+    workspace_id = current_user.get("workspace_id")
+    if workspace_id:
+        try:
+            ws = supabase.table('workspaces').select('name').eq('id', workspace_id).execute()
+            if ws.data:
+                workspace_name = ws.data[0].get('name')
+        except Exception as e:
+            logger.error(f"Failed to fetch workspace name for {workspace_id}: {e}")
+
     return {
         "status": "success",
-        "user": current_user
+        "user": {**current_user, "workspace_name": workspace_name},
     }
+
+
+# ==================== Multi-workspace endpoints (TRACEABILITY §11) ====================
+
+@router.get("/workspaces")
+async def list_my_workspaces(current_user: dict = Depends(get_current_user)):
+    """All workspaces this user has access to via the user_workspaces join.
+    The frontend uses this to populate the workspace switcher dropdown.
+
+    Falls back to the legacy single users.workspace_id when user_workspaces
+    has no rows for this user (back-compat for users provisioned before
+    migration 013, before the migration backfill runs)."""
+    user_id = current_user.get("user_id")
+    accessible = list_user_workspaces(user_id) if user_id else []
+
+    if not accessible:
+        # Legacy fallback: derive from the JWT's workspace_id only
+        workspace_id = current_user.get("workspace_id")
+        if workspace_id:
+            try:
+                ws = supabase.table('workspaces').select('id, name, type, tenant_id') \
+                    .eq('id', workspace_id).limit(1).execute()
+                if ws.data:
+                    r = ws.data[0]
+                    accessible = [{
+                        "workspace_id": r["id"],
+                        "name":         r.get("name") or r["id"],
+                        "type":         r.get("type"),
+                        "tenant_id":    r.get("tenant_id"),
+                        "role":         current_user.get("role") or "clinical",
+                        "is_primary":   True,
+                    }]
+            except Exception as e:
+                logger.error(f"workspaces fallback fetch failed: {e}")
+
+    return {
+        "active_workspace_id": current_user.get("workspace_id"),
+        "workspaces":          accessible,
+        "count":               len(accessible),
+    }
+
+
+class SwitchWorkspaceRequest(BaseModel):
+    workspace_id: str
+
+
+@router.post("/switch-workspace")
+async def switch_workspace(
+    body: SwitchWorkspaceRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Issue a fresh token bound to a different workspace the user has
+    access to. Returns the new access + refresh tokens; capabilities are
+    rehydrated for the target workspace.
+
+    Tenancy gate: refuses if user_workspaces has no row for
+    (user_id, workspace_id). The legacy single-workspace user with
+    no user_workspaces row may still switch INTO their own
+    users.workspace_id (so this endpoint is harmless to call even for
+    single-workspace users)."""
+    user_id      = current_user.get("user_id")
+    target_ws_id = body.workspace_id
+
+    if not user_id:
+        raise HTTPException(status_code=400, detail="No user context")
+
+    # Authorise: user_workspaces row OR the user's legacy primary workspace.
+    has_access = user_has_workspace_access(user_id, target_ws_id)
+    if not has_access:
+        # Legacy: a user with no user_workspaces rows may still hit
+        # their original users.workspace_id.
+        try:
+            u = supabase.table('users').select('workspace_id').eq('id', user_id).limit(1).execute()
+            legacy = u.data[0]["workspace_id"] if u.data else None
+        except Exception:
+            legacy = None
+        if legacy != target_ws_id:
+            raise HTTPException(
+                status_code=403,
+                detail="You don't have access to that workspace",
+            )
+
+    # Rehydrate user data for the new token
+    try:
+        u = supabase.table('users').select('*').eq('id', user_id).limit(1).execute()
+        if not u.data:
+            raise HTTPException(status_code=404, detail="User not found")
+        user = u.data[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"switch-workspace user fetch failed: {e}")
+        raise HTTPException(status_code=500, detail="Could not switch workspace")
+
+    new_user_data = {
+        "user_id":      user_id,
+        "email":        user["email"],
+        "role":         user.get("role"),
+        "workspace_id": target_ws_id,
+        "tenant_id":    user.get("tenant_id"),
+        "first_name":   user.get("first_name"),
+        "last_name":    user.get("last_name"),
+    }
+    access_token  = create_access_token(new_user_data)
+    refresh_token = create_refresh_token(new_user_data)
+
+    # Workspace name + capabilities for the new context
+    workspace_name = None
+    capabilities   = []
+    try:
+        ws = supabase.table('workspaces').select('name').eq('id', target_ws_id).limit(1).execute()
+        if ws.data:
+            workspace_name = ws.data[0].get('name')
+    except Exception as e:
+        logger.error(f"workspace name fetch failed: {e}")
+    try:
+        capabilities = practice_capabilities(supabase, target_ws_id)
+    except Exception as e:
+        logger.error(f"capabilities fetch failed for {target_ws_id}: {e}")
+
+    logger.info(f"User {user['email']} switched to workspace {target_ws_id}")
+
+    return {
+        "access_token":  access_token,
+        "refresh_token": refresh_token,
+        "token_type":    "bearer",
+        "user": {
+            **new_user_data,
+            "workspace_name": workspace_name,
+            "capabilities":   capabilities,
+        },
+    }
+
 
 @router.post("/change-password")
 async def change_password(

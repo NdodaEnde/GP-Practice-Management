@@ -492,7 +492,7 @@ Two-tier inference. Tier 1 (lexicon) is live; Tier 2 (LLM) is still ahead.
   one new bundle_profile value. Once added, every other workspace on
   the same EHR reuses it without re-work.
 
-### 11. Multi-practice support — *partially supported (schema only); UX deferred*
+### 11. Multi-practice support — *Tranche A shipped 2026-05-10; Tranche B deferred*
 
 - **What.** A single doctor (or admin) operating multiple practices —
   e.g. clinics in Sandton + Pretoria, or a Group practice (Quadcare,
@@ -503,12 +503,13 @@ Two-tier inference. Tier 1 (lexicon) is live; Tier 2 (LLM) is still ahead.
       `workspaces` → `users`. Every endpoint filters by
       `current_user.workspace_id`; cross-workspace data leak is
       structurally impossible.
-    - ✅ **Solo doctors with one practice** — fully supported today.
-    - 🟡 **Multi-practice doctor (2-3 clinics)** — works at the data
-      layer but UI assumes one workspace per session. Doctor needs
-      separate logins per practice. No workspace-switcher in the nav.
-    - ❌ **Group practices (Quadcare-style, 7+)** — not yet built;
-      strategy doc explicitly deferred to **Q1 2027**.
+    - ✅ **Solo doctors with one practice** — fully supported.
+    - ✅ **Multi-practice doctor (2-3 clinics)** — Tranche A shipped
+      2026-05-10. Single login flips between practices via the
+      sidebar workspace switcher; federated search across all
+      practices via the `scope=all` toggle on `/digitisation/search`.
+    - ❌ **Group practices (Quadcare-style, 7+)** — Tranche B not yet
+      built; strategy doc explicitly deferred to **Q1 2027**.
 - **Why deferred.** v1 sales motion targets solo / Type C / Type A
   practices. Group sales is a different cycle (corporate procurement,
   multi-month, different decision-makers). Per the sales playbook:
@@ -522,19 +523,24 @@ Two-tier inference. Tier 1 (lexicon) is live; Tier 2 (LLM) is still ahead.
       (Q1 2027 per strategy). Multi-day effort.
 - **Implementation hint.** Two distinct work tranches:
 
-    **Tranche A — multi-practice solo (~3-5 days total)**
-    1. Migration: `user_workspaces` join table (`user_id`,
-       `workspace_id`, `role`) — replaces the implicit single
-       `users.workspace_id` with N:N. Backfill from existing data.
-    2. Auth update: token claims include the user's accessible
-       workspace list; current request's `workspace_id` selected via
-       header / context.
-    3. **Workspace switcher** in `Layout.jsx` sidebar — dropdown of
-       accessible workspaces, click to flip context. Persists via a
-       simple cookie or query param.
-    4. Cross-workspace federated search — `/api/digitisation/search`
-       already designed for workspace-list filter; surface a "search
-       all my practices" toggle in the UI (~1-2 hr).
+    **Tranche A — multi-practice solo — *shipped 2026-05-10***
+    1. ✅ Migration 013 + 013b: `user_workspaces` join table
+       (`user_id UUID`, `workspace_id TEXT`, `role`, `is_primary`),
+       backfilled from `users.workspace_id`. `users.workspace_id`
+       preserved as the primary-workspace pointer for back-compat.
+    2. ✅ `GET /api/auth/workspaces` returns the user's accessible
+       workspaces (with workspace name + role + primary flag).
+       `POST /api/auth/switch-workspace` mints a fresh JWT bound to
+       the new workspace, rehydrating capabilities. Tenancy gate
+       refuses unauthorized switches with 403.
+    3. ✅ Workspace switcher in `Layout.jsx` sidebar — dropdown
+       appears whenever the user belongs to >1 workspace. Click →
+       calls `/switch-workspace` → page reloads in the new context
+       (clean refresh of every workspace-scoped query).
+    4. ✅ Cross-workspace federated search — `?scope=all` parameter
+       on `/api/digitisation/search` resolves the user's accessible
+       workspaces and merges results by similarity. Frontend toggle
+       *"Search all N practices"* renders when `count > 1`.
 
     **Tranche B — Group tier (~2-3 days on top of A)**
     5. Group admin role with cross-workspace permissions within a

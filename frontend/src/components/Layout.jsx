@@ -1,7 +1,10 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import axios from 'axios';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
+
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8002';
 
 // Material Symbols Outlined icon — wraps a span with the right CSS class.
 // Variation axes are set globally in src/index.css.
@@ -14,7 +17,45 @@ const MIcon = ({ name, className = '' }) => (
 const Layout = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout, hasCapability } = useAuth();
+  const { user, logout, hasCapability, switchWorkspace } = useAuth();
+
+  // Multi-practice support (TRACEABILITY §11). Fetched on mount; used by
+  // the workspace switcher dropdown when the user belongs to >1 workspace.
+  const [workspaces, setWorkspaces] = useState([]);
+  const [switching, setSwitching]   = useState(false);
+  const [showSwitcher, setShowSwitcher] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await axios.get(`${BACKEND_URL}/api/auth/workspaces`);
+        if (!cancelled) setWorkspaces(res.data?.workspaces || []);
+      } catch (e) {
+        // 401 if not signed in; legacy single-workspace users don't need
+        // the switcher anyway, so silently fall back.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user?.workspace_id]);
+
+  const onSwitch = async (workspace_id) => {
+    if (!workspace_id || workspace_id === user?.workspace_id) {
+      setShowSwitcher(false);
+      return;
+    }
+    setSwitching(true);
+    const r = await switchWorkspace(workspace_id);
+    setSwitching(false);
+    if (r.success) {
+      // Hard reload — every page-level data fetch was workspace-scoped, and
+      // a soft refresh would still display stale lists until each component
+      // re-mounted. Cleanest UX: full reload, lands on the same route.
+      window.location.reload();
+    } else {
+      alert(r.error || 'Could not switch workspace');
+    }
+  };
 
   const handleLogout = async () => {
     await logout();
@@ -148,9 +189,56 @@ const Layout = () => {
                 </Button>
               </div>
             )}
-            <div className="px-md py-sm bg-surface-container-low rounded-xl">
+            <div className="px-md py-sm bg-surface-container-low rounded-xl relative">
               <p className="font-label-caps text-label-caps uppercase text-on-surface-variant mb-1">Active Workspace</p>
-              <p className="font-body-sm text-body-sm font-semibold text-on-surface">{user?.workspace_name || 'Demo GP Practice'}</p>
+              {workspaces.length > 1 ? (
+                <button
+                  onClick={() => setShowSwitcher(s => !s)}
+                  disabled={switching}
+                  className="w-full flex items-center justify-between gap-base text-left disabled:opacity-50"
+                >
+                  <span className="font-body-sm text-body-sm font-semibold text-on-surface truncate">
+                    {user?.workspace_name || 'Demo GP Practice'}
+                  </span>
+                  <MIcon name={switching ? 'progress_activity' : 'unfold_more'} className={`!text-[18px] text-on-surface-variant ${switching ? 'animate-spin' : ''}`} />
+                </button>
+              ) : (
+                <p className="font-body-sm text-body-sm font-semibold text-on-surface">{user?.workspace_name || 'Demo GP Practice'}</p>
+              )}
+              {workspaces.length > 1 && (
+                <p className="font-label-caps text-[10px] uppercase text-on-surface-variant mt-1">
+                  {workspaces.length} practices · click to switch
+                </p>
+              )}
+
+              {showSwitcher && (
+                <div
+                  className="absolute bottom-full left-0 right-0 mb-base bg-surface-container-lowest border border-outline-variant rounded-xl shadow-xl overflow-hidden z-50"
+                  role="listbox"
+                >
+                  {workspaces.map(ws => {
+                    const active = ws.workspace_id === user?.workspace_id;
+                    return (
+                      <button
+                        key={ws.workspace_id}
+                        role="option"
+                        aria-selected={active}
+                        onClick={() => onSwitch(ws.workspace_id)}
+                        disabled={switching || active}
+                        className={`w-full px-md py-sm text-left flex items-center gap-base hover:bg-surface-container ${active ? 'bg-primary-fixed/40 cursor-default' : ''}`}
+                      >
+                        <MIcon name={active ? 'check_circle' : 'business'} className={`!text-[18px] ${active ? 'text-primary' : 'text-on-surface-variant'}`} />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-body-sm text-body-sm font-semibold text-on-surface truncate">{ws.name}</p>
+                          <p className="font-label-caps text-[10px] uppercase text-on-surface-variant">
+                            {ws.role}{ws.is_primary ? ' · primary' : ''}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>

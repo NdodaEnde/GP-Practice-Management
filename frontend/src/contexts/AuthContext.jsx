@@ -131,6 +131,40 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Capability check — pure JS membership against user.capabilities (hydrated
+  // by /api/auth/me). Use this in components to render gated UX:
+  //   const { hasCapability } = useAuth();
+  //   if (!hasCapability('ai_scribe')) return <UpsellCard ... />;
+  const hasCapability = (capabilityId) => {
+    return Array.isArray(user?.capabilities) && user.capabilities.includes(capabilityId);
+  };
+
+  // Multi-practice support (TRACEABILITY §11). switchWorkspace mints a
+  // fresh JWT bound to the target workspace, swaps tokens in localStorage,
+  // and rehydrates user state. Caller is expected to refresh page-level
+  // data after; the simplest UX is a soft window.location.reload().
+  const switchWorkspace = async (workspace_id) => {
+    try {
+      const token = localStorage.getItem('access_token');
+      const response = await axios.post(
+        `${backendUrl}/api/auth/switch-workspace`,
+        { workspace_id },
+        { headers: { 'Authorization': `Bearer ${token}` } },
+      );
+      const { access_token, refresh_token, user: newUser } = response.data;
+      localStorage.setItem('access_token',  access_token);
+      localStorage.setItem('refresh_token', refresh_token);
+      setUser(newUser);
+      return { success: true, user: newUser };
+    } catch (error) {
+      console.error('switchWorkspace failed:', error);
+      return {
+        success: false,
+        error: error.response?.data?.detail || 'Switch failed',
+      };
+    }
+  };
+
   const value = {
     user,
     loading,
@@ -138,7 +172,9 @@ export const AuthProvider = ({ children }) => {
     login,
     logout,
     refreshToken,
-    checkAuth
+    checkAuth,
+    hasCapability,
+    switchWorkspace,
   };
 
   return (

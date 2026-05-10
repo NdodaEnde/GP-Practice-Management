@@ -1914,6 +1914,9 @@ async def search_documents(
     q:           str  = Query(..., min_length=2, description="natural-language query"),
     limit:       int  = Query(20, ge=1, le=100),
     patient_id:  Optional[str] = Query(None, description="restrict to one patient"),
+    scope:       str  = Query("workspace", regex="^(workspace|all)$",
+                              description="'workspace' (default) or 'all' to federate across "
+                                          "every workspace the user has access to (TRACEABILITY §11)"),
     current_user: dict = Depends(require_capability("digitisation_validation")),
 ):
     _enforce_search_rate_limit(current_user.get("email") or "anonymous")
@@ -1928,17 +1931,32 @@ async def search_documents(
     if not workspace_id:
         raise HTTPException(status_code=400, detail="No workspace context")
 
+    # Resolve the workspace list the search will federate across.
+    # scope='workspace' (default): just the active workspace.
+    # scope='all': every workspace this user has access to via user_workspaces.
+    target_workspaces: list = [workspace_id]
+    if scope == "all":
+        from app.api.auth import list_user_workspaces
+        accessible = list_user_workspaces(current_user.get("user_id") or "")
+        if accessible:
+            target_workspaces = [w["workspace_id"] for w in accessible]
+
     try:
         from app.services.semantic_search import search as do_search
-        hits = do_search(
-            supabase,
-            workspace_id=workspace_id,
-            query=q,
-            limit=limit,
-            patient_id=patient_id,
-        )
+        # Per-workspace search; merge by similarity, keep top N.
+        all_hits = []
+        for ws in target_workspaces:
+            all_hits.extend(do_search(
+                supabase,
+                workspace_id=ws,
+                query=q,
+                limit=limit,
+                patient_id=patient_id,
+            ))
+        all_hits.sort(key=lambda h: -h.similarity)
+        hits = all_hits[:limit]
     except Exception as e:
-        logger.error(f"semantic search failed for workspace={workspace_id} q={q!r}: {e}")
+        logger.error(f"semantic search failed for workspaces={target_workspaces} q={q!r}: {e}")
         raise HTTPException(status_code=500, detail=f"Search failed: {type(e).__name__}: {e}")
 
     # Group hits by document_id so the UI can render one card per doc

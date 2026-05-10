@@ -30,17 +30,34 @@ const EXAMPLE_QUERIES = [
 ];
 
 const DigitisationSearch = () => {
-  const [query, setQuery]       = useState('');
-  const [results, setResults]   = useState(null);
-  const [loading, setLoading]   = useState(false);
-  const [err, setErr]           = useState(null);
+  const [query, setQuery]               = useState('');
+  const [results, setResults]           = useState(null);
+  const [loading, setLoading]           = useState(false);
+  const [err, setErr]                   = useState(null);
+  const [scopeAll, setScopeAll]         = useState(false);    // §11 federated
+  const [accessibleCount, setAccessibleCount] = useState(1);
+
+  // Multi-practice users get the "search all my practices" toggle. We
+  // probe /api/auth/workspaces once on mount to know whether to render it.
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await axios.get(`${BACKEND_URL}/api/auth/workspaces`);
+        if (!cancelled) setAccessibleCount(res.data?.count || 1);
+      } catch { /* legacy single-workspace; leave at 1 */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const runSearch = useCallback(async (q) => {
     if (!q || q.trim().length < 2) return;
     setLoading(true);
     setErr(null);
     try {
-      const res = await axios.get(API, { params: { q, limit: 50 } });
+      const res = await axios.get(API, {
+        params: { q, limit: 50, scope: scopeAll ? 'all' : 'workspace' },
+      });
       setResults(res.data);
     } catch (e) {
       setErr(e?.response?.data?.detail || e.message);
@@ -48,7 +65,7 @@ const DigitisationSearch = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [scopeAll]);
 
   const onSubmit = (e) => {
     e.preventDefault();
@@ -67,16 +84,29 @@ const DigitisationSearch = () => {
       </section>
 
       {/* Search bar */}
-      <form onSubmit={onSubmit} className="bg-surface-container-lowest border border-outline-variant rounded-xl p-md flex items-center gap-md">
+      <form onSubmit={onSubmit} className="bg-surface-container-lowest border border-outline-variant rounded-xl p-md flex items-center gap-md flex-wrap">
         <MIcon name="search" className="text-primary !text-[28px]" />
         <input
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="e.g. patients on metformin with elevated HbA1c"
-          className="flex-1 bg-transparent border-0 focus:outline-none font-body-md text-on-surface placeholder:text-on-surface-variant"
+          className="flex-1 min-w-[200px] bg-transparent border-0 focus:outline-none font-body-md text-on-surface placeholder:text-on-surface-variant"
           autoFocus
         />
+        {accessibleCount > 1 && (
+          <label className="flex items-center gap-base px-md py-sm bg-surface-container-low rounded-lg cursor-pointer">
+            <input
+              type="checkbox"
+              checked={scopeAll}
+              onChange={(e) => setScopeAll(e.target.checked)}
+              className="w-4 h-4 accent-primary"
+            />
+            <span className="font-body-sm text-body-sm text-on-surface">
+              Search all {accessibleCount} practices
+            </span>
+          </label>
+        )}
         <button
           type="submit"
           disabled={loading || query.trim().length < 2}
