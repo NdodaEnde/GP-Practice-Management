@@ -912,6 +912,66 @@ async def save_validation_edits(
     }
 
 
+@router.post("/validation/{document_id}/preview-match")
+async def preview_patient_match(
+    document_id: str,
+    current_user: dict = Depends(require_capability("digitisation_validation")),
+):
+    """Run the patient matcher against the latest extractions WITHOUT
+    writing anything. Returns 0+ candidates with name/dob/id/match_kind
+    so the validation panel can show a confirmation modal before /approve
+    commits.
+
+    Reviewers see this list and pick one of:
+        - an existing patient (frontend then POSTs /approve with
+          confirmed_patient_id)
+        - a brand new patient (frontend POSTs /approve with
+          create_new_patient=true)
+    """
+    workspace_id = current_user.get("workspace_id")
+    if not workspace_id:
+        raise HTTPException(status_code=400, detail="No workspace context")
+
+    # Tenancy check
+    doc = (
+        supabase.table("digitised_documents")
+        .select("id")
+        .eq("id", document_id)
+        .eq("workspace_id", workspace_id)
+        .limit(1)
+        .execute()
+    )
+    if not doc.data:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Latest validated extractions
+    sess = (
+        supabase.table("gp_validation_sessions")
+        .select("extractions")
+        .eq("document_id", document_id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    extractions = (sess.data[0].get("extractions") if sess.data else None) or {}
+    demographics = (extractions.get("patient_demographics") or {})
+
+    from app.services.extraction_promoter import find_match_candidates
+    candidates = find_match_candidates(supabase, workspace_id, demographics, limit=5)
+
+    return {
+        "document_id":    document_id,
+        "demographics":   {
+            "full_names":    demographics.get("full_names"),
+            "surname":       demographics.get("surname"),
+            "id_number":     demographics.get("id_number"),
+            "date_of_birth": demographics.get("date_of_birth"),
+        },
+        "candidates":     candidates,
+        "candidate_count": len(candidates),
+    }
+
+
 @router.post("/validation/{document_id}/approve")
 async def approve_validation(
     document_id: str,
@@ -953,7 +1013,47 @@ async def approve_validation(
 
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc).isoformat()
-    notes = (payload or {}).get("notes")
+    payload = payload or {}
+    notes                  = payload.get("notes")
+    confirmed_patient_id   = payload.get("confirmed_patient_id")
+    create_new_patient     = bool(payload.get("create_new_patient", False))
+
+    # Ambiguity gate: if neither override is set and the matcher finds 1+
+    # candidates, refuse to auto-pick — return 409 with the candidates so
+    # the frontend can show the modal. Only kicks in when the doc has
+    # demographics worth matching on.
+    if not confirmed_patient_id and not create_new_patient:
+        sess_for_match = (
+            supabase.table("gp_validation_sessions")
+            .select("extractions")
+            .eq("document_id", document_id)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        demo_for_match = (
+            (sess_for_match.data[0].get("extractions") if sess_for_match.data else None) or {}
+        ).get("patient_demographics") or {}
+        from app.services.extraction_promoter import find_match_candidates
+        candidates = find_match_candidates(supabase, workspace_id, demo_for_match, limit=5)
+        if candidates:
+            # Surface as a non-error response with a clear gate flag so the
+            # frontend (or curl power-users) can act on it cleanly.
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "needs_confirmation": True,
+                    "message": "Patient match requires confirmation. Pass confirmed_patient_id or create_new_patient=true.",
+                    "candidates":         candidates,
+                    "candidate_count":    len(candidates),
+                    "demographics":       {
+                        "full_names":    demo_for_match.get("full_names"),
+                        "surname":       demo_for_match.get("surname"),
+                        "id_number":     demo_for_match.get("id_number"),
+                        "date_of_birth": demo_for_match.get("date_of_birth"),
+                    },
+                },
+            )
 
     update_payload = {
         "status":       "validated",
@@ -990,6 +1090,8 @@ async def approve_validation(
             document_id=document_id,
             extractions=extractions,
             created_by=current_user.get("email"),
+            forced_patient_id=confirmed_patient_id,
+            force_create_patient=create_new_patient,
         )
         promotion = result_obj.to_dict()
         # Link the document to the matched/created patient + first encounter

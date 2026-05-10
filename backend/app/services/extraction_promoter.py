@@ -463,63 +463,118 @@ def _tenant_for_workspace(supabase, workspace_id: str) -> str:
     return res.data[0]["tenant_id"]
 
 
-def _match_or_create_patient(
-    supabase, workspace_id: str, demographics: Dict[str, Any]
-) -> Tuple[str, str, str, Dict[str, Any]]:
-    """Returns (patient_id, kind, match_confidence, patient_summary).
-    kind = 'matched' | 'created'.
-    match_confidence = 'id_number' (matched on SA ID — high), 'name_dob'
-    (matched on surname + DOB — medium, can collide with twins), or 'n/a'
-    (newly created)."""
+def find_match_candidates(
+    supabase, workspace_id: str, demographics: Dict[str, Any], limit: int = 5,
+) -> List[Dict[str, Any]]:
+    """Returns ALL candidate patient matches (not just the first). Each
+    row has match_kind = 'id_number' | 'name_dob' so the caller can show
+    confidence per row in the UI. Used by the /preview-match endpoint
+    so reviewers can choose explicitly before approval commits.
+
+    Order: id_number matches first (highest confidence), then name_dob.
+    Deduped by patient id.
+    """
     id_number = (demographics.get("id_number") or "").strip()
     surname   = (demographics.get("surname")   or "").strip()
     dob       = _normalise_date(demographics.get("date_of_birth"))
 
-    # Tier 1: SA ID number (13 unique digits — high confidence)
+    seen: set = set()
+    out: List[Dict[str, Any]] = []
+    cols = "id, first_name, last_name, id_number, dob, contact_number, medical_aid, created_at"
+
+    # Tier 1 — SA ID number
     if id_number:
         res = (
             supabase.table("patients")
-            .select("id, first_name, last_name, id_number, dob")
+            .select(cols)
             .eq("workspace_id", workspace_id)
             .eq("id_number", id_number)
-            .limit(1)
+            .limit(limit)
             .execute()
         )
-        if res.data:
-            r = res.data[0]
-            return r["id"], "matched", "id_number", {
-                "first_name": r.get("first_name"),
-                "last_name":  r.get("last_name"),
-                "dob":        r.get("dob"),
-                "id_number":  r.get("id_number"),
-            }
+        for r in res.data or []:
+            if r["id"] in seen:
+                continue
+            seen.add(r["id"])
+            out.append({**r, "match_kind": "id_number"})
 
-    # Tier 2: surname + DOB (medium — can collide with twins)
-    if surname and dob:
+    # Tier 2 — surname + DOB
+    if surname and dob and len(out) < limit:
+        res = (
+            supabase.table("patients")
+            .select(cols)
+            .eq("workspace_id", workspace_id)
+            .ilike("last_name", surname)
+            .eq("dob", dob)
+            .limit(limit)
+            .execute()
+        )
+        for r in res.data or []:
+            if r["id"] in seen:
+                continue
+            seen.add(r["id"])
+            out.append({**r, "match_kind": "name_dob"})
+            if len(out) >= limit:
+                break
+    return out
+
+
+def _summarise_patient(row: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "first_name": row.get("first_name"),
+        "last_name":  row.get("last_name"),
+        "dob":        row.get("dob"),
+        "id_number":  row.get("id_number"),
+    }
+
+
+def _match_or_create_patient(
+    supabase, workspace_id: str, demographics: Dict[str, Any],
+    *,
+    forced_patient_id: Optional[str] = None,
+    force_create: bool = False,
+) -> Tuple[str, str, str, Dict[str, Any]]:
+    """Returns (patient_id, kind, match_confidence, patient_summary).
+
+    Override-aware:
+      - forced_patient_id: skip auto-match; use this exact id (expects
+        the caller to have validated it exists in the workspace).
+      - force_create: skip auto-match; create a new patient even if
+        matches exist.
+      - neither set: original behaviour (Tier 1 → Tier 2 → create).
+
+    kind = 'matched' | 'matched_explicit' | 'created'.
+    match_confidence = 'id_number' | 'name_dob' | 'explicit' | 'n/a'.
+    """
+    # Caller-forced explicit patient
+    if forced_patient_id:
         res = (
             supabase.table("patients")
             .select("id, first_name, last_name, id_number, dob")
             .eq("workspace_id", workspace_id)
-            .ilike("last_name", surname)
-            .eq("dob", dob)
-            .limit(2)
+            .eq("id", forced_patient_id)
+            .limit(1)
             .execute()
         )
-        if res.data:
-            # If multiple, take first but warn via patient_summary having .ambiguous
-            r = res.data[0]
-            summary = {
-                "first_name": r.get("first_name"),
-                "last_name":  r.get("last_name"),
-                "dob":        r.get("dob"),
-                "id_number":  r.get("id_number"),
-            }
-            if len(res.data) > 1:
-                summary["ambiguous"] = True
-                summary["other_candidates"] = len(res.data) - 1
-            return r["id"], "matched", "name_dob", summary
+        if not res.data:
+            raise RuntimeError(
+                f"forced_patient_id {forced_patient_id} not found in workspace {workspace_id}"
+            )
+        return res.data[0]["id"], "matched_explicit", "explicit", _summarise_patient(res.data[0])
 
-    # No match — create
+    # Caller-forced "create even if there are matches"
+    if not force_create:
+        candidates = find_match_candidates(supabase, workspace_id, demographics, limit=2)
+        if candidates:
+            r = candidates[0]
+            summary = _summarise_patient(r)
+            confidence = r["match_kind"]
+            if len(candidates) > 1:
+                summary["ambiguous"] = True
+                summary["other_candidates"] = len(candidates) - 1
+            return r["id"], "matched", confidence, summary
+
+    # Either force_create=True OR no candidates — create
     first_name, _ = _split_full_name(demographics.get("full_names"))
     last_name = demographics.get("surname") or "Unknown"
     medical_aid_blob = (demographics.get("medical_aid")
@@ -881,6 +936,8 @@ def promote_extractions(
     document_id: str,
     extractions: Dict[str, Any],
     created_by: Optional[str] = None,
+    forced_patient_id: Optional[str] = None,
+    force_create_patient: bool = False,
 ) -> PromotionResult:
     """Idempotently promote a validated document's extractions into the
     structured EHR tables.
@@ -899,7 +956,9 @@ def promote_extractions(
     _wipe_prior_promotion(supabase, document_id)
 
     patient_id, kind, confidence, summary = _match_or_create_patient(
-        supabase, workspace_id, demographics
+        supabase, workspace_id, demographics,
+        forced_patient_id=forced_patient_id,
+        force_create=force_create_patient,
     )
     encounter_map = _create_encounters(
         supabase, workspace_id, patient_id, extractions, document_id,
