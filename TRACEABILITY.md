@@ -443,6 +443,55 @@ Two-tier inference. Tier 1 (lexicon) is live; Tier 2 (LLM) is still ahead.
       (correctly — tenancy). For multi-practice groups (Group tier
       Q1 2027), a workspace-list filter would be the addition.
 
+### 10. FHIR push bundle profile per downstream EHR — *deferred to first real customer*
+
+- **What.** Phase C ships an auto-POST of the generated bundle to the
+  workspace's default FHIR connection. The bundle today is structured
+  as an **outer batch Bundle wrapping per-document searchset Bundles**
+  — valid FHIR R4 but conformant servers vary in what they accept.
+
+      Bundle { type: 'batch',
+               entry: [ Bundle { type: 'searchset',
+                                 entry: [ Patient, Condition, ... ] },
+                        ... per source document ... ] }
+
+- **Status.** Works against **lenient** endpoints (custom EHR FHIR
+  facades that just store-and-forward). Returns **HTTP 400** against
+  strict servers (verified against HAPI public sandbox 2026-05-10).
+  HAPI wants either:
+    - `Bundle{type:'transaction', entry:[Resource{}, ...]}` with
+      `entry.request.{method, url}` per resource, OR
+    - One Resource per POST (no Bundle), one HTTP call each.
+- **Why deferred.** Different downstream EHRs profile FHIR differently.
+  Discovery Health's API differs from Practice Perfect, which differs
+  from TrakCare, which differs from a HAPI-on-prem deployment. Picking
+  the "right" shape speculatively burns time on profiles no real
+  customer is using yet. Connection-test (`GET /metadata`) works
+  universally because every conformant FHIR server exposes
+  CapabilityStatement; the push side wants tuning per customer.
+- **Trigger to revisit.** First real customer connects a real FHIR
+  endpoint and surfaces their server's expected bundle shape. Until
+  then, the manual download path still works (Export Centre →
+  Download FHIR bundle → upload to their EHR).
+- **Implementation hint.** Add a `bundle_profile` enum on
+  `digitisation_fhir_connections.metadata` with values like
+  `nested_batch` (current default), `flat_transaction`, or
+  `single_resource_post`. The push step in
+  `digitisation_export_worker._attempt_push` reshapes the outgoing
+  payload accordingly:
+    - `flat_transaction`: walk the per-doc bundles, hoist all leaf
+      resources into one outer Bundle with `type='transaction'` and
+      synthesise `entry.request = {method: 'POST', url: '<ResourceType>'}`
+      per entry.
+    - `single_resource_post`: skip the outer Bundle entirely; loop and
+      POST each Resource individually with the resource type appended
+      to `fhir_url`. Aggregate the per-resource statuses.
+  Estimated effort: ~2-3 hr including testing against HAPI for
+  `flat_transaction` and a curl-based mock for `single_resource_post`.
+- **Customer onboarding cost.** Each new downstream EHR adds at most
+  one new bundle_profile value. Once added, every other workspace on
+  the same EHR reuses it without re-work.
+
 ---
 
 ## How to use this document
