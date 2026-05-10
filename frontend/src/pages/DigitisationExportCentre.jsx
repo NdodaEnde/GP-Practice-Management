@@ -238,14 +238,22 @@ const DigitisationExportCentre = () => {
                     </td>
                     <td className="px-lg py-md font-body-sm text-body-sm text-on-surface-variant">{formatRel(row.created_at)}</td>
                     <td className="px-lg py-md text-right">
-                      <button
-                        disabled={!row.bundle_url && row.status !== 'success'}
-                        title={row.bundle_url ? 'Open bundle' : 'Bundle not yet generated (Phase B)'}
-                        className="inline-flex items-center gap-base px-md py-sm bg-surface-container-high hover:bg-surface-variant text-on-surface-variant rounded-lg font-body-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      <a
+                        href={row.bundle_url ? `${BACKEND_URL}/api/digitisation/exports/${row.id}/download` : undefined}
+                        target="_blank"
+                        rel="noreferrer"
+                        title={row.bundle_url ? 'Download FHIR bundle' : `Bundle not available (status: ${row.status})`}
+                        aria-disabled={!row.bundle_url}
+                        onClick={(e) => { if (!row.bundle_url) e.preventDefault(); }}
+                        className={`inline-flex items-center gap-base px-md py-sm rounded-lg font-body-sm font-bold transition-colors ${
+                          row.bundle_url
+                            ? 'bg-primary-fixed text-primary hover:bg-primary hover:text-on-primary'
+                            : 'bg-surface-container-high text-on-surface-variant opacity-50 cursor-not-allowed'
+                        }`}
                       >
-                        <MIcon name="receipt_long" className="!text-[18px]" />
-                        Receipt
-                      </button>
+                        <MIcon name={row.bundle_url ? 'download' : 'receipt_long'} className="!text-[18px]" />
+                        {row.bundle_url ? 'Download' : 'Receipt'}
+                      </a>
                     </td>
                   </tr>
                 );
@@ -254,7 +262,7 @@ const DigitisationExportCentre = () => {
           </table>
         </div>
         <p className="font-body-sm text-body-sm text-on-surface-variant italic">
-          Bundle generation (FHIR/CSV file output) runs out-of-band — Phase B will mark jobs success/failed once the bundle worker ships.
+          Bundle generation runs in the background — refresh this page after a few seconds to see queued jobs transition to <strong>SUCCESS</strong> with a downloadable FHIR bundle.
         </p>
       </section>
     </div>

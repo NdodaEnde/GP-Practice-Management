@@ -17,7 +17,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import FileResponse
 from supabase import create_client
 
 from app.api.auth import get_current_user, require_capability
@@ -919,7 +920,20 @@ async def approve_validation(
 ):
     """
     Approve a document. Workspace-scoped + capability-gated.
-    Updates digitised_documents.status='validated' and tags the validator.
+
+    On approval:
+      1. Flip digitised_documents.status='validated' and stamp validator
+      2. Promote the validated extractions into the structured tables
+         (patients, encounters, diagnoses, vitals, allergies, prescriptions
+         + prescription_items) via extraction_promoter — idempotent, keyed
+         by source_document_id
+      3. Stamp digitised_documents.patient_id with the matched/created id
+      4. Append an `approve` audit row including the promotion summary
+
+    Promotion failure does NOT block the approval status flip — it gets
+    surfaced in the response under `promotion.error` so reviewers can
+    see what happened. The doc remains validated; promotion can be
+    re-attempted later.
     """
     workspace_id = current_user.get("workspace_id")
     if not workspace_id:
@@ -952,25 +966,71 @@ async def approve_validation(
 
     result = supabase.table("digitised_documents").update(update_payload).eq("id", document_id).execute()
 
-    # Audit: record the approval. Pull latest session_id so the entry threads
-    # to the version that was approved.
+    # Pull latest session — needed for both the audit log and the promotion.
     sess = (
         supabase.table("gp_validation_sessions")
-        .select("id")
+        .select("id, extractions")
         .eq("document_id", document_id)
         .order("created_at", desc=True)
         .limit(1)
         .execute()
     )
+    session_id = sess.data[0]["id"] if sess.data else None
+    extractions = (sess.data[0].get("extractions") if sess.data else None) or {}
+
+    # ---- Promote into structured tables ------------------------------
+    promotion: Optional[Dict[str, Any]] = None
+    promotion_error: Optional[str] = None
+    try:
+        from app.services.extraction_promoter import promote_extractions
+        result_obj = promote_extractions(
+            supabase,
+            workspace_id=workspace_id,
+            document_id=document_id,
+            extractions=extractions,
+            created_by=current_user.get("email"),
+        )
+        promotion = result_obj.to_dict()
+        # Link the document to the matched/created patient + first encounter
+        link = {
+            "patient_id":   result_obj.patient_id,
+            "encounter_id": result_obj.encounter_ids[0] if result_obj.encounter_ids else None,
+        }
+        supabase.table("digitised_documents").update(link).eq("id", document_id).execute()
+    except Exception as e:
+        logger.error(f"approve_validation: promotion failed for {document_id}: {e}", exc_info=True)
+        promotion_error = f"{type(e).__name__}: {e}"
+
+    # Audit: record the approval, including the promotion summary so the
+    # validation-history drawer can show what landed where.
     _write_edit_log(
         document_id=document_id,
         workspace_id=workspace_id,
         user_email=current_user.get("email"),
         action="approve",
-        session_id=sess.data[0]["id"] if sess.data else None,
+        session_id=session_id,
         notes=notes,
+        metadata={
+            "promotion":       promotion,
+            "promotion_error": promotion_error,
+        } if (promotion or promotion_error) else None,
     )
-    return {"status": "success", "document": result.data[0] if result.data else None}
+    # Re-fetch the doc so the response reflects the post-promotion linkage
+    # (patient_id, encounter_id) — the earlier `result` was captured before
+    # the promoter ran.
+    final = (
+        supabase.table("digitised_documents")
+        .select("*")
+        .eq("id", document_id)
+        .limit(1)
+        .execute()
+    )
+    return {
+        "status":   "success",
+        "document": final.data[0] if final.data else (result.data[0] if result.data else None),
+        "promotion": promotion,
+        "promotion_error": promotion_error,
+    }
 
 
 @router.post("/validation/{document_id}/reject")
@@ -1284,6 +1344,7 @@ def _next_batch_id(workspace_id: str) -> str:
 
 @router.post("/exports")
 async def create_export_job(
+    background_tasks: BackgroundTasks,
     payload: dict = Body(..., description=(
         "Required: format ('fhir_r4'|'csv'|'json'). Optional: document_ids "
         "(list of validated doc IDs to include — defaults to all currently "
@@ -1293,7 +1354,7 @@ async def create_export_job(
     current_user: dict = Depends(require_capability("digitisation_export_basic")),
 ):
     """Queue a new export job. Returns the row immediately — bundle
-    generation runs out-of-band (Phase B)."""
+    generation runs in the background (Phase B worker)."""
     workspace_id = current_user.get("workspace_id")
     if not workspace_id:
         raise HTTPException(status_code=400, detail="No workspace context")
@@ -1345,6 +1406,14 @@ async def create_export_job(
     }
     res = supabase.table("digitisation_export_jobs").insert(row).execute()
     job = (res.data or [{}])[0]
+
+    # Phase B: kick off the bundle worker out-of-band so the API call
+    # returns immediately with the queued row. The worker mutates the
+    # same row's status / bundle_url when it finishes.
+    if job.get("id"):
+        from app.services.digitisation_export_worker import run_export_job
+        background_tasks.add_task(run_export_job, supabase, job["id"])
+
     return {"job": job}
 
 
@@ -1394,6 +1463,47 @@ async def get_export_job(
     if not res.data:
         raise HTTPException(status_code=404, detail="Export job not found")
     return {"job": res.data[0]}
+
+
+@router.get("/exports/{job_id}/download")
+async def download_export_bundle(
+    job_id: str,
+    current_user: dict = Depends(require_capability("digitisation_export_basic")),
+):
+    """Stream the generated FHIR bundle JSON. Only available once the
+    job has run (bundle_url is set). Returns 409 if the job exists but
+    isn't done yet, 404 if the file is missing on disk."""
+    from app.services.digitisation_export_worker import _bundle_path
+
+    workspace_id = current_user.get("workspace_id")
+    if not workspace_id:
+        raise HTTPException(status_code=400, detail="No workspace context")
+
+    res = (
+        supabase.table("digitisation_export_jobs")
+        .select("id, batch_id, status, bundle_url, workspace_id")
+        .eq("id", job_id)
+        .eq("workspace_id", workspace_id)
+        .limit(1)
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Export job not found")
+    job = res.data[0]
+    if job["status"] in ("queued", "running"):
+        raise HTTPException(status_code=409, detail=f"Export still {job['status']}; try again shortly")
+    if job["status"] == "failed" or not job.get("bundle_url"):
+        raise HTTPException(status_code=404, detail="No bundle was generated for this job")
+
+    path = _bundle_path(workspace_id, job["batch_id"])
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Bundle file missing on disk")
+
+    return FileResponse(
+        path,
+        media_type="application/fhir+json",
+        filename=f"{job['batch_id']}.fhir.json",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1559,16 +1669,18 @@ async def test_fhir_connection(
     conn_id: str,
     current_user: dict = Depends(require_capability("digitisation_export_basic")),
 ):
-    """Phase A stub: records a test attempt with a 'not implemented' error.
-    Phase B replaces this with a real HTTP probe against the FHIR base URL
-    (e.g. GET {fhir_url}/metadata) and stores success/failure."""
+    """GET {fhir_url}/metadata — the FHIR CapabilityStatement endpoint.
+    A 200 + JSON content-type is taken as success. Records the result on
+    the connection row (last_test_*).
+    """
+    import httpx
     workspace_id = current_user.get("workspace_id")
     if not workspace_id:
         raise HTTPException(status_code=400, detail="No workspace context")
 
     res = (
         supabase.table("digitisation_fhir_connections")
-        .select("id, fhir_url")
+        .select("id, fhir_url, auth_method, metadata")
         .eq("id", conn_id)
         .eq("workspace_id", workspace_id)
         .limit(1)
@@ -1576,15 +1688,49 @@ async def test_fhir_connection(
     )
     if not res.data:
         raise HTTPException(status_code=404, detail="Connection not found")
+    conn = res.data[0]
+
+    base = (conn["fhir_url"] or "").rstrip("/")
+    metadata_url = f"{base}/metadata"
+
+    # Build auth headers from the connection's metadata. Phase B supports
+    # 'none' and 'bearer'; basic + oauth2/SMART live in metadata.credentials
+    # but aren't applied yet (would need Vault for storage of secrets).
+    headers = {"Accept": "application/fhir+json,application/json"}
+    creds = (conn.get("metadata") or {}).get("credentials") or {}
+    if conn.get("auth_method") == "bearer" and creds.get("token"):
+        headers["Authorization"] = f"Bearer {creds['token']}"
 
     now_iso = datetime.now(tz=timezone.utc).isoformat()
+    ok = False
+    err: Optional[str] = None
+    try:
+        with httpx.Client(timeout=10.0, follow_redirects=True) as client:
+            r = client.get(metadata_url, headers=headers)
+        if r.status_code == 200:
+            ctype = r.headers.get("content-type", "")
+            if "json" in ctype.lower():
+                ok = True
+            else:
+                err = f"200 OK but unexpected content-type: {ctype}"
+        else:
+            # Try to extract a useful FHIR OperationOutcome error from the body.
+            body_snip = r.text[:200].replace("\n", " ").strip()
+            err = f"HTTP {r.status_code}: {body_snip}"
+    except httpx.ConnectError as e:
+        err = f"Could not reach {metadata_url}: {e}"
+    except httpx.TimeoutException:
+        err = f"Timeout after 10s contacting {metadata_url}"
+    except Exception as e:
+        err = f"{type(e).__name__}: {e}"
+
     update = {
         "last_test_at":    now_iso,
-        "last_test_ok":    False,
-        "last_test_error": "Connection test not implemented yet (Phase B). URL was saved.",
+        "last_test_ok":    ok,
+        "last_test_error": err if not ok else None,
     }
     supabase.table("digitisation_fhir_connections") \
         .update(update) \
         .eq("id", conn_id) \
         .execute()
-    return {"ok": False, "error": update["last_test_error"], "tested_at": now_iso}
+    return {"ok": ok, "error": err, "tested_at": now_iso, "metadata_url": metadata_url}

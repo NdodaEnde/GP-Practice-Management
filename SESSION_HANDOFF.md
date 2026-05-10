@@ -1,129 +1,126 @@
-# Session handoff — 2026-05-10 (continued)
+# Session handoff — 2026-05-10 (final)
 
 > **Use this file when starting a fresh Claude Code session to pick up where the
 > previous one left off.** Delete it after the next session is up to speed.
 
 ---
 
-## Where we are right now
+## What this session accomplished
 
-Two waves of work landed today on a shared theme: **the Type C Digitisation
-workspace surfaces are now honest** — no fake stats, no sample data, no
-hardcoded confidences, dead links wired up.
+Type C Digitisation now has a **complete data flow**: PDF → AI extraction →
+reviewer validation → **structured EHR tables** → analytics + downstream
+FHIR push. Three commits over two days landed it.
 
-### Wave A — TRACEABILITY 6b/6c + UI surfaces 1 & 2 (committed earlier)
+### Wave 1 (committed earlier — `52d8227`)
+TRACEABILITY 6b/6c: ATC code backfill (119 Rx + 54 OTC) + matcher infra +
+WHO ATC index + tests + verification SQL.
 
-1. **TRACEABILITY 6b — ATC code backfill** *(partially shipped — 119 of 1,637)*
-2. **TRACEABILITY 6c — Curated OTC supplement** *(shipped — 54 entries)*
-3. **Analytics drug-class panel** (Charts Row 3 on `/analytics`)
-4. **Validation panel NAPPI+ATC chip strip** (Medications tab)
+### Wave 2 (committed earlier — `d4168a5`)
+Surface honesty pass: Dashboard wired to API, EHR confidence cleanup,
+Export job tracking (Phase A), FHIR Connection Wizard skeleton.
 
-### Wave B — Digitisation outstanding-work cleanup (this commit)
+### Wave 3 (this commit)
+**Phase B FHIR work** + **structured-data promotion** — the substantive
+plumbing that makes everything downstream possible.
 
-5. **Dashboard wired to real `/api/digitisation/dashboard`** — no more hardcoded
-   page-credit / awaiting / accuracy numbers. Empty states are honest.
-6. **Backend status fix**: `extracted` now counts toward awaiting validation
-   (was being undercounted).
-7. **44 hardcoded confidence values** stripped from EHRValidationPanel — fields
-   without real LandingAI grounding now show `–` (missing) instead of fake `91%`.
-8. **Export job tracking (Phase A)** — migration 008 + 3 endpoints + Export
-   Centre UI swap (sample data → real history with empty state). Queueing
-   button is wired; bundle generation deferred to Phase B.
-9. **FHIR Connection Wizard skeleton (Phase A)** — migration 009 + 5 endpoints
-   + new wizard page at `/digitisation/export/connect` (4-step rail, Step 01
-   functional). Saved Connections table + default toggle. Export Centre's
-   System Configuration card now reads from saved connections.
-10. **Backend `/api/digitisation/nappi/lookup`** now returns `atc_class_desc`
-    (used by the chip strip).
+1. **FHIR bundle worker** — POST /exports queues a job; BackgroundTasks
+   fires the worker; worker pulls validated extractions, runs them through
+   `fhir_export.py` mappers per-document, writes a real FHIR R4 batch
+   Bundle to `backend/storage/exports/`, marks the job `success` with a
+   `bundle_url`. Download endpoint streams `application/fhir+json`.
+   Smoke-tested: 1 doc → 35KB FHIR bundle with 1 Patient + 9 Conditions +
+   36 MedicationStatements + 13 Encounters.
+2. **Real connection test** — replaces the Phase A stub with a proper
+   `GET {fhir_url}/metadata` probe. Records `last_test_ok` /
+   `last_test_error` on the connection row. Verified against the HAPI
+   public sandbox.
+3. **Wizard Steps 02-04** — Authentication form (none / bearer; basic /
+   OAuth / SMART tagged Phase C), Resource Mapping (toggleable categories
+   stored on the connection's metadata), Test & Save (summary + run-test
+   + commit).
+4. **Migration 010** — fixes the §10c blocker by converting `diagnoses`,
+   `vitals`, `allergies` `workspace_id` / `tenant_id` / `patient_id` /
+   `encounter_id` from UUID → TEXT to match the rest of the schema.
+   Adds source / source_document_id / hba1c / blood_glucose_fasting
+   columns. Existing UUID values become TEXT, no data loss.
+5. **Migration 010b** — adds `encounters.source_document_id` for promoter
+   idempotency.
+6. **`extraction_promoter.py`** — idempotent JSONB → structured tables
+   service. Match-or-create patient (by SA ID number, fallback to
+   surname+dob), one encounter per consultation date, per-category
+   writers for allergies / diagnoses / vitals / prescriptions +
+   prescription_items. Wipe-and-reinsert keyed on `source_document_id`
+   so re-approving a doc never duplicates. Handles digitised_documents
+   FK back-link cleanly.
+7. **/approve wired to promoter** — every document approval now
+   promotes the validated extractions into the structured tables. The
+   document's `patient_id` + `encounter_id` get linked. Promotion
+   summary is returned in the response and persisted to the audit log.
+8. **Validation History Drawer** renders a green "Promoted to EHR"
+   card on `approve` events showing per-category counts, plus an
+   `inferred` count for icd10/nappi.
+9. **Inference layer in the promoter:**
+   - **ICD-10:** curated SA-GP abbreviation lexicon (URTI, HPT, DM, OA,
+     etc) → ICD code, with a fuzzy fallback that's tightened to avoid
+     false positives on short ambiguous abbreviations.
+   - **NAPPI/ATC:** at promotion time, looks up `medication_name`
+     against `nappi_codes` (brand or generic). When matched, copies
+     `nappi_code`, `atc_code`, `generic_name` onto the prescription
+     item. Cached per-promotion run.
 
-## Two things you must know about the data
+## Smoke-test snapshot (typec workspace, demo doc)
 
-1. **The ATC source data is CC BY-NC-SA NonCommercial.** Used for development
-   only. Every backfilled row stamped `atc_source='atcd-2026-04-25'` for
-   findability. Replace before commercial GA — see
-   `backend/data/atc/NOTICE.md`.
+```
+Patient: MAMELLO MOTSOENENG (id 9102030347687) — created
+Encounters:                  16  (one per consultation date 2023-2025)
+Diagnoses:                    9  (6 with ICD-10 codes from inference)
+Vitals:                       5  (HR + BP across visits)
+Allergies:                    0  (chart had none)
+Prescriptions:               10  (one per visit)
+Prescription items:          36  (4 NAPPI/ATC matched, mostly Paracetamol)
 
-2. **Curated OTC rows have synthetic IDs** like `CURATED-DEMAZIN-001`,
-   `data_source='curated'`. When the BHF MPP licence lands, real NAPPI rows
-   for these brands replace the curated placeholders.
+ICD-10 inferred:  6 / 9
+NAPPI inferred:   4 / 36 (data-bottlenecked; lifts to 70%+ with BHF MPP licence)
+```
 
-## What's open / parked
+Re-approval is idempotent — second run produces identical counts, no
+duplicates.
 
-| Item | Why parked | When to revisit |
+## What's data-bottlenecked vs. algorithm-bottlenecked
+
+| Today's leftover | Real cause | Fix |
 |---|---|---|
-| 226 review-pile rows (multi-candidate ATC) | User chose to skip; not blocking | Free recovery anytime |
-| 1,292 unmatched NAPPI rows | Pure brand names; needs MIMS/SAEPI/BHF brand→INN data | When licence lands |
-| **Phase B: FHIR bundle worker** | Half a day — generates real FHIR bundles, marks queued jobs success/failed, stores bundle_url | Next session |
-| **Phase B: FHIR connection test + auth** | HEAD against `/metadata`, real OAuth/Basic credential storage in Supabase Vault | Next session |
-| **Phase B: Wizard steps 2-4** (Auth, Resource Mapping, Test & Save) | Construction-card placeholders today | After Phase B server work |
-| TRACEABILITY 6d (drug-drug interactions) | Now feasible thanks to 6b/6c + ATC infra | When user prioritises |
-| Patient EHR medication tab class display | Skipped today | Anytime — small (~45 min) |
-| Mongo consolidation | Big infra task | When time allows |
+| Many extracted meds have no NAPPI/ATC | nappi_codes table is small (173 rows) | Wait for BHF MPP licence (~30k rows) — no code change needed |
+| Some diagnoses unmapped (Arthrog, Chat Nais) | Cryptic abbreviations / typos in source PDF | Either expand the lexicon or LLM-based ICD-10 fallback (TRACEABILITY 5) |
+| ATC source data is CC BY-NC-SA | NonCommercial mirror | Replace 119 `atcd-2026-04-25`-stamped rows when commercial licence lands |
 
-## Files added today
+## What's open / parked for next session
 
+| Item | Notes |
+|---|---|
+| **TRACEABILITY 6d (drug-drug interactions)** | Now feasible — patients have ATC-coded medication histories. Class-level DDI rules + reviewer alerts. ~3-4 hr. |
+| **Phase C FHIR push** | Today the bundle is downloadable; auto-POST to the configured endpoint is the polish. Needs Vault for credential storage. ~half day. |
+| **226 review-pile rows from Wave 1** | Manual disambiguation per row → lifts ATC coverage on existing nappi_codes. ~30-60 min. |
+| **Patient EHR view of promoted data** | The data is now structured but `/patients/:id` page doesn't read from `gp_validation_sessions` to show the doc-of-truth lineage. UI surface 3 from earlier. ~45 min. |
+| **Mongo consolidation** | TRACEABILITY 7. Unrelated tech debt. ~4-6 hr. |
+
+## Files in this commit
+
+**New:**
 ```
-backend/migrations/006_atc_backfill.sql                     — schema (applied; in earlier commit)
-backend/migrations/007_curated_otc_supplement.sql           — schema (applied; in earlier commit)
-backend/migrations/008_digitisation_export_jobs.sql         — schema (applied)
-backend/migrations/009_fhir_connections.sql                 — schema (applied)
-backend/scripts/atc_backfill.py                             — matcher (in earlier commit)
-backend/scripts/test_atc_backfill.py                        — 28 unit tests (in earlier commit)
-backend/scripts/validate_curated_otc.py                     — curated CSV validator (in earlier commit)
-backend/scripts/generate_curated_otc_sql.py                 — INSERT SQL emitter (in earlier commit)
-backend/scripts/ATC_BACKFILL_README.md                      — runbook (in earlier commit)
-backend/scripts/_atc_test_sample.csv                        — 15-row test fixture (in earlier commit)
-backend/data/atc/WHO_ATC-DDD_2026-04-25.csv                 — WHO ATC index (in earlier commit)
-backend/data/atc/WHO_ATC-DDD-combinations_2026-04-25.csv    — WHO combinations (in earlier commit)
-backend/data/atc/NOTICE.md                                  — license + cleanup (in earlier commit)
-backend/data/atc/curated_otc_starter.csv                    — 54 curated OTCs (in earlier commit)
-backend/data/atc/run_2026-05-10/006_atc_backfill_data.sql   — Rx UPDATEs (in earlier commit)
-backend/data/atc/run_2026-05-10/007_curated_otc_data.sql    — OTC INSERTs (in earlier commit)
-backend/data/atc/run_2026-05-10/matched_*.csv               — review CSVs (in earlier commit)
-backend/data/atc/run_2026-05-10/verify_atc.sql              — 8-test SQL suite (in earlier commit)
-frontend/src/pages/DigitisationFHIRConnectionWizard.jsx     — new wizard page
+backend/app/services/digitisation_export_worker.py     — Phase B FHIR bundle worker
+backend/app/services/extraction_promoter.py            — Promotion service
+backend/migrations/010_extraction_promotion_schema.sql — UUID/TEXT schema fix
+backend/migrations/010b_encounters_source_doc.sql      — Encounter idempotency
+frontend/src/components/groundtruth/ValidationHistoryDrawer.jsx — promotion summary card (was untracked; included)
 ```
 
-## Files modified today
-
+**Modified:**
 ```
-backend/server.py                                           — +ATC class agg in /analytics/medications (Wave A)
-backend/app/api/digitisation.py                             — +atc_class_desc in /nappi/lookup, +exports endpoints, +fhir/connections endpoints, dashboard `extracted` count fix
-frontend/src/pages/Analytics.jsx                            — +ATC Charts Row 3 (Wave A)
-frontend/src/pages/DigitisationDashboard.jsx                — full rewrite to consume /api/digitisation/dashboard
-frontend/src/pages/DigitisationExportCentre.jsx             — replaced sample history with real /exports + Saved Connection display + Queue button
-frontend/src/components/groundtruth/EHRValidationPanel.jsx  — NAPPIBadge → chip strip (Wave A) + stripped 44 hardcoded confidences (Wave B)
-frontend/src/components/groundtruth/EHRValidationPanel.css  — +nappi-curated/schedule/atc styles (Wave A)
-frontend/src/services/api.js                                — +analyticsAPI.getMedications() (Wave A)
-frontend/src/App.js                                         — +/digitisation/export/connect route
-TRACEABILITY.md                                             — §6b/§6c marked partial/shipped (in earlier commit)
-SESSION_HANDOFF.md                                          — replaced (this file)
-```
-
-## Tests
-
-- **Python:** `cd backend && .venv/bin/python -m unittest scripts.test_atc_backfill -v` — 28/28 passing
-- **SQL verification:** `backend/data/atc/run_2026-05-10/verify_atc.sql` — all 8 blocks pass
-- **Endpoint smoke tests** (this session): Dashboard, Exports, FHIR Connections all return correct shapes
-- **End-to-end:**
-  - `/digitisation` → real dashboard data
-  - `/digitisation/export` → empty history, Configure Connection link works
-  - `/digitisation/export/connect` → wizard saves connections; Default toggling works
-  - `/analytics` → ATC Charts Row 3 renders
-  - `/digitisation/validation/<doc_id>` → NAPPI+schedule+ATC chip strip on Medications tab; missing-grounding fields show `–`
-
-## Servers
-
-```
-backend  — http://localhost:8002 (FastAPI, restarted with --reload during this session)
-frontend — http://localhost:3001 (CRA)
-```
-
-If both aren't running:
-
-```bash
-cd /Users/luzuko/GP-Practice-Management/backend && .venv/bin/uvicorn server:app --host 127.0.0.1 --port 8002 --reload
-cd /Users/luzuko/GP-Practice-Management/frontend && PORT=3001 BROWSER=none npm run start
+backend/app/api/digitisation.py                          — exports endpoints + FHIR connections + real /metadata test + BackgroundTasks worker trigger + download endpoint + approve_validation promoter wiring
+frontend/src/pages/DigitisationExportCentre.jsx          — Phase B download button, default conn display
+frontend/src/pages/DigitisationFHIRConnectionWizard.jsx  — Steps 02-04 functional (auth + resource mapping + test+save)
+SESSION_HANDOFF.md                                       — replaced
 ```
 
 ## Demo workspaces (unchanged)
@@ -133,15 +130,38 @@ cd /Users/luzuko/GP-Practice-Management/frontend && PORT=3001 BROWSER=none npm r
 | `typec-workspace-001` | `typec@surgiscan.com` / `password123` |
 | `demo-gp-workspace-001` | `admin@surgiscan.com` / `password123` |
 
+## Servers
+
+```
+backend  — http://localhost:8002 (FastAPI, --reload)
+frontend — http://localhost:3001 (CRA)
+```
+
+If both aren't running:
+```bash
+cd /Users/luzuko/GP-Practice-Management/backend && .venv/bin/uvicorn server:app --host 127.0.0.1 --port 8002 --reload
+cd /Users/luzuko/GP-Practice-Management/frontend && PORT=3001 BROWSER=none npm run start
+```
+
+## End-to-end demo path (works today)
+
+1. Login as typec → `/digitisation` shows real KPIs.
+2. Upload a PDF; wait for status → `extracted`.
+3. Open in Validation Queue → review → **Approve**.
+4. History drawer shows: edits, AI baseline, **Promoted to EHR** card with
+   per-category counts.
+5. Patient + encounters + diagnoses + vitals + medications now in the
+   structured tables. Querying any class (J chapter, ATC C09AA*, etc)
+   returns the promoted rows.
+6. Configure a FHIR Connection (HAPI sandbox) → run real `/metadata` test.
+7. Export Centre → Queue → wait ~1s → **Download** the FHIR bundle.
+
 ## Suggested next focus
 
-**TRACEABILITY 6d (drug-drug interactions)** OR **Phase B FHIR work**.
+**TRACEABILITY 6d (drug-drug interactions)** — biggest strategic capstone.
+The promoter has built the substrate (every patient has an ATC-coded
+medication history); the DDI checker is now practical. Reviewer-facing
+alerts in the Medications tab.
 
-- 6d: class-level DDI rules using ATC codes; reviewer-facing alerts in
-  Medications tab. ~3-4 hr. Strategic — the natural completion of today's
-  ATC work.
-- Phase B FHIR: real bundle generation (queued → success + bundle_url),
-  connection test (HEAD `/metadata`), credential storage. ~half a day+.
-  Required for Type C to actually push data to a downstream EHR.
-
-User signal at end of this session: ship the wizard skeleton, commit, stop.
+Failing that, **Phase C FHIR push** to actually send bundles to the
+customer's EHR endpoint instead of letting them download.
