@@ -44,6 +44,7 @@ import DigitisationArchive from './pages/DigitisationArchive';
 import DigitisationExportCentre from './pages/DigitisationExportCentre';
 import DigitisationFHIRConnectionWizard from './pages/DigitisationFHIRConnectionWizard';
 import DigitisationOperationalInsights from './pages/DigitisationOperationalInsights';
+import DigitisationSearch from './pages/DigitisationSearch';
 import __PreviewDigitisation from './pages/__PreviewDigitisation';
 
 // TEMPORARY: auto-login helper for the demo admin (workspace with real docs).
@@ -166,6 +167,7 @@ function App() {
             <Route path="digitisation/export"          element={<DigitisationExportCentre />} />
             <Route path="digitisation/export/connect"  element={<DigitisationFHIRConnectionWizard />} />
             <Route path="digitisation/insights"        element={<DigitisationOperationalInsights />} />
+            <Route path="digitisation/search"          element={<DigitisationSearch />} />
 
             <Route path="user-management" element={<UserManagement />} />
             <Route path="workspace-management" element={<WorkspaceManagement />} />

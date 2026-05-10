@@ -915,6 +915,7 @@ async def save_validation_edits(
 @router.post("/validation/{document_id}/approve")
 async def approve_validation(
     document_id: str,
+    background_tasks: BackgroundTasks,
     payload: Optional[Dict[str, Any]] = None,
     current_user: dict = Depends(require_capability("digitisation_validation")),
 ):
@@ -1025,6 +1026,14 @@ async def approve_validation(
         .limit(1)
         .execute()
     )
+
+    # Background: re-index the document for semantic search. Runs after
+    # the API responds so the user doesn't wait for the OpenAI round-trip.
+    # Failure to index is logged but doesn't surface (search is best-effort).
+    if not promotion_error:
+        from app.services.semantic_search import index_document
+        background_tasks.add_task(index_document, supabase, document_id)
+
     return {
         "status":   "success",
         "document": final.data[0] if final.data else (result.data[0] if result.data else None),
@@ -1734,3 +1743,92 @@ async def test_fhir_connection(
         .eq("id", conn_id) \
         .execute()
     return {"ok": ok, "error": err, "tested_at": now_iso, "metadata_url": metadata_url}
+
+
+# ---------------------------------------------------------------------------
+# Semantic search (TRACEABILITY §9)
+# ---------------------------------------------------------------------------
+
+@router.get("/search")
+async def search_documents(
+    q:           str  = Query(..., min_length=2, description="natural-language query"),
+    limit:       int  = Query(20, ge=1, le=100),
+    patient_id:  Optional[str] = Query(None, description="restrict to one patient"),
+    current_user: dict = Depends(require_capability("digitisation_validation")),
+):
+    """Embed the query and return ranked chunks across the workspace's
+    indexed documents. Results include the source document_id +
+    patient_id so the caller can deep-link into the validation panel
+    or patient EHR.
+
+    No-results case returns an empty `hits` list — never errors.
+    """
+    workspace_id = current_user.get("workspace_id")
+    if not workspace_id:
+        raise HTTPException(status_code=400, detail="No workspace context")
+
+    try:
+        from app.services.semantic_search import search as do_search
+        hits = do_search(
+            supabase,
+            workspace_id=workspace_id,
+            query=q,
+            limit=limit,
+            patient_id=patient_id,
+        )
+    except Exception as e:
+        logger.error(f"semantic search failed for workspace={workspace_id} q={q!r}: {e}")
+        raise HTTPException(status_code=500, detail=f"Search failed: {type(e).__name__}: {e}")
+
+    # Group hits by document_id so the UI can render one card per doc
+    by_doc: Dict[str, Dict[str, Any]] = {}
+    for h in hits:
+        d = by_doc.setdefault(h.document_id, {
+            "document_id":   h.document_id,
+            "patient_id":    h.patient_id,
+            "top_similarity": h.similarity,
+            "snippets":      [],
+        })
+        if h.similarity > d["top_similarity"]:
+            d["top_similarity"] = h.similarity
+        d["snippets"].append({
+            "section":    h.chunk_section,
+            "text":       h.chunk_text,
+            "similarity": h.similarity,
+        })
+
+    # Order docs by their best chunk
+    docs = sorted(by_doc.values(), key=lambda x: -x["top_similarity"])
+    return {
+        "query":   q,
+        "limit":   limit,
+        "hits":    [h.to_dict() for h in hits],
+        "docs":    docs,
+        "count":   len(hits),
+    }
+
+
+@router.post("/search/reindex/{document_id}")
+async def reindex_document(
+    document_id:        str,
+    background_tasks:   BackgroundTasks,
+    current_user: dict = Depends(require_capability("digitisation_validation")),
+):
+    """Re-index a single document on demand (admin / debug)."""
+    workspace_id = current_user.get("workspace_id")
+    if not workspace_id:
+        raise HTTPException(status_code=400, detail="No workspace context")
+    # tenancy check
+    res = (
+        supabase.table("digitised_documents")
+        .select("id")
+        .eq("id", document_id)
+        .eq("workspace_id", workspace_id)
+        .limit(1)
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Document not found")
+    from app.services.semantic_search import index_document
+    background_tasks.add_task(index_document, supabase, document_id)
+    return {"status": "queued", "document_id": document_id}

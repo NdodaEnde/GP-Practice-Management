@@ -385,53 +385,63 @@ Two-tier inference. Tier 1 (lexicon) is live; Tier 2 (LLM) is still ahead.
   `xrayStatus`, `xrayAnalyze`) — flip to real endpoints when the
   Intelligence Layer ships.
 
-### 9. Unified semantic search — *NOT transferred from groundtruth-clean-gp*
+### 9. Unified semantic search — *shipped 2026-05-10*
 
-- **What.** Embedding-based search across the whole digitisation corpus
-  (and ultimately across structured data + clinical notes). User asks in
-  natural language ("patients on metformin with HbA1c > 8 in the last
-  6 months", "all referrals to ortho with knee pain") and the system
-  returns ranked matches.
-- **Why this is on TRACEABILITY.** The strategy doc §10b lists it as
-  deferred to Q4 2026 / Module 02 Phase 2. The Pricing page sells it
-  via the `analytics_semantic_search` capability. Customer expectation
-  exists but the implementation does not — that gap is invisible
-  unless someone trips over it (sales demo, prospect question).
-- **Status.** ❌ The whole backend stack is **untransferred from
-  `groundtruth-clean-gp`**:
-    - `backend/vector_store.py` (273 lines) — `VectorStore` with Qdrant
-    - `backend/embeddings.py` (200 lines) — multi-provider embedding service
-    - `backend/knowledge.py` (368 lines) — knowledge / insight CRUD
-    - `GET /api/documents/search` — the semantic search endpoint
-    - Total ~840 lines of working code.
-- **What's already in this codebase:**
-    - The capability flag `analytics_semantic_search` referenced in
-      `frontend/src/components/CapabilityUpsell.jsx` and
-      `frontend/src/pages/Pricing.jsx` (the *pricing UI* sells it)
-    - The HTML mockup at `Complete Doctor Suite/unifiedschemasearch.html`
-    - Nothing else.
-- **Trigger to revisit.** First sales prospect specifically asks "show
-  me semantic search" → can't demo it. OR when Module 02 Phase 2 work
-  starts in Q4 2026.
-- **Implementation hint.** When ready:
-    1. Lift `vector_store.py` + `embeddings.py` from
-       `/Users/luzuko/groundtruth-clean-gp/backend/` into this repo's
-       `backend/app/services/`
-    2. Pick an embedding provider — strategy doc specifically calls
-       out "the right embedding model for SA medical English"; that
-       decision is pending. Default options: OpenAI `text-embedding-3-large`,
-       Cohere `embed-english-v3.0`, or a self-hosted BioBERT variant.
-    3. Add `/api/digitisation/search?q=...` endpoint
-    4. Index over `gp_validation_sessions.extractions` + (post-promotion)
-       the structured tables. Re-index trigger: on doc approval, queue
-       the patient bundle for embedding (mirror the export-job pattern).
-    5. New page at `/digitisation/search` matching the
-       `unifiedschemasearch.html` mockup
-- **Vector DB choice.** `groundtruth-clean-gp` uses Qdrant. Supabase
-  has `pgvector` first-class — could either use Qdrant as a separate
-  service (groundtruth's choice) or embed the vectors in Postgres via
-  `pgvector` (one fewer service to run). pgvector is fine up to
-  ~10M vectors; switch to Qdrant beyond.
+- **What.** Embedding-based search across the whole digitisation corpus.
+  User asks in natural language ("patients with arthritis", "elevated
+  heart rate", "doctor prescribed antibiotics") and the system returns
+  ranked chunks with the source document. Replaces the strategy-doc
+  promise of "Q4 2026" — shipped today.
+- **Status.** Working end-to-end. Indexer runs on every approval as a
+  BackgroundTask (the validated extractions get chunked → embedded →
+  stored). Search RPC ranks by cosine similarity within the workspace.
+  UI page at `/digitisation/search` with example queries, ranked doc
+  cards, and click-through to the validation panel. Demo doc indexed
+  to 76 chunks across 11 sections; sample queries return clinically
+  relevant hits at 45-60% similarity.
+- **Architecture.**
+    - **Embedding provider:** OpenAI `text-embedding-3-large` with
+      `dimensions=1536` Matryoshka truncation (full 3072 exceeds
+      pgvector ivfflat's 2000-dim limit). Cost: ~$0.0008 per doc
+      indexed, ~$0.0000013 per search.
+    - **Vector DB:** pgvector inside Supabase. ivfflat ANN index
+      with `lists=100`; fine up to ~100k chunks. Switch to hnsw or
+      Qdrant when scale demands.
+    - **Chunking:** one chunk per JSONB section (top-level scalars
+      and dict subsections) plus one chunk per array item under
+      `medications`, `diagnoses`, `vitals_history`, `progress_notes`,
+      `investigations`, `referrals`. Hard cap 1200 chars per chunk.
+    - **Idempotency:** wipe-and-reinsert keyed on `document_id` —
+      mirrors the promoter's pattern.
+    - **Search RPC** (`digitisation_search` Postgres function) wraps
+      the `<=>` cosine operator so the Supabase Python SDK can call
+      it cleanly.
+- **Files.**
+    - `backend/migrations/011_semantic_search.sql` — pgvector ext +
+      `document_embeddings` table + ivfflat index + RPC function
+    - `backend/app/services/semantic_search.py` — chunking, embedding,
+      indexer, search wrapper
+    - `backend/app/api/digitisation.py` — `/search` (GET) +
+      `/search/reindex/{document_id}` (POST) + indexer hooked into
+      `/approve` via `BackgroundTasks`
+    - `frontend/src/pages/DigitisationSearch.jsx` — search UI
+    - `frontend/src/App.js` + `Layout.jsx` — route + nav entry
+- **What's NOT shipped (Phase 2 enhancements).**
+    - **LLM query rewriter** for compound queries like "patients on
+      metformin AND HbA1c > 8 in last 6 months" — today the embedding
+      handles the semantic part but doesn't translate to structured
+      filters. Phase 2: have an LLM emit a `WHERE` clause from the
+      query, then ANN-search within the filter set.
+    - **Patient-level "similar patients"** — needs whole-record
+      embedding (concat all sections) instead of per-chunk. Layered
+      addition; same table, new vector kind.
+    - **Backfill of pre-existing approved docs** — the indexer runs
+      on new approvals and the on-demand reindex endpoint exists, but
+      a one-time backfill script that walks every validated doc and
+      indexes it would be useful (~30 min to write).
+    - **Cross-workspace federation** — search is workspace-scoped
+      (correctly — tenancy). For multi-practice groups (Group tier
+      Q1 2027), a workspace-list filter would be the addition.
 
 ---
 

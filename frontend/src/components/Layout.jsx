@@ -1,124 +1,156 @@
 import React from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { Activity, Users, FileText, DollarSign, ClipboardCheck, LayoutDashboard, BarChart3, Stethoscope, UserCheck, HeartPulse, Code, Package, Syringe, Receipt, TrendingUp, Shield, Settings, Layers, ClipboardList, Upload, Archive, FolderKanban, LogOut, User, UserCog, Building2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+
+// Material Symbols Outlined icon — wraps a span with the right CSS class.
+// Variation axes are set globally in src/index.css.
+const MIcon = ({ name, className = '' }) => (
+  <span className={`material-symbols-outlined ${className}`} aria-hidden="true">
+    {name}
+  </span>
+);
 
 const Layout = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user, logout, hasCapability } = useAuth();
 
   const handleLogout = async () => {
     await logout();
     navigate('/login');
   };
 
-  const navigation = [
-    { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-    { name: 'Reception Check-In', path: '/reception', icon: UserCheck },
-    { name: 'Vitals Station', path: '/vitals', icon: HeartPulse },
-    // ===== DIGITIZATION MODULE (NEW UNIFIED INTERFACE) =====
-    { name: '📁 Digitization Module', path: '/digitization', icon: FolderKanban }, // NEW - Unified DaaS Interface
-    // ===== Individual Digitization Pages (Keep for compatibility) =====
-    // { name: 'Digitize Documents', path: '/digitize', icon: FileText }, // OLD - Replaced
-    // { name: 'GP Patient Digitization', path: '/gp-digitize', icon: Stethoscope }, // OLD - Replaced
-    // { name: 'Batch Upload', path: '/batch-upload', icon: Layers }, // OLD - Replaced
-    { name: 'Document Upload', path: '/document-upload', icon: Upload }, // Still accessible
-    { name: 'Validation Queue', path: '/validation-queue', icon: ClipboardList }, // Still accessible
-    { name: 'Document Archive', path: '/digitization-archive', icon: Archive }, // Still accessible
-    { name: 'Digitised Documents', path: '/gp/documents', icon: FileText },
-    { name: 'Extraction Config', path: '/extraction-config', icon: Settings },
-    // ===== ADMIN ONLY =====
-    ...(user?.role === 'admin' ? [
-      { name: '👤 User Management', path: '/user-management', icon: UserCog },
-      { name: '🏢 Workspace Management', path: '/workspace-management', icon: Building2 }
-    ] : []),
-    { name: 'Patients', path: '/patients', icon: Users },
-    { name: 'ICD-10 Test', path: '/icd10-test', icon: Code },
-    { name: 'NAPPI Test', path: '/nappi-test', icon: Package },
-    { name: 'Lab Test', path: '/lab-test', icon: Activity },
-    { name: 'Immunizations', path: '/immunizations-test', icon: Syringe },
-    { name: 'Billing Test', path: '/billing-test', icon: Receipt },
-    { name: 'Billing', path: '/billing', icon: DollarSign },
-    { name: 'Financial Dashboard', path: '/financial-dashboard', icon: TrendingUp },
-    { name: 'Claims Management', path: '/claims-management', icon: Shield },
-    { name: 'Analytics', path: '/analytics', icon: BarChart3 },
+  // Type C = digitisation-only workspace (no EHR). Doctors who already have
+  // their own EHR and just need archive digitisation + export. They get a
+  // 6-section nav scoped to the digitisation pipeline.
+  const isTypeCWorkspace =
+    !hasCapability('patient_ehr_basic') && hasCapability('digitisation_upload');
+
+  const typeCNav = [
+    { name: 'Dashboard',            path: '/digitisation',            icon: 'dashboard',         capability: 'digitisation_upload' },
+    { name: 'Documents',            path: '/digitisation/documents',  icon: 'description',       capability: 'digitisation_upload' },
+    { name: 'Validation Queue',     path: '/digitisation/validation', icon: 'fact_check',        capability: 'digitisation_validation' },
+    { name: 'Archive',              path: '/digitisation/archive',    icon: 'inventory_2',       capability: 'digitisation_upload' },
+    { name: 'Search',               path: '/digitisation/search',     icon: 'search',            capability: 'digitisation_validation' },
+    { name: 'Export Centre',        path: '/digitisation/export',     icon: 'send',              capability: 'digitisation_export_basic' },
+    { name: 'Operational Insights', path: '/digitisation/insights',   icon: 'monitoring',        capability: 'digitisation_operational_analytics' },
   ];
+
+  // Healthcare nav for Type A/B doctors who run their practice on SurgiScan.
+  // Each entry declares the capability it requires; missing entitlements hide
+  // the link (frontend defence — backend require_capability is authoritative).
+  const healthcareNav = [
+    { name: 'Dashboard',            path: '/dashboard',         icon: 'dashboard',         capability: 'patient_ehr_basic' },
+    { name: 'Reception Check-In',   path: '/reception',         icon: 'how_to_reg',        capability: 'reception_checkin' },
+    { name: 'Vitals Station',       path: '/vitals',            icon: 'monitor_heart',     capability: 'vitals_station' },
+    { name: 'Patients',             path: '/patients',          icon: 'group',             capability: 'patient_ehr_basic' },
+    { name: 'Digitization Module',  path: '/digitization',      icon: 'folder_managed',    capability: 'digitisation_upload' },
+    { name: 'Document Upload',      path: '/document-upload',   icon: 'cloud_upload',      capability: 'digitisation_upload' },
+    { name: 'Validation Queue',     path: '/validation-queue',  icon: 'fact_check',        capability: 'digitisation_validation' },
+    { name: 'Document Archive',     path: '/digitization-archive', icon: 'inventory_2',    capability: 'digitisation_upload' },
+    { name: 'Digitised Documents',  path: '/gp/documents',      icon: 'description',       capability: 'digitisation_upload' },
+    { name: 'Extraction Config',    path: '/extraction-config', icon: 'tune',              capability: 'digitisation_upload' },
+    { name: 'Billing',              path: '/billing',           icon: 'payments',          capability: 'billing_invoicing' },
+    { name: 'Financial Dashboard',  path: '/financial-dashboard', icon: 'trending_up',     capability: 'billing_invoicing' },
+    { name: 'Claims Management',    path: '/claims-management', icon: 'shield',            capability: 'billing_invoicing' },
+    { name: 'Clinical Analytics',   path: '/analytics',         icon: 'analytics',         capability: 'analytics_cohorts' },
+  ];
+
+  const adminNav = user?.role === 'admin' ? [
+    { name: 'User Management',      path: '/user-management',      icon: 'manage_accounts' },
+    { name: 'Workspace Management', path: '/workspace-management', icon: 'corporate_fare' },
+  ] : [];
+
+  // Dev/test pages — admin-only QA fixtures for the Healthcare app. Hidden in
+  // Type C workspaces since they exercise EHR-side endpoints the practice
+  // didn't buy and are confusing in a Digitisation-only context.
+  const devNav = user?.role === 'admin' && !isTypeCWorkspace ? [
+    { name: 'ICD-10 Test',     path: '/icd10-test',         icon: 'biotech' },
+    { name: 'NAPPI Test',      path: '/nappi-test',         icon: 'medication' },
+    { name: 'Lab Test',        path: '/lab-test',           icon: 'experiment' },
+    { name: 'Immunizations',   path: '/immunizations-test', icon: 'vaccines' },
+    { name: 'Billing Test',    path: '/billing-test',       icon: 'receipt_long' },
+  ] : [];
+
+  const baseNav = isTypeCWorkspace ? typeCNav : healthcareNav;
+  const navigation = [
+    ...baseNav.filter(item => !item.capability || hasCapability(item.capability)),
+    ...adminNav,
+    ...devNav,
+  ];
+
+  const subtitle = isTypeCWorkspace ? 'Digitisation Workspace' : (user?.workspace_name || 'Healthcare');
 
   const isActive = (path) => location.pathname.startsWith(path);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
+    <div className="min-h-screen bg-surface">
       {/* Sidebar */}
-      <aside className="fixed top-0 left-0 z-40 w-64 h-screen bg-white border-r border-slate-200 shadow-sm">
-        <div className="h-full px-4 py-6 overflow-y-auto">
+      <aside className="fixed top-0 left-0 z-40 w-64 h-screen bg-surface-container-lowest border-r border-outline-variant">
+        <div className="h-full px-md py-lg overflow-y-auto flex flex-col">
           {/* Logo */}
-          <div className="flex items-center gap-3 mb-8 px-2">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-teal-500 to-cyan-600 flex items-center justify-center shadow-md">
-              <Activity className="w-6 h-6 text-white" />
+          <div className="flex items-center gap-sm mb-xl px-base">
+            <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
+              <MIcon name="document_scanner" className="text-on-primary !text-[22px]" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-slate-800">SurgiScan</h1>
-              <p className="text-xs text-slate-500">GP Practice</p>
+              <h1 className="font-h2 text-h2 text-primary">SurgiScan</h1>
+              <p className="font-body-sm text-body-sm text-on-surface-variant">{subtitle}</p>
             </div>
           </div>
 
           {/* Navigation */}
-          <nav className="space-y-2">
+          <nav className="space-y-base flex-1">
             {navigation.map((item) => {
-              const Icon = item.icon;
               const active = isActive(item.path);
               return (
                 <Link
                   key={item.path}
                   to={item.path}
-                  data-testid={`nav-${item.name.toLowerCase().replace(' ', '-')}`}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-all duration-200 ${
+                  data-testid={`nav-${item.name.toLowerCase().replace(/\s+/g, '-')}`}
+                  className={`flex items-center gap-sm px-md py-sm rounded-xl font-body-md text-body-md font-semibold transition-colors ${
                     active
-                      ? 'bg-gradient-to-r from-teal-500 to-cyan-600 text-white shadow-md'
-                      : 'text-slate-600 hover:bg-slate-100'
+                      ? 'bg-primary text-on-primary'
+                      : 'text-on-surface-variant hover:bg-surface-container'
                   }`}
                 >
-                  <Icon className="w-5 h-5" />
+                  <MIcon name={item.icon} className="!text-[20px]" />
                   <span>{item.name}</span>
                 </Link>
               );
             })}
           </nav>
 
-          {/* Workspace Info & User Profile */}
-          <div className="mt-auto pt-6 border-t border-slate-200 space-y-3">
-            {/* User Profile */}
+          {/* User profile + workspace info */}
+          <div className="mt-auto pt-md border-t border-outline-variant space-y-sm">
             {user && (
-              <div className="px-4 py-3 bg-slate-50 rounded-lg">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center">
-                    <User className="w-4 h-4 text-teal-600" />
+              <div className="px-md py-sm bg-surface-container-low rounded-xl">
+                <div className="flex items-center gap-base mb-base">
+                  <div className="w-8 h-8 rounded-full bg-primary-fixed flex items-center justify-center">
+                    <MIcon name="person" className="text-primary !text-[18px]" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-slate-700 truncate">
+                    <p className="font-body-sm text-body-sm font-semibold text-on-surface truncate">
                       {user.first_name} {user.last_name}
                     </p>
-                    <p className="text-xs text-slate-500 capitalize">{user.role}</p>
+                    <p className="font-body-sm text-body-sm text-on-surface-variant capitalize">{user.role}</p>
                   </div>
                 </div>
                 <Button
                   onClick={handleLogout}
                   variant="outline"
                   size="sm"
-                  className="w-full gap-2 text-xs"
+                  className="w-full gap-base text-body-sm border-outline-variant text-on-surface-variant hover:bg-surface-container"
                 >
-                  <LogOut className="w-3 h-3" />
+                  <MIcon name="logout" className="!text-[16px]" />
                   Logout
                 </Button>
               </div>
             )}
-            
-            {/* Workspace Info */}
-            <div className="px-4 py-3 bg-slate-50 rounded-lg">
-              <p className="text-xs font-medium text-slate-500 mb-1">Active Workspace</p>
-              <p className="text-sm font-semibold text-slate-700">Demo GP Practice</p>
+            <div className="px-md py-sm bg-surface-container-low rounded-xl">
+              <p className="font-label-caps text-label-caps uppercase text-on-surface-variant mb-1">Active Workspace</p>
+              <p className="font-body-sm text-body-sm font-semibold text-on-surface">{user?.workspace_name || 'Demo GP Practice'}</p>
             </div>
           </div>
         </div>
@@ -126,7 +158,7 @@ const Layout = () => {
 
       {/* Main Content */}
       <div className="ml-64">
-        <main className="p-8">
+        <main className="p-lg">
           <Outlet />
         </main>
       </div>

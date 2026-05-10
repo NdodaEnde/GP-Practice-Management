@@ -100,6 +100,7 @@ duplicates.
 |---|---|
 | **TRACEABILITY 6d (drug-drug interactions)** | Now feasible — patients have ATC-coded medication histories. Class-level DDI rules + reviewer alerts. ~3-4 hr. |
 | **Phase C FHIR push** | Today the bundle is downloadable; auto-POST to the configured endpoint is the polish. Needs Vault for credential storage. ~half day. |
+| **Semantic-search backfill** | Indexer runs on new approvals and the on-demand reindex endpoint exists; a one-time script that walks every validated doc and indexes it would be useful. ~30 min. |
 | **226 review-pile rows from Wave 1** | Manual disambiguation per row → lifts ATC coverage on existing nappi_codes. ~30-60 min. |
 | **Patient EHR view of promoted data** | The data is now structured but `/patients/:id` page doesn't read from `gp_validation_sessions` to show the doc-of-truth lineage. UI surface 3 from earlier. ~45 min. |
 | **Mongo consolidation** | TRACEABILITY 7. Unrelated tech debt. ~4-6 hr. |
