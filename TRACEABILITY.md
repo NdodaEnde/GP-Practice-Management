@@ -561,9 +561,42 @@ Two-tier inference. Tier 1 (lexicon) is live; Tier 2 (LLM) is still ahead.
   layers on top via `user_workspaces` and a tenant-level rollup
   pattern. The current code keeps working unchanged for solo
   customers while the multi-practice path opens up alongside.
-- **Sales positioning today.** "We support practices end-to-end. If
-  you operate multiple clinics, we onboard each as a separate workspace
-  with your same login — group rollups and central admin land Q1 2027."
+
+- **Per-practice tier flexibility (a real differentiator).** Because
+  capabilities live on the workspace, **every practice in a multi-practice
+  doctor's portfolio can be on a different product tier**. There is no
+  "the doctor is Type A" rule — there is only "this *workspace* is Type
+  A, that *workspace* is Type C." Realistic combos:
+
+  | Scenario | Branch A | Branch B | Branch C |
+  |---|---|---|---|
+  | Two satellite clinics, doctor digitises archives only | Type C | Type C | — |
+  | Flagship + small satellite | Type A | Type C | — |
+  | Multi-clinic GP with central billing | Type A + Module 02 | Type A | Type A |
+  | Solo doctor + side clinic + clinical research site | Type A | Type C | Type A + Module 03 (Beta) |
+  | Group practice (Tranche B / Q1 2027) | Type A | Type A | Type A — *with* capability inheritance + group rollups |
+
+  Three follow-ons:
+  1. **Per-practice scaling.** A satellite that opens on Type C can
+     upgrade to Type A later without touching the flagship. No
+     all-or-nothing commitment at the customer level.
+  2. **Per-practice billing today.** Each workspace generates its own
+     invoice based on its capability set; three practices → three
+     invoices. Tranche B flips this to one invoice per tenant with a
+     per-workspace cost breakdown (procurement preference of corporate
+     buyers like Quadcare / Intercare).
+  3. **Per-practice nav.** The sidebar reflects what the *active*
+     workspace bought — Type C nav has 6 sections, Type A has 14.
+     Switching workspaces effectively switches products without
+     leaving the same login.
+
+- **Sales positioning today.** *"You don't have to commit your whole
+  practice group to one tier. Each clinic onboards on the package
+  that fits its workflow. A satellite that just needs FHIR push
+  starts on Type C; the flagship runs the full Intelligence Layer.
+  One login, switch contexts in the sidebar. Upgrade or downsize any
+  branch independently as your needs change. Group rollups and
+  central admin land Q1 2027."*
 
 ---
 
