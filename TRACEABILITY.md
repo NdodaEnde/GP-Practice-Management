@@ -492,6 +492,73 @@ Two-tier inference. Tier 1 (lexicon) is live; Tier 2 (LLM) is still ahead.
   one new bundle_profile value. Once added, every other workspace on
   the same EHR reuses it without re-work.
 
+### 11. Multi-practice support — *partially supported (schema only); UX deferred*
+
+- **What.** A single doctor (or admin) operating multiple practices —
+  e.g. clinics in Sandton + Pretoria, or a Group practice (Quadcare,
+  Intercare-style) with 7+ doctors across multiple locations sharing a
+  central admin.
+- **Status.**
+    - ✅ **Schema supports it.** Three-level model: `tenants` →
+      `workspaces` → `users`. Every endpoint filters by
+      `current_user.workspace_id`; cross-workspace data leak is
+      structurally impossible.
+    - ✅ **Solo doctors with one practice** — fully supported today.
+    - 🟡 **Multi-practice doctor (2-3 clinics)** — works at the data
+      layer but UI assumes one workspace per session. Doctor needs
+      separate logins per practice. No workspace-switcher in the nav.
+    - ❌ **Group practices (Quadcare-style, 7+)** — not yet built;
+      strategy doc explicitly deferred to **Q1 2027**.
+- **Why deferred.** v1 sales motion targets solo / Type C / Type A
+  practices. Group sales is a different cycle (corporate procurement,
+  multi-month, different decision-makers). Per the sales playbook:
+  *"don't quote Group bands; defer with 'we're focused on private
+  practice for v1'."*
+- **Trigger to revisit.**
+    - **For multi-practice solo doctors:** First prospect with 2+ owned
+      practices balks at the multi-login UX → ship the workspace switcher
+      (the smaller fix below). Roughly **half a day** of work.
+    - **For Group tier:** When commercial sales motion opens for Group
+      (Q1 2027 per strategy). Multi-day effort.
+- **Implementation hint.** Two distinct work tranches:
+
+    **Tranche A — multi-practice solo (~3-5 days total)**
+    1. Migration: `user_workspaces` join table (`user_id`,
+       `workspace_id`, `role`) — replaces the implicit single
+       `users.workspace_id` with N:N. Backfill from existing data.
+    2. Auth update: token claims include the user's accessible
+       workspace list; current request's `workspace_id` selected via
+       header / context.
+    3. **Workspace switcher** in `Layout.jsx` sidebar — dropdown of
+       accessible workspaces, click to flip context. Persists via a
+       simple cookie or query param.
+    4. Cross-workspace federated search — `/api/digitisation/search`
+       already designed for workspace-list filter; surface a "search
+       all my practices" toggle in the UI (~1-2 hr).
+
+    **Tranche B — Group tier (~2-3 days on top of A)**
+    5. Group admin role with cross-workspace permissions within a
+       tenant — separate from individual workspace roles.
+    6. Capability inheritance: `practice_capabilities` rolls up at the
+       tenant level so Group buys Module 02 once and all workspaces
+       under it inherit the entitlement.
+    7. Group-level analytics rollup — depends on §10c.5 (cross-doctor
+       analytics) being addressed first. Aggregation views over
+       `prescriptions` / `diagnoses` / `encounters` filtered by
+       `tenant_id`.
+    8. Centralised billing — single invoice covering all workspaces
+       under one tenant. Today `gp_invoices` has `workspace_id`
+       (post-migration 012); add `tenant_id` rollup queries.
+
+- **What stays valid throughout.** No throwaway work. The current
+  workspace-scoped tenancy model is the foundation; multi-practice
+  layers on top via `user_workspaces` and a tenant-level rollup
+  pattern. The current code keeps working unchanged for solo
+  customers while the multi-practice path opens up alongside.
+- **Sales positioning today.** "We support practices end-to-end. If
+  you operate multiple clinics, we onboard each as a separate workspace
+  with your same login — group rollups and central admin land Q1 2027."
+
 ---
 
 ## How to use this document
