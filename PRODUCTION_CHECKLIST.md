@@ -29,13 +29,20 @@ Last updated: **2026-05-10**.
 
 These can't be done in code — they need a Supabase Studio click, a procurement step, or a legal/compliance review.
 
-### 1. Rotate the leaked Supabase service-role key
+### 1. ~~Rotate the leaked Supabase service-role key~~ — *already done (2025)*
 
-The key `eyJhbGciOiJIUzI1NiI…IsImlhdCI6MTc2MDMyMTc0Ng…` was committed to git history (October 2025). Even though it's removed from the working tree, anyone with read access to the repo can pull it from history. Rotate **before any external login is granted**.
+The hardcoded JWT was committed to git history in October 2025. Per the
+project owner, **the key was rotated when the repo was pushed to GitHub** —
+the literal string in old commits is no longer a valid auth credential.
 
-> Supabase Studio → Project Settings → API → "Reset service_role key"
+The defensive-coding fix in this commit (removing the hardcoded fallback
+default) ensures **future** key rotations don't leave dead literals
+embedded in source. Going forward: keep all secrets in `.env` only;
+never commit `.env`; rotate keys whenever a clone leaves your control.
 
-Update local `.env` files + any deployed environment variable stores after rotation. The old key remains valid until the new one is generated (no overlap window) so prepare deploy + dev-machine rollouts in advance.
+> If at any point you find evidence the *current* service-role key has
+> leaked: Supabase Studio → Project Settings → API → "Reset service_role key".
+> Update local `.env` files + deployed env stores after rotation.
 
 ### 2. Apply the production-readiness migrations
 
@@ -96,7 +103,7 @@ These are legal/compliance work — recommend running them past a SA healthtech-
 
 | Audience | Verdict | Outstanding gates |
 |---|---|---|
-| **Friendly design-partner practice** | ✅ **Ready** after rotating the leaked Supabase key + applying migration 012 + creating the Storage bucket | Steps 1-3 above (~30 min) |
+| **Friendly design-partner practice** | ✅ **Ready** after applying migration 012 + creating the Storage bucket | Step 2 + 3 above (~10 min) |
 | **First paying customer** | 🟡 Add Vault for credentials + LLM ICD-10 fallback + Patient EHR view | Plus most "strongly recommended" items |
 | **Multi-customer commercial release** | 🔴 Add: BHF MPP licence + Mongo consolidation + monitoring + retention policy + multi-instance load testing | ~1-2 weeks beyond the friendly-customer state |
 
@@ -104,8 +111,8 @@ These are legal/compliance work — recommend running them past a SA healthtech-
 
 ## 📋 Final pre-launch checklist (copy this into a deploy ticket)
 
-- [ ] Rotated Supabase `service_role` key in Studio + updated all `.env` files / secret managers
-- [ ] Ran `migrations/012_production_readiness.sql` in target Supabase project
+- [x] ~~Rotated Supabase `service_role` key~~ (already done 2025)
+- [x] Ran `migrations/012_production_readiness.sql` in target Supabase project
 - [ ] Created `digitisation-exports` Storage bucket (private)
 - [ ] Verified `OPENAI_API_KEY` is set in deploy environment (semantic search depends on it)
 - [ ] Verified `LANDING_AI_API_KEY` / `VISION_AGENT_API_KEY` is set (extraction depends on it)
