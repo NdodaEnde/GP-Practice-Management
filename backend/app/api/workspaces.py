@@ -47,22 +47,31 @@ class WorkspaceUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 class WorkspaceResponse(BaseModel):
+    """
+    Response shape includes fields that may not exist on rows from the
+    minimal `workspaces` schema in setup_supabase.sql (slug,
+    organization_name, organization_type, contact_email, contact_person,
+    subscription_*, max_*, storage_quota_gb, is_active, is_trial). Those
+    are all Optional so the endpoint surfaces existing rows even when
+    they haven't been backfilled with the richer schema. The
+    Workspace Management UI can edit them in place.
+    """
     id: str
     name: str
-    slug: str
-    organization_name: str
-    organization_type: str
-    contact_email: str
-    contact_phone: Optional[str]
-    contact_person: str
-    subscription_tier: str
-    subscription_status: str
-    max_users: int
-    max_documents: int
-    storage_quota_gb: int
-    is_active: bool
-    is_trial: bool
-    created_at: str
+    slug: Optional[str] = None
+    organization_name: Optional[str] = None
+    organization_type: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    contact_person: Optional[str] = None
+    subscription_tier: Optional[str] = "free"
+    subscription_status: Optional[str] = "active"
+    max_users: Optional[int] = 10
+    max_documents: Optional[int] = 1000
+    storage_quota_gb: Optional[int] = 10
+    is_active: Optional[bool] = True
+    is_trial: Optional[bool] = False
+    created_at: Optional[str] = None
     user_count: Optional[int] = 0
 
 # ==================== Helper Functions ====================
