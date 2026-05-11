@@ -13,8 +13,12 @@ import uuid
 import os
 import tempfile
 
+from pydantic import ValidationError
+
 from app.core.logging import get_logger
 from app.api.models import ErrorResponse
+from ontology.mappers.patient import hydrate_patient_from_row
+from ontology.objects.patient import Patient
 
 logger = get_logger(__name__)
 
@@ -178,13 +182,108 @@ async def upload_gp_patient_file(
 # =============================================================================
 # ENDPOINT 2: GET PATIENT CHRONIC SUMMARY
 # =============================================================================
+#
+# The endpoint hydrates the patient row through the Patient ontology
+# object. On hydration success it routes through
+# `_patient_to_chronic_summary_response`; on validation failure it falls
+# back to `_legacy_chronic_summary_response` (the original inline-dict
+# construction). Wire format is the contract — both paths produce the
+# same response shape so the existing frontend keeps working.
+
+
+def _patient_to_chronic_summary_response(patient: Patient, row: dict) -> dict:
+    """Build the chronic-summary response from a validated Patient ontology
+    object plus the raw row.
+
+    Structural identity with the pre-refactor response is the contract.
+    The Patient ontology object supplies the demographic fields (which
+    pass through its validators — SA ID/DOB cross-check, identifier
+    whitespace normalisation, etc.); the raw row supplies fields that
+    don't yet have an ontology home.
+
+    The chronic_conditions / current_medications / allergies /
+    latest_vitals JSONB arrays are deliberately served from the raw row
+    rather than the Patient ontology object. They become first-class
+    Diagnosis / Medication / Allergy / Vitals ontology objects in a
+    later pass; until then, treating them as opaque blobs preserves wire
+    compatibility without forcing a lossy mapping into a field shape
+    that doesn't fit.
+
+    Other raw-row passthroughs:
+      - `medical_aid` (single TEXT column) → demographics.medical_aid_name.
+        Will become structured when MedicalAidScheme is an ontology object.
+      - `validation_status` → belongs on Document; surfaced here for
+        legacy compatibility.
+    """
+    return {
+        "success": True,
+        "patient_id": str(patient.id),
+        "patient_name": f"{patient.first_name} {patient.surname}".strip(),
+        "demographics": {
+            "first_names": patient.first_name,
+            "surname": patient.surname,
+            "id_number": patient.identifier_number,
+            "date_of_birth": patient.date_of_birth.isoformat(),
+            "contact_number": patient.primary_phone,
+            "email": patient.email,
+            "address": patient.physical_address,
+            "medical_aid_name": row.get('medical_aid'),
+        },
+        "chronic_conditions": row.get('chronic_conditions', []),
+        "current_medications": row.get('current_medications', []),
+        "allergies": row.get('allergies', []),
+        "latest_vitals": row.get('latest_vitals', {}),
+        "last_updated": patient.updated_at.isoformat(),
+        "validation_status": row.get('validation_status', 'pending'),
+    }
+
+
+def _legacy_chronic_summary_response(row: dict) -> dict:
+    """Original pre-ontology hydration path, preserved verbatim as the
+    fallback for rows that fail Patient validation.
+
+    DO NOT add new fields here — new fields belong on the ontology object
+    and flow through `_patient_to_chronic_summary_response`. This helper
+    exists only to keep the wire format stable for the small set of dev-DB
+    rows that violate Patient's invariants (sentinel DOB + real SA ID,
+    non-UUID id values, etc.).
+    """
+    return {
+        "success": True,
+        "patient_id": row.get('id'),
+        "patient_name": f"{row.get('first_name', '')} {row.get('last_name', '')}".strip(),
+        "demographics": {
+            "first_names": row.get('first_name'),
+            "surname": row.get('last_name'),
+            "id_number": row.get('id_number'),
+            "date_of_birth": row.get('dob'),
+            "contact_number": row.get('contact_number'),
+            "email": row.get('email'),
+            "address": row.get('address'),
+            "medical_aid_name": row.get('medical_aid'),
+        },
+        "chronic_conditions": row.get('chronic_conditions', []),
+        "current_medications": row.get('current_medications', []),
+        "allergies": row.get('allergies', []),
+        "latest_vitals": row.get('latest_vitals', {}),
+        "last_updated": row.get('updated_at'),
+        "validation_status": row.get('validation_status', 'pending'),
+    }
+
 
 @gp_router.get("/patient/{patient_id}/chronic-summary")
 async def get_patient_chronic_summary(
     patient_id: str,
     api_key: Optional[HTTPAuthorizationCredentials] = Depends(security)
 ):
-    """Get validated chronic patient summary for quick doctor access."""
+    """Get validated chronic patient summary for quick doctor access.
+
+    Hydrates the patient row through the Patient ontology object. On
+    validation failure (rows with sentinel DOB + real SA ID, non-UUID
+    `id`, etc.), logs a structured warning and falls back to the legacy
+    inline-dict shape so the wire format stays stable while data-quality
+    issues become visible to ops via the warning logs.
+    """
     try:
         sb = _get_supabase()
         if not sb:
@@ -199,29 +298,22 @@ async def get_patient_chronic_summary(
         if not result.data:
             raise HTTPException(status_code=404, detail=f"Patient not found: {patient_id}")
 
-        patient = result.data[0]
+        row = result.data[0]
 
-        return {
-            "success": True,
-            "patient_id": patient.get('id'),
-            "patient_name": f"{patient.get('first_name', '')} {patient.get('last_name', '')}".strip(),
-            "demographics": {
-                "first_names": patient.get('first_name'),
-                "surname": patient.get('last_name'),
-                "id_number": patient.get('id_number'),
-                "date_of_birth": patient.get('dob'),
-                "contact_number": patient.get('contact_number'),
-                "email": patient.get('email'),
-                "address": patient.get('address'),
-                "medical_aid_name": patient.get('medical_aid')
-            },
-            "chronic_conditions": patient.get('chronic_conditions', []),
-            "current_medications": patient.get('current_medications', []),
-            "allergies": patient.get('allergies', []),
-            "latest_vitals": patient.get('latest_vitals', {}),
-            "last_updated": patient.get('updated_at'),
-            "validation_status": patient.get('validation_status', 'pending')
-        }
+        try:
+            patient_obj = hydrate_patient_from_row(row)
+        except (ValidationError, ValueError, KeyError) as exc:
+            logger.warning(
+                "Patient ontology hydration failed; serving legacy response",
+                extra={
+                    "patient_id": row.get('id'),
+                    "validation_errors": str(exc),
+                    "endpoint": "/api/v1/gp/patient/{patient_id}/chronic-summary",
+                },
+            )
+            return _legacy_chronic_summary_response(row)
+
+        return _patient_to_chronic_summary_response(patient_obj, row)
 
     except HTTPException:
         raise
