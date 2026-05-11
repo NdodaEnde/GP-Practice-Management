@@ -66,6 +66,10 @@ None of these caused validation failures — all 15 are Optional. The mapping is
 
 All 10 sampled rows failed at the same step: `UUID(row["workspace_id"])`. None reached the SA-ID or deceased-consistency validators. **This is good news for cleanup**: the slug fix unblocks all 10. We won't need separate cleanup migrations for SA-ID quality, DOB sentinels, or other data issues *until after* the slug fix lands and the next layer of validators starts firing. Then we'll see the next wave.
 
+### Normalisations observed in the synthetic verifier
+
+`verify_integration_endpoint.py` tested 5 data-quality profiles. Four produced byte-identical responses between the legacy and ontology serialisation paths; one produced a normalisation-only diff: `identifier_number` trailing whitespace stripped by the SA-ID `field_validator` (`'8503140001087 '` → `'8503140001087'`). No date-format shifts, no number-vs-string type changes, no key omissions appeared. Caveat: the synthetic rows used canonical formats by construction — once the slug fix unblocks ontology hydration of real production data, expect further normalisation classes (likely `date_of_birth` if Supabase ever returns `T00:00:00`-suffixed strings, and `last_updated` going from `null` to a populated ISO timestamp via the mapper's created_at fallback). Document each new class as it surfaces.
+
 ### Time spent (vs. half-day estimate)
 
 The half-day estimate covered the code changes themselves. Actuals:
