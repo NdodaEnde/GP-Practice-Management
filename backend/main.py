@@ -34,6 +34,9 @@ from app.services.storage import StorageManager
 # Import GP router
 from app.api.gp_endpoints import gp_router
 
+# Import Ontology router (introspectable schema for codegen / docs)
+from app.api.ontology import ontology_router
+
 
 # Setup logging
 setup_logging()
@@ -113,6 +116,9 @@ app.add_middleware(
 
 # Include GP router
 app.include_router(gp_router)
+
+# Include Ontology router (/api/ontology/schema, /api/ontology/ping)
+app.include_router(ontology_router)
 
 if not settings.DEBUG:
     app.add_middleware(
