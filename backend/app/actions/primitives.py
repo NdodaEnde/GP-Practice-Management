@@ -395,7 +395,11 @@ class PromoteExtractionsViaPromoter:
 
         # Patient — op depends on whether we created or matched
         if getattr(result, "patient_id", None):
-            patient_op = "created" if result.kind == "created" else "linked"
+            # PromotionResult exposes `patient_kind` ('matched' | 'created' |
+            # 'matched_explicit'). 'created' → we made the patient row;
+            # everything else → we linked to an existing one.
+            patient_kind = getattr(result, "patient_kind", "matched") or "matched"
+            patient_op = "created" if patient_kind == "created" else "linked"
             affected.append({"type": "Patient", "id": result.patient_id, "op": patient_op})
             ctx.append_affected_object(
                 object_type="Patient", object_id=result.patient_id, op=patient_op

@@ -206,9 +206,12 @@ class PromoteDocumentToPatientRecord(Action):
             ),
 
             # Target patient side
+            # NB: NotSoftDeleted("patients", ...) is NOT included because
+            # the patients table doesn't have a deleted_at column in
+            # setup_supabase.sql. When the schema migrates to support
+            # soft-deletion (future cleanup), add the precondition back.
             ObjectExists("patients", self.target_patient_id),
             BelongsToPractice("patients", self.target_patient_id, self.workspace_id),
-            NotSoftDeleted("patients", self.target_patient_id),
 
             # Confirmation provenance
             _ConfirmationActorMatches(

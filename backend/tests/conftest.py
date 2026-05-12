@@ -31,6 +31,17 @@ from typing import Any, Dict, Iterator
 
 import pytest
 
+# Auto-load .env at test-session start so SUPABASE_URL / SUPABASE_SERVICE_KEY
+# don't have to be exported in the shell. Matches how the rest of the
+# codebase loads env vars (main.py does load_dotenv() at startup).
+try:
+    from dotenv import load_dotenv
+    _ENV_PATH = os.path.join(os.path.dirname(__file__), "..", ".env")
+    if os.path.exists(_ENV_PATH):
+        load_dotenv(_ENV_PATH)
+except ImportError:
+    pass  # python-dotenv not installed; fall back to shell env only
+
 
 # ----------------------------------------------------------------------------
 # Environment gating
@@ -117,18 +128,16 @@ def seed_practice(supabase_client) -> Iterator[Dict[str, str]]:
 
 @pytest.fixture
 def validated_document_row(supabase_client, seed_practice) -> Iterator[Dict[str, Any]]:
-    """FAST fixture: insert a row directly into digitised_documents with
-    status='validated' and a known extraction JSONB shape — no parser, no
-    LandingAI, no microservice required.
+    """FAST fixture: inserts a digitised_documents row with status='validated'
+    plus a paired gp_validation_sessions row carrying the extraction JSONB
+    that the approve endpoint reads (the same two-table pattern the live
+    code uses — extraction blob lives on gp_validation_sessions, not on
+    digitised_documents).
 
-    The extraction JSONB matches the structure that extraction_promoter
-    consumes (patient_demographics, diagnoses, medications, vitals,
-    progress_notes). Used by integration-tier tests that exercise the
-    executor's logic against a deterministic input.
-
-    Cleans up the row after the test."""
+    Cleans up both rows after the test."""
     sb = supabase_client
     doc_id = str(uuid.uuid4())
+    session_id = str(uuid.uuid4())
     workspace_id = seed_practice["workspace_id"]
 
     extraction = {
@@ -161,14 +170,29 @@ def validated_document_row(supabase_client, seed_practice) -> Iterator[Dict[str,
         "id": doc_id,
         "workspace_id": workspace_id,
         "filename": f"test_fixture_{doc_id[:8]}.pdf",
+        "file_path": f"test/fixtures/{doc_id}.pdf",  # NOT NULL constraint
         "status": "validated",
-        "extraction": extraction,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }).execute()
+    sb.table("gp_validation_sessions").insert({
+        "id": session_id,
+        "session_id": f"session-{session_id[:8]}",  # NOT NULL constraint
+        "document_id": doc_id,
+        "workspace_id": workspace_id,
+        "extractions": extraction,
+        "status": "approved",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }).execute()
 
-    yield {"document_id": doc_id, "extraction": extraction, **seed_practice}
+    yield {
+        "document_id": doc_id,
+        "session_id": session_id,
+        "extraction": extraction,
+        **seed_practice,
+    }
 
     try:
+        sb.table("gp_validation_sessions").delete().eq("id", session_id).execute()
         sb.table("digitised_documents").delete().eq("id", doc_id).execute()
     except Exception:  # noqa: BLE001
         pass

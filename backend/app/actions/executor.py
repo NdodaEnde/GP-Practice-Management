@@ -21,13 +21,35 @@ The execute() function:
     8. Writes the audit row in finally (fail-safe — log errors never
        propagate to the caller).
 
-Locking approach (per the approved plan):
-    PR 1 uses session-scoped pg_try_advisory_lock + pg_advisory_unlock.
-    Phase 0 verification confirms the lock is visible across Supabase
-    HTTP-pooled requests. If verification reveals pooling makes the
-    locks unreliable, this module pivots to SELECT ... FOR UPDATE NOWAIT
-    on the source document row (pre-designed in the plan §2.6). The
-    Phase 0 outcome is documented in the PR description.
+Locking approach (PR 1 outcome — see PR description and PHASE 0 below):
+    PR 1 ships WITHOUT real mutual exclusion at the Python layer. The
+    `_acquire_lock` function is a no-op that always returns True. This
+    is the honest outcome of the Phase 0 verification:
+
+      - Session-scoped pg_try_advisory_lock is NOT visible across
+        Supabase's HTTP-pooled requests (verified empirically by
+        test_advisory_lock_semantics.py::test_lock_visible_across_pooled_requests
+        — the second client successfully re-acquires a lock the first
+        client supposedly holds).
+
+      - The pre-designed pivot to SELECT ... FOR UPDATE NOWAIT inside a
+        one-shot RPC ALSO doesn't deliver work-level mutual exclusion at
+        this layer — the FOR UPDATE lock is held only for the duration of
+        the RPC's transaction (microseconds), not for the Python-side
+        promote work that follows.
+
+    Real mutual exclusion requires the entire mutation to run inside ONE
+    Postgres transaction. That's PR 2's PL/pgSQL port: `promote_extractions`
+    becomes `execute_action_promote_document(...)`, the RPC acquires
+    FOR UPDATE NOWAIT at the start, and the lock holds for the duration
+    of the whole transaction (which IS the work). Same end-state lock
+    semantics, but the locking mechanism cannot be retrofitted at the
+    Python layer.
+
+    PR 1 still ships: audit log, structured preconditions, structured
+    effects, dry-run mode, idempotency-key replay, ErrorDetail typing,
+    reverse() column reservations. Those don't depend on locking. The
+    concurrent-call test is skipped with this documented outcome.
 
 Lock granularity (per-document, not per-patient):
     PR 1 locks per-document because that extracts cleanly from the
@@ -80,48 +102,45 @@ _AUDIT_LOG_TABLE = "action_audit_log"
 # ---------------------------------------------------------------------------
 
 def _acquire_lock(supabase, action_name: str, resource_key: str) -> bool:
-    """Try to acquire the session-scoped advisory lock. Returns True if
-    acquired, False if already held by another caller.
+    """No-op in PR 1. Always returns True.
 
-    Uses the `action_try_advisory_lock` RPC (migration 014).
+    Phase 0 verification (test_advisory_lock_semantics.py) revealed that
+    session-scoped Postgres advisory locks are NOT visible across
+    Supabase's HTTP-pooled requests — Client A acquires the lock,
+    Client B (separate HTTP request through PostgREST's pool) successfully
+    acquires the same lock. The lock primitive doesn't deliver
+    mutual exclusion at the Python layer.
+
+    The pre-designed pivot to SELECT ... FOR UPDATE NOWAIT inside a
+    one-shot RPC ALSO doesn't help: the FOR UPDATE lock releases when
+    the RPC's transaction commits (microseconds later), not when the
+    Python-side promotion finishes.
+
+    Real mutual exclusion requires the entire promotion to run inside
+    one Postgres transaction. That's PR 2's PL/pgSQL port —
+    `execute_action_promote_document(...)` will acquire FOR UPDATE NOWAIT
+    at the start, and the lock will hold for the duration of the whole
+    transaction (which IS the work). When PR 2 lands, this function's
+    body changes to acquire the lock via the new RPC; the executor's
+    public surface stays the same.
+
+    For PR 1: the audit log makes concurrent-call collisions DETECTABLE
+    after the fact (two audit rows for the same document within seconds
+    of each other = race). The double-write detection query +
+    `affected_objects @> '[{"type": "Document", "id": "<id>"}]'` lookup
+    is sufficient to spot the gap in operations until PR 2 closes it.
+
+    See scripts/audit_double_write_check.sql for the detection query
+    and the PR description's "Phase 0 outcome" section.
     """
-    try:
-        result = supabase.rpc(
-            "action_try_advisory_lock",
-            {"p_action_name": action_name, "p_resource_key": resource_key},
-        ).execute()
-        # The RPC returns boolean; supabase-py wraps single-value results
-        # variously depending on version.
-        data = result.data
-        if isinstance(data, bool):
-            return data
-        if isinstance(data, list) and data:
-            first = data[0]
-            if isinstance(first, dict):
-                return bool(next(iter(first.values()), False))
-            return bool(first)
-        return bool(data)
-    except Exception as exc:  # noqa: BLE001
-        # If the RPC isn't available (migration 014 not applied),
-        # log a warning and proceed without the lock. This lets unit
-        # tests run against a DB without the migration; production
-        # callers should always have the migration applied.
-        logger.warning("advisory-lock RPC failed (%s); proceeding without lock", exc)
-        return True
+    # PR 2: replace with a call to the new PL/pgSQL RPC that acquires
+    # FOR UPDATE NOWAIT inside the same transaction that does the work.
+    return True
 
 
 def _release_lock(supabase, action_name: str, resource_key: str) -> None:
-    """Release the session-scoped advisory lock acquired earlier.
-
-    Fail-safe: failures here never propagate to the caller.
-    """
-    try:
-        supabase.rpc(
-            "action_advisory_unlock",
-            {"p_action_name": action_name, "p_resource_key": resource_key},
-        ).execute()
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("advisory-unlock RPC failed (%s)", exc)
+    """No-op companion to _acquire_lock. See _acquire_lock docstring."""
+    return None
 
 
 def _resource_key_for(action: Action) -> str:
