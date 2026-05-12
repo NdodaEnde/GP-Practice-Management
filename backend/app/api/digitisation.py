@@ -1079,27 +1079,85 @@ async def approve_validation(
     session_id = sess.data[0]["id"] if sess.data else None
     extractions = (sess.data[0].get("extractions") if sess.data else None) or {}
 
-    # ---- Promote into structured tables ------------------------------
+    # ---- Promote into structured tables via the ActionExecutor ----------
+    # Routes through app.actions.execute() so the action is audited,
+    # locked, and (PR 2) reversible. The underlying mutation still calls
+    # promote_extractions(); the executor adds the audit row, the
+    # advisory lock, and the structured pre/post state. See
+    # backend/app/actions/ and ONTOLOGY_INTEGRATION_POSTMORTEM.md.
     promotion: Optional[Dict[str, Any]] = None
     promotion_error: Optional[str] = None
     try:
-        from app.services.extraction_promoter import promote_extractions
-        result_obj = promote_extractions(
-            supabase,
-            workspace_id=workspace_id,
+        from app.actions import ActorContext, execute
+        from ontology.actions.promote_document import (
+            PatientMatchEvidence,
+            PromoteDocumentToPatientRecord,
+        )
+
+        # The "confirmation" payload for the action. In PR 1 the validation
+        # UI does not yet capture a per-click PatientMatchEvidence; we
+        # synthesize one from the current request to preserve the audit
+        # trail. PR 2's frontend will surface the match-signals explicitly.
+        from datetime import datetime as _dt, timezone as _tz
+        confirmation = PatientMatchEvidence(
+            confirmed_by_user_id=current_user.get("id") or current_user.get("email", "unknown"),
+            confirmed_at=_dt.now(_tz.utc),
+            match_signals=(
+                ["explicit_confirmed_patient_id"] if confirmed_patient_id
+                else (["force_create"] if create_new_patient else ["auto_match"])
+            ),
+            confidence_score=1.0 if confirmed_patient_id else 0.0,
+        )
+
+        action = PromoteDocumentToPatientRecord(
             document_id=document_id,
+            target_patient_id=confirmed_patient_id or "",
+            confirmation=confirmation,
+            actor_user_id=current_user.get("id") or current_user.get("email", "unknown"),
+            practice_id=workspace_id,
+            workspace_id=workspace_id,
             extractions=extractions,
-            created_by=current_user.get("email"),
             forced_patient_id=confirmed_patient_id,
             force_create_patient=create_new_patient,
         )
-        promotion = result_obj.to_dict()
-        # Link the document to the matched/created patient + first encounter
-        link = {
-            "patient_id":   result_obj.patient_id,
-            "encounter_id": result_obj.encounter_ids[0] if result_obj.encounter_ids else None,
-        }
-        supabase.table("digitised_documents").update(link).eq("id", document_id).execute()
+        action_result = execute(
+            action,
+            actor=ActorContext.from_user(current_user),
+            supabase=supabase,
+        )
+
+        if action_result.is_success:
+            # Surface the same shape as the legacy response (the
+            # PromoteExtractionsViaPromoter's affected_objects entries
+            # carry patient_id and encounter_ids).
+            patient_ids = [
+                e["id"] for e in action_result.affected_objects
+                if e.get("type") == "Patient"
+            ]
+            encounter_ids = [
+                e["id"] for e in action_result.affected_objects
+                if e.get("type") == "Consultation"
+            ]
+            promotion = {
+                "patient_id":    patient_ids[0] if patient_ids else None,
+                "encounter_ids": encounter_ids,
+                "audit_id":      action_result.audit_id,
+            }
+            # Link the document to the matched/created patient + first encounter
+            link = {
+                "patient_id":   patient_ids[0] if patient_ids else None,
+                "encounter_id": encounter_ids[0] if encounter_ids else None,
+            }
+            supabase.table("digitised_documents").update(link).eq("id", document_id).execute()
+        else:
+            err = action_result.error
+            promotion_error = (
+                f"{err.code if err else 'unknown'}: {err.message if err else 'no detail'}"
+            )
+            logger.warning(
+                "approve_validation: action outcome=%s code=%s",
+                action_result.outcome, err.code if err else None,
+            )
     except Exception as e:
         logger.error(f"approve_validation: promotion failed for {document_id}: {e}", exc_info=True)
         promotion_error = f"{type(e).__name__}: {e}"
