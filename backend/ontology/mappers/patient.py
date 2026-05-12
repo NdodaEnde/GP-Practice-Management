@@ -85,7 +85,11 @@ def hydrate_patient_from_row(row: dict[str, Any]) -> Patient:
 
     return Patient(
         id=UUID(row["id"]),
-        practice_id=UUID(row["workspace_id"]),
+        # practice_id is `str` on the ontology (per base.py docstring) — pass
+        # through whatever the DB stores. Production values are slug-style
+        # (e.g. 'typec-workspace-001'); a future DB migration to UUID PKs
+        # would store UUID-shaped strings here, and this mapper still works.
+        practice_id=row["workspace_id"],
         created_at=created_at,
         updated_at=updated_at,
         first_name=row["first_name"],

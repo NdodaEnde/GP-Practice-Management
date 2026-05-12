@@ -162,9 +162,18 @@ class OntologyObject(BaseModel):
         description="Stable identity across all systems and exports.",
         immutable_after_create=True,
     )
-    practice_id: UUID = Prop(
-        description="The practice this object belongs to. Multi-tenancy boundary — "
-                    "queries are always scoped by this.",
+    practice_id: str = Prop(
+        description=(
+            "The practice this object belongs to. Multi-tenancy boundary — "
+            "queries are always scoped by this. "
+            "Typed as `str` rather than UUID because production practice "
+            "identifiers are slug-shaped (e.g. 'typec-workspace-001'), per "
+            "setup_supabase.sql's workspaces.id TEXT PRIMARY KEY. UUID-shaped "
+            "values are valid strings too, so this accepts both — but the "
+            "ontology does NOT enforce UUID format on practice references. "
+            "If the DB ever migrates workspaces.id to UUID, this declaration "
+            "needs no change."
+        ),
         immutable_after_create=True,
         link_to="Practice",
         link_cardinality="one",
