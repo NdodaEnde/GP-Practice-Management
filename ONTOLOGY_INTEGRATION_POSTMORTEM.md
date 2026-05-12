@@ -94,9 +94,23 @@ Total: ~4.5 hours. The half-day estimate was right for code; the live verificati
 
 ---
 
+## Update — 2026-05-12 — slug fix landed; next data-quality layer surfaced
+
+The slug-identifier finding was resolved by loosening `OntologyObject.practice_id` from `UUID` to `str` (commit `0399842`). Rationale: the application has always used strings (per `app/api/workspaces.py` and 20+ hardcoded references); FHIR `Resource.id` is a constrained string, not specifically UUID; a future DB migration to UUID PKs would store UUID-shaped strings, which the declaration accepts unchanged. Investigation confirmed the original schema (`setup_supabase.sql`) uses `TEXT PRIMARY KEY` across all 9 tables — the slug pattern is deeply intentional in the codebase. The ontology layer was over-specifying.
+
+**Hydration rate against real dev DB jumped from 0/32 to 4/32 patients.** The 4 that hydrate have valid SA IDs with matching DOBs. The remaining 28 fall back to legacy for these reasons:
+
+- **24× Luhn checksum failures** — likely data-entry typos in the `id_number` column. Each row was captured at intake without intake-side validation.
+- **3× invalid citizenship digit** — position 11 of the SA ID is not 0 or 1. Either corrupt data or unusual real IDs (worth a manual check on a couple before treating as cleanup-only).
+- **1× DOB / SA-ID mismatch** — the stored `dob` disagrees with the date encoded in the `id_number`.
+
+**Decision: validator stays strict; this is correct behaviour.** The fallback machinery handles the bad-data cases (no 5xx, wire format preserved, structured warnings logged with `patient_id`). The 28 fallback patients are now visible as data-quality findings to clean up over time, rather than being silently served as if valid.
+
+**Implication for the next plan (ActionExecutor):** the slug resolution is done; the executor's `practice_id` round-trip story works. The data-quality layer surfaced here is its own work — a backfill task to repair Luhn-failing SA IDs, flag citizenship-digit anomalies for review, and resolve DOB mismatches. NOT blocking the executor, but worth a follow-up task once executor work begins (the executor's `audit_log` will start capturing per-action warning frequency, which makes "find me all patients whose data triggers the SA-ID validator on every read" trivially queryable).
+
 ## What to read first when picking up the ActionExecutor plan
 
-1. This document — the slug finding is what gates the executor.
+1. This document — the slug finding (now resolved) is captured; the data-quality finding is next.
 2. [ONTOLOGY_ROADMAP.md](ONTOLOGY_ROADMAP.md) — Phase 2 framing.
 3. [backend/ontology/actions/promote_document.py](backend/ontology/actions/promote_document.py) — the existing illustrative action declaration, the template the executor instantiates.
 4. [backend/ontology/mappers/patient.py](backend/ontology/mappers/patient.py) — the mapper's docstring captures the full list of deferred columns and the rationale for each.
