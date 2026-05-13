@@ -57,6 +57,7 @@ from app.actions.primitives import (
     NotSoftDeleted,
     ObjectExists,
     PromoteExtractionsViaPromoter,
+    ReverseDocumentPromotionViaRpc,
 )
 from app.actions.registry import register_action
 
@@ -260,17 +261,25 @@ class PromoteDocumentToPatientRecord(Action):
     # ---- Reversal (PR 2) -----------------------------------------------
 
     def reversal(self) -> List[Effect]:
-        """Effects to apply when reversing this promotion.
+        """Effects describing the reversal pathway.
 
-        PR 1: not implemented. The audit_log table has the column
-        reservations (reverses_audit_id, reversed_by_audit_id) so PR 2
-        can land reversal without a schema migration.
+        PR 2: returns a single ReverseDocumentPromotionViaRpc Effect.
+        The audit_id and actor_user_id placeholders are populated by
+        executor.reverse() at reverse-time — they are not known at
+        action-construction-time and the reverse pathway does not
+        round-trip through .effects().
+
+        This method is primarily informational for UIs and audit-trail
+        rendering ("what would reversing this look like?"). The
+        load-bearing path is executor.reverse(audit_id) which builds
+        and applies the Effect directly.
         """
-        raise NotImplementedError(
-            "PromoteDocumentToPatientRecord reversal is a PR 2 deliverable. "
-            "Column reservations on action_audit_log + the action's "
-            "reversal() method signature ship in PR 1."
-        )
+        return [
+            ReverseDocumentPromotionViaRpc(
+                audit_id="<populated-at-reverse>",
+                actor_user_id="<populated-at-reverse>",
+            ),
+        ]
 
     # ---- Description ---------------------------------------------------
 

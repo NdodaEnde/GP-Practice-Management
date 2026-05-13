@@ -25,9 +25,109 @@ from app.actions.base import (
     EffectResult,
     ErrorDetail,
     ExecutorContext,
+    ERROR_CODE_ACTION_LOCKED,
     ERROR_CODE_EFFECT_FAILED,
+    ERROR_CODE_INVARIANT_VIOLATED,
     ERROR_CODE_NOT_FOUND,
+    ERROR_CODE_PRECONDITION_FAILED,
 )
+
+
+# ----------------------------------------------------------------------------
+# SQLSTATE → ErrorDetail.code mapping
+# ----------------------------------------------------------------------------
+#
+# When the PL/pgSQL RPC fails it surfaces as an APIError from supabase-py
+# carrying a PostgREST response that includes the SQLSTATE. We translate
+# to the typed ErrorDetail.code vocabulary so downstream consumers (UI,
+# alerting, audit-trail filters) can switch on code with confidence.
+#
+# Beyond raw SQLSTATE: the RPC uses PostgreSQL's `HINT` clause on RAISE
+# to attach a semantic discriminator to P0001 (user-defined exception)
+# codes. We read the hint when present.
+
+_SQLSTATE_TO_ERROR_CODE: Dict[str, str] = {
+    # FOR UPDATE NOWAIT could not acquire the row lock — another
+    # transaction is currently holding it. This is the mutual-exclusion
+    # signal PR 2 set out to deliver.
+    "55P03": ERROR_CODE_ACTION_LOCKED,
+    # Foreign-key violation — usually means a precondition wasn't met
+    # (referenced row missing) but treat as invariant since the RPC
+    # checks references explicitly.
+    "23503": ERROR_CODE_INVARIANT_VIOLATED,
+    # NOT NULL violation
+    "23502": ERROR_CODE_INVARIANT_VIOLATED,
+    # Unique violation
+    "23505": ERROR_CODE_INVARIANT_VIOLATED,
+}
+
+# Hint values used in RAISE EXCEPTION USING HINT = '...' inside the
+# RPC. Map to typed error codes.
+_HINT_TO_ERROR_CODE: Dict[str, str] = {
+    "not_found":             ERROR_CODE_NOT_FOUND,
+    "precondition_failed":   ERROR_CODE_PRECONDITION_FAILED,
+    "invariant_violated":    ERROR_CODE_INVARIANT_VIOLATED,
+    "cannot_reverse_dry_run": "cannot_reverse_dry_run",
+}
+
+
+def _classify_rpc_error(exc: Exception) -> ErrorDetail:
+    """Translate a supabase RPC exception into a typed ErrorDetail.
+
+    supabase-py raises a number of shapes depending on version + error
+    type: APIError, PostgrestAPIError, generic Exception. We extract
+    code/message/hint best-effort.
+    """
+    sqlstate: Optional[str] = None
+    hint: Optional[str] = None
+    pg_message: Optional[str] = None
+
+    # supabase-py's APIError exposes code/message/details/hint on the
+    # instance. Older versions stash them in args[0] as a dict.
+    for attr in ("code", "sqlstate", "pg_code"):
+        val = getattr(exc, attr, None)
+        if val:
+            sqlstate = str(val)
+            break
+    for attr in ("hint",):
+        val = getattr(exc, attr, None)
+        if val:
+            hint = str(val)
+            break
+    for attr in ("message", "details"):
+        val = getattr(exc, attr, None)
+        if val and not pg_message:
+            pg_message = str(val)
+
+    # Fallback: parse the exception's str() — common for older client
+    # versions where structured fields aren't set.
+    if not sqlstate or not hint:
+        text = str(exc)
+        # PostgREST errors typically contain 'code: 55P03' or 'sqlstate'.
+        import re
+        m = re.search(r"(?:code|sqlstate)[\":\s]+\(?([0-9A-Z]{5})\)?", text)
+        if m and not sqlstate:
+            sqlstate = m.group(1)
+        m = re.search(r"hint[\":\s]+([a-z_]+)", text)
+        if m and not hint:
+            hint = m.group(1)
+        if not pg_message:
+            pg_message = text
+
+    code = "effect_failed"
+    if hint and hint in _HINT_TO_ERROR_CODE:
+        code = _HINT_TO_ERROR_CODE[hint]
+    elif sqlstate and sqlstate in _SQLSTATE_TO_ERROR_CODE:
+        code = _SQLSTATE_TO_ERROR_CODE[sqlstate]
+
+    return ErrorDetail(
+        code=code,
+        message=pg_message or f"RPC failed: {exc!r}",
+        context={
+            "sqlstate": sqlstate,
+            "hint": hint,
+        },
+    )
 
 
 # ----------------------------------------------------------------------------
@@ -320,17 +420,23 @@ class SoftDelete:
 
 @dataclass
 class PromoteExtractionsViaPromoter:
-    """The single Effect that wraps the existing extraction_promoter.
+    """The single Effect that wraps the document → patient-record promotion.
 
-    In PR 1, this Effect is the heavy hitter — it calls
-    `promote_extractions()` from `app.services.extraction_promoter` and
-    captures the resulting PromotionResult. The result's IDs are
-    converted into `affected_objects` entries with `op='created'`.
+    PR 1: this called `promote_extractions()` from
+    `app.services.extraction_promoter` — 100+ HTTP round-trips through
+    PostgREST, no real ACID, ~35s latency.
 
-    In PR 2, this Effect's `apply()` swaps from a Python call to a
-    `supabase.rpc('execute_action_promote_document', ...)` call. The
-    descriptor and result shapes don't change; the executor doesn't
-    need to know.
+    PR 2: calls `supabase.rpc('execute_action_promote_document', {...})`.
+    The RPC runs the entire mutation inside one Postgres transaction
+    with SELECT...FOR UPDATE NOWAIT mutual exclusion on the source
+    document row. ~1-2s typical latency. SQLSTATE 55P03 (lock_not_available)
+    surfaces as ErrorDetail(code='action_locked'); P0001 with HINT=
+    'not_found' as ErrorDetail(code='not_found'); etc.
+
+    The Effect descriptor + result shapes are identical to PR 1, so the
+    executor's pipeline doesn't need to change. Each row created by the
+    RPC lands in affected_objects with op='created'; the Document entry
+    carries previous_encounter_id so reversal can restore it.
     """
     document_id: str
     workspace_id: str
@@ -362,68 +468,144 @@ class PromoteExtractionsViaPromoter:
         )
 
     def apply(self, ctx: ExecutorContext) -> EffectResult:
-        # Imported here, not at module top, because extraction_promoter
-        # pulls in heavy deps (the GP processor, etc.) that we don't want
-        # to load when only running unit tests.
-        from app.services.extraction_promoter import promote_extractions
+        import time
+        import logging
+        _log = logging.getLogger(__name__)
 
+        rpc_started = time.monotonic()
         try:
-            result = promote_extractions(
-                ctx.supabase,
-                workspace_id=self.workspace_id,
-                document_id=self.document_id,
-                extractions=self.extractions,
-                created_by=self.actor_email,
-                forced_patient_id=self.forced_patient_id,
-                force_create_patient=self.force_create_patient,
-            )
+            response = ctx.supabase.rpc(
+                "execute_action_promote_document",
+                {
+                    "p_document_id":          self.document_id,
+                    "p_workspace_id":         self.workspace_id,
+                    "p_extractions":          self.extractions,
+                    "p_created_by":           self.actor_email or "promoter",
+                    "p_forced_patient_id":    self.forced_patient_id,
+                    "p_force_create_patient": self.force_create_patient,
+                },
+            ).execute()
         except Exception as exc:  # noqa: BLE001
+            return EffectResult(
+                name=self.name,
+                succeeded=False,
+                error=_classify_rpc_error(exc),
+            )
+
+        elapsed_ms = int((time.monotonic() - rpc_started) * 1000)
+        if elapsed_ms > 5000:
+            # The 5s log canary — well before the 25s statement_timeout
+            # ceiling fires. If we start seeing these regularly, the
+            # contention surface or query plan has degraded.
+            _log.warning(
+                "execute_action_promote_document took %dms for document=%s — "
+                "investigate contention or query plan",
+                elapsed_ms, self.document_id,
+            )
+
+        # The RPC returns JSONB; supabase-py exposes it as `.data`.
+        payload = response.data if hasattr(response, "data") else response
+        if not isinstance(payload, dict):
             return EffectResult(
                 name=self.name,
                 succeeded=False,
                 error=ErrorDetail(
                     code=ERROR_CODE_EFFECT_FAILED,
-                    message=f"promote_extractions raised: {exc}",
-                    context={
-                        "document_id": self.document_id,
-                        "workspace_id": self.workspace_id,
-                    },
+                    message=f"unexpected RPC payload type: {type(payload).__name__}",
+                    context={"payload": str(payload)[:500]},
                 ),
             )
 
-        affected: List[Dict[str, Any]] = []
-
-        # Patient — op depends on whether we created or matched
-        if getattr(result, "patient_id", None):
-            # PromotionResult exposes `patient_kind` ('matched' | 'created' |
-            # 'matched_explicit'). 'created' → we made the patient row;
-            # everything else → we linked to an existing one.
-            patient_kind = getattr(result, "patient_kind", "matched") or "matched"
-            patient_op = "created" if patient_kind == "created" else "linked"
-            affected.append({"type": "Patient", "id": result.patient_id, "op": patient_op})
-            ctx.append_affected_object(
-                object_type="Patient", object_id=result.patient_id, op=patient_op
-            )
-
-        # Consultations (encounters) — each is a created object
-        for enc_id in getattr(result, "encounter_ids", None) or []:
-            affected.append({"type": "Consultation", "id": enc_id, "op": "created"})
-            ctx.append_affected_object(
-                object_type="Consultation", object_id=enc_id, op="created"
-            )
-
-        # Document — we updated its promoted_to_patient_id etc.
-        affected.append({"type": "Document", "id": self.document_id, "op": "updated"})
-        ctx.append_affected_object(
-            object_type="Document", object_id=self.document_id, op="updated"
-        )
+        # Forward affected_objects from the RPC into the executor's
+        # audit-row-in-progress so the audit row gets every created row,
+        # not just the three-entry summary.
+        rpc_affected: List[Dict[str, Any]] = payload.get("affected_objects") or []
+        for entry in rpc_affected:
+            # The RPC may include extra keys (e.g. previous_encounter_id);
+            # only the three core keys are required for the executor's
+            # append. Pass through the full entry to preserve metadata.
+            ctx.audit_row_in_progress.setdefault("affected_objects", []).append(entry)
 
         return EffectResult(
             name=self.name,
             succeeded=True,
-            affected=affected,
+            affected=rpc_affected,
             detail=(
-                f"promoted via extraction_promoter: patient={result.patient_id}, "
-                f"encounters={len(result.encounter_ids or [])}"
+                f"promoted via RPC in {elapsed_ms}ms: "
+                f"patient={payload.get('patient_id')}, "
+                f"encounters={len(payload.get('encounter_ids') or [])}, "
+                f"counts={payload.get('counts')}"
+            ),
+        )
+
+
+@dataclass
+class ReverseDocumentPromotionViaRpc:
+    """Effect that calls reverse_action_promote_document(...) RPC.
+
+    Used by `executor.reverse(audit_id)` when reversing a
+    PromoteDocumentToPatientRecord audit row. The reverse RPC reads the
+    original audit row's affected_objects (which lists every created
+    row + previous_encounter_id on the Document entry), DELETEs in
+    reverse FK order, restores the document's encounter_id, and writes
+    a new reversal audit row + back-pointer atomically.
+
+    Returns affected_objects describing the reversal (op='reversed_delete'
+    / op='reversed_update') so the audit row records the undo work.
+    """
+    audit_id: str
+    actor_user_id: str
+    reason: Optional[str] = None
+    name: str = "ReverseDocumentPromotionViaRpc"
+
+    def plan(self, ctx: ExecutorContext) -> EffectDescriptor:
+        return EffectDescriptor(
+            name=self.name,
+            summary=f"would reverse promote-document audit row {self.audit_id}",
+            will_affect=[
+                {"type": "ActionAuditLog", "id": self.audit_id, "op": "updated"},
+            ],
+        )
+
+    def apply(self, ctx: ExecutorContext) -> EffectResult:
+        try:
+            response = ctx.supabase.rpc(
+                "reverse_action_promote_document",
+                {
+                    "p_audit_id":      self.audit_id,
+                    "p_actor_user_id": self.actor_user_id,
+                    "p_reason":        self.reason,
+                },
+            ).execute()
+        except Exception as exc:  # noqa: BLE001
+            return EffectResult(
+                name=self.name,
+                succeeded=False,
+                error=_classify_rpc_error(exc),
+            )
+
+        payload = response.data if hasattr(response, "data") else response
+        if not isinstance(payload, dict):
+            return EffectResult(
+                name=self.name,
+                succeeded=False,
+                error=ErrorDetail(
+                    code=ERROR_CODE_EFFECT_FAILED,
+                    message=f"unexpected reverse RPC payload: {type(payload).__name__}",
+                    context={"payload": str(payload)[:500]},
+                ),
+            )
+
+        rpc_affected: List[Dict[str, Any]] = payload.get("affected_objects") or []
+        for entry in rpc_affected:
+            ctx.audit_row_in_progress.setdefault("affected_objects", []).append(entry)
+
+        return EffectResult(
+            name=self.name,
+            succeeded=True,
+            affected=rpc_affected,
+            detail=(
+                f"reversed via RPC: new_audit_id={payload.get('audit_id')}, "
+                f"deleted_counts={payload.get('deleted_counts')}"
             ),
         )

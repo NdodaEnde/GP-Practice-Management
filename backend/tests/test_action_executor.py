@@ -372,43 +372,20 @@ def test_execute_promote_writes_audit_row_with_exact_affected_objects(
 
 @pytest.mark.slow_integration
 def test_execute_promote_holds_lock_against_concurrent_call(
-    supabase_client, validated_document_row
+    supabase_client, supabase_client_b, validated_document_row
 ):
     """Two threads call execute() simultaneously on the same document.
 
-    PR 1 SKIP — Phase 0 verification confirmed that real mutual exclusion
-    is not achievable at the Python layer with Supabase's HTTP-pooled
-    PostgREST client. Both session-scoped advisory locks (the executor's
-    original approach) and SELECT ... FOR UPDATE NOWAIT (the plan §2.6
-    pivot) fail in different ways:
+    PR 2 — un-skipped. The PL/pgSQL RPC's SELECT...FOR UPDATE NOWAIT
+    holds the digitised_documents row lock for the duration of the
+    promote transaction. The second concurrent call sees the locked
+    row, the NOWAIT raises SQLSTATE 55P03, the Effect's error classifier
+    maps it to ErrorDetail(code='action_locked'). One thread should
+    return outcome='success', the other outcome='effect_failed' with
+    code='action_locked'.
 
-      - Advisory locks: not visible across HTTP-pooled requests
-        (test_lock_visible_across_pooled_requests is the load-bearing
-        proof).
-      - FOR UPDATE NOWAIT in an RPC: releases when the RPC's transaction
-        commits (microseconds), useless for protecting the Python-side
-        promote work that follows.
-
-    Real mutual exclusion requires the entire promote operation to live
-    inside one Postgres transaction. That's PR 2's PL/pgSQL port — the
-    executor's _acquire_lock will then acquire FOR UPDATE NOWAIT inside
-    the same transaction that does the work, and the lock holds until
-    that transaction commits.
-
-    Until then, concurrent same-document calls are DETECTABLE in the
-    audit log (two action_audit_log rows for the same document within
-    seconds of each other = race). This is documented in the PR
-    description's "Phase 0 outcome" section and in executor.py's module
-    docstring.
+    This is the test the Phase 0 outcome explicitly deferred to PR 2.
     """
-    pytest.skip(
-        "PR 1: mutual exclusion deferred to PR 2 (PL/pgSQL port). "
-        "Phase 0 verification confirmed locks can't be retrofitted at "
-        "the Python layer; see executor.py's _acquire_lock docstring "
-        "and the PR description's Phase 0 outcome."
-    )
-    # The original implementation below is preserved for PR 2's reactivation
-    # once the PL/pgSQL port lands.
     sb = supabase_client
     doc_id = validated_document_row["document_id"]
     workspace_id = validated_document_row["workspace_id"]
@@ -449,38 +426,163 @@ def test_execute_promote_holds_lock_against_concurrent_call(
     results: List[Any] = []
     errors: List[Exception] = []
 
-    def _runner():
+    # Barrier syncs all threads to fire their HTTP requests simultaneously.
+    # Without it, the per-thread setup cost is enough for one RPC to finish
+    # before another enters FOR UPDATE NOWAIT — and no race ever occurs.
+    n_threads = 4
+    barrier = threading.Barrier(n_threads)
+    clients = [supabase_client, supabase_client_b, supabase_client, supabase_client_b]
+
+    def _runner(client):
         try:
-            r = execute(_build_action(), actor=actor, supabase=sb)
+            barrier.wait(timeout=10)
+            r = execute(_build_action(), actor=actor, supabase=client)
             results.append(r)
         except Exception as exc:  # noqa: BLE001
             errors.append(exc)
 
     try:
         start = time.monotonic()
-        t1 = threading.Thread(target=_runner)
-        t2 = threading.Thread(target=_runner)
-        t1.start()
-        t2.start()
-        t1.join(timeout=15)
-        t2.join(timeout=15)
+        threads = [threading.Thread(target=_runner, args=(clients[i],))
+                   for i in range(n_threads)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=15)
         elapsed = time.monotonic() - start
 
         # No threads should still be alive
-        assert not t1.is_alive() and not t2.is_alive(), "executor hung"
+        assert all(not t.is_alive() for t in threads), "executor hung"
         assert not errors, f"unexpected exceptions: {errors}"
-        assert elapsed < 10, f"concurrent path took too long: {elapsed:.1f}s"
+        assert elapsed < 30, f"concurrent path took too long: {elapsed:.1f}s"
 
         # Exactly one should have an action_locked outcome, the other success
         # (or one success + one effect_failed if the data quality issues
         # kick in — accept either as long as the lock is observed)
-        outcomes = sorted([r.outcome for r in results])
-        codes = sorted([
-            (r.error.code if r.error else None) for r in results
-        ])
+        outcomes = [r.outcome for r in results]
+        codes = [(r.error.code if r.error else None) for r in results]
         assert ERROR_CODE_ACTION_LOCKED in codes, (
             f"expected one action_locked outcome among concurrent calls; "
-            f"got outcomes={outcomes}, error_codes={codes}"
+            f"got outcomes={outcomes}, error_codes={codes}, "
+            f"messages={[r.error.message if r.error else None for r in results]}"
+        )
+
+    finally:
+        # Best-effort cleanup. The forward RPC's match-or-create may bind
+        # rows to a patient inferred from the document's demographics
+        # rather than `target_patient_id`; FK violations on `patients`
+        # delete are expected when that happens and don't invalidate
+        # the test's lock-semantics assertion. Wipe per-doc rows first
+        # (the source_document_id index makes this cheap), then drop
+        # the test patient.
+        try:
+            sb.table("prescription_items").delete().in_(
+                "prescription_id",
+                [r["id"] for r in (sb.table("prescriptions").select("id")
+                    .eq("source_document_id", doc_id).execute().data or [])],
+            ).execute()
+        except Exception:  # noqa: BLE001
+            pass
+        for tbl in ("prescriptions", "diagnoses", "vitals", "allergies", "encounters"):
+            try:
+                sb.table(tbl).delete().eq("source_document_id", doc_id).execute()
+            except Exception:  # noqa: BLE001
+                pass
+        try:
+            sb.table("patients").delete().eq("id", patient_id).execute()
+        except Exception:  # noqa: BLE001
+            pass  # match-or-create may have bound rows to a different patient
+
+
+@pytest.mark.slow_integration
+def test_execute_promote_real_run_one_transaction(
+    supabase_client, validated_document_row
+):
+    """Full pipeline real run through the PR 2 PL/pgSQL RPC.
+
+    Asserts:
+      - exactly one action_audit_log row written
+      - outcome='success'
+      - affected_objects includes at least one Patient (created or
+        linked), at least one Consultation (created), and the Document
+        (updated with previous_encounter_id captured)
+      - latency under 3 seconds (projection is 1-2s; 3s ceiling absorbs
+        normal variance, would catch a real regression).
+    """
+    sb = supabase_client
+    doc_id = validated_document_row["document_id"]
+    workspace_id = validated_document_row["workspace_id"]
+
+    # Use an existing patient for the target; the RPC may match-or-create
+    # based on demographics, but the action's preconditions require a
+    # valid target_patient_id.
+    patient_id = str(uuid.uuid4())
+    sb.table("patients").insert({
+        "id": patient_id,
+        "tenant_id": validated_document_row["tenant_id"],
+        "workspace_id": workspace_id,
+        "first_name": "RealRun", "last_name": "Test",
+        "dob": "1985-03-14", "id_number": "8503140002088",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }).execute()
+
+    actor = ActorContext(
+        user_id="test-user-realrun",
+        email="realrun@example.co.za",
+        permissions=["digitisation_validation"],
+    )
+    action = PromoteDocumentToPatientRecord(
+        document_id=doc_id,
+        target_patient_id=patient_id,
+        confirmation=PatientMatchEvidence(
+            confirmed_by_user_id="test-user-realrun",
+            confirmed_at=datetime.now(timezone.utc),
+            match_signals=["test"],
+            confidence_score=1.0,
+        ),
+        actor_user_id="test-user-realrun",
+        practice_id=workspace_id,
+        workspace_id=workspace_id,
+        extractions=validated_document_row["extraction"],
+    )
+
+    try:
+        start = time.monotonic()
+        result = execute(action, actor=actor, supabase=sb)
+        elapsed = time.monotonic() - start
+
+        assert result.outcome == "success", (
+            f"expected success; got outcome={result.outcome} "
+            f"error={result.error.code if result.error else None}: "
+            f"{result.error.message if result.error else ''}"
+        )
+        assert elapsed < 3.0, (
+            f"PR 2 latency target is 1-2s; threshold 3s. "
+            f"Real run took {elapsed:.2f}s — investigate query plan or "
+            f"contention before merging."
+        )
+
+        # Exactly one audit row for this run
+        rows = (
+            sb.table("action_audit_log").select("*")
+            .eq("id", result.audit_id).execute().data
+        )
+        assert len(rows) == 1
+        audit = rows[0]
+        assert audit["outcome"] == "success"
+        assert audit["dry_run"] is False
+
+        # affected_objects must include the three key types
+        types = {entry["type"] for entry in audit["affected_objects"]}
+        assert "Patient" in types, f"affected_objects missing Patient: {types}"
+        assert "Consultation" in types, f"affected_objects missing Consultation: {types}"
+        assert "Document" in types, f"affected_objects missing Document: {types}"
+
+        # Document entry should carry previous_encounter_id for reversal
+        doc_entry = next(e for e in audit["affected_objects"] if e["type"] == "Document")
+        assert "previous_encounter_id" in doc_entry, (
+            f"Document affected_object must capture previous_encounter_id "
+            f"for reversal; entry: {doc_entry}"
         )
 
     finally:
