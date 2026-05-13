@@ -1162,20 +1162,13 @@ async def approve_validation(
         logger.error(f"approve_validation: promotion failed for {document_id}: {e}", exc_info=True)
         promotion_error = f"{type(e).__name__}: {e}"
 
-    # Audit: record the approval, including the promotion summary so the
-    # validation-history drawer can show what landed where.
-    _write_edit_log(
-        document_id=document_id,
-        workspace_id=workspace_id,
-        user_email=current_user.get("email"),
-        action="approve",
-        session_id=session_id,
-        notes=notes,
-        metadata={
-            "promotion":       promotion,
-            "promotion_error": promotion_error,
-        } if (promotion or promotion_error) else None,
-    )
+    # Audit: written by the ActionExecutor into action_audit_log inside the
+    # promote-document action's pathway above. The legacy
+    # _write_edit_log(action='approve', ...) call was the PR 1 double-write
+    # kept for one PR cycle while the audit-log was bedded in. PR 2 removes
+    # it: action_audit_log is now the single source of truth for approve
+    # audits. The reject/save flows still write to validation_edit_log
+    # (their own ActionExecutor wiring lands in PR 3).
     # Re-fetch the doc so the response reflects the post-promotion linkage
     # (patient_id, encounter_id) — the earlier `result` was captured before
     # the promoter ran.
