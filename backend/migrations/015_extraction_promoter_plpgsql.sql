@@ -799,22 +799,26 @@ BEGIN
         );
 
         v_diag_inserted_id := gen_random_uuid()::TEXT;
+        -- diagnoses.id is UUID (phase1_patient_safety_migration.sql);
+        -- PL/pgSQL needs an explicit cast unlike PostgREST's implicit one.
         INSERT INTO diagnoses (
             id, tenant_id, workspace_id, encounter_id, patient_id,
             code, coding_system, display, diagnosis_type, status,
             onset_date, source, source_document_id, created_by, diagnosed_date
         ) VALUES (
-            v_diag_inserted_id, v_tenant_id, p_workspace_id, v_encounter_id, v_patient_id,
+            v_diag_inserted_id::UUID, v_tenant_id, p_workspace_id, v_encounter_id, v_patient_id,
             v_diag_code,
             CASE WHEN v_diag_code IS NOT NULL THEN 'ICD-10' ELSE 'local' END,
             COALESCE(NULLIF(btrim(v_row ->> 'description'), ''), v_diag_desc, 'Unspecified'),
             COALESCE(NULLIF(btrim(v_row ->> 'type'), ''), 'primary'),
             COALESCE(NULLIF(btrim(v_row ->> 'status'), ''), 'active'),
-            _promote_doc_normalise_date(v_row ->> 'onset_date'),
+            -- diagnoses.onset_date / diagnosed_date are DATE-typed; helper
+            -- returns TEXT (YYYY-MM-DD or NULL). Explicit cast required.
+            _promote_doc_normalise_date(v_row ->> 'onset_date')::DATE,
             'document_extraction',
             p_document_id,
             p_created_by,
-            _promote_doc_normalise_date(v_row ->> 'consultation_date')
+            _promote_doc_normalise_date(v_row ->> 'consultation_date')::DATE
         );
 
         v_diagnoses_count := v_diagnoses_count + 1;
@@ -869,6 +873,7 @@ BEGIN
         v_consult_date_text := NULLIF(btrim(COALESCE(v_row ->> 'consultation_date', '')), '');
 
         v_vital_id := gen_random_uuid()::TEXT;
+        -- vitals.id is UUID.
         INSERT INTO vitals (
             id, tenant_id, workspace_id, encounter_id, patient_id,
             bp_systolic, bp_diastolic, heart_rate, temperature, spo2,
@@ -876,7 +881,7 @@ BEGIN
             measured_datetime, consultation_date_text,
             source, source_document_id, created_by
         ) VALUES (
-            v_vital_id, v_tenant_id, p_workspace_id, v_encounter_id, v_patient_id,
+            v_vital_id::UUID, v_tenant_id, p_workspace_id, v_encounter_id, v_patient_id,
             v_bp_systolic, v_bp_diastolic, v_heart_rate, v_temperature, v_spo2,
             v_weight_kg, v_hba1c, v_blood_glu,
             v_measured_dt::TIMESTAMPTZ, v_consult_date_text,
@@ -898,11 +903,12 @@ BEGIN
     IF v_substances IS NOT NULL AND array_length(v_substances, 1) IS NOT NULL THEN
         FOREACH v_substance IN ARRAY v_substances LOOP
             v_allergy_id := gen_random_uuid()::TEXT;
+            -- allergies.id is UUID.
             INSERT INTO allergies (
                 id, tenant_id, workspace_id, patient_id,
                 substance, status, source, source_document_id, created_by
             ) VALUES (
-                v_allergy_id, v_tenant_id, p_workspace_id, v_patient_id,
+                v_allergy_id::UUID, v_tenant_id, p_workspace_id, v_patient_id,
                 v_substance, 'active', 'document_extraction', p_document_id, p_created_by
             );
             v_allergies_count := v_allergies_count + 1;
@@ -943,12 +949,21 @@ BEGIN
         v_dgroup_rows := v_doc_dates_meds -> v_dgroup_date;
 
         v_rx_id := gen_random_uuid()::TEXT;
-        v_rx_date := CASE WHEN v_dgroup_date = '_unknown' THEN NULL ELSE v_dgroup_date END;
+        -- prescriptions.prescription_date is NOT NULL in the live schema.
+        -- When meds have no consultation_date the Python promoter passed NULL
+        -- (latent bug that didn't surface on PR 1 smoke because all meds had
+        -- dates). Fall back to today — matches the encounter-creation behavior
+        -- ("no consultation_date → today's encounter").
+        v_rx_date := CASE WHEN v_dgroup_date = '_unknown'
+                          THEN to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD')
+                          ELSE v_dgroup_date END;
         v_encounter_id := COALESCE(
             v_encounter_map ->> v_dgroup_date,
             v_first_encounter
         );
 
+        -- prescriptions.id is TEXT in the live schema (probed); no cast needed.
+        -- encounter_id/patient_id are also TEXT (migration 010).
         INSERT INTO prescriptions (
             id, tenant_id, workspace_id, patient_id, encounter_id,
             doctor_name, prescription_date, status,
@@ -956,7 +971,7 @@ BEGIN
         ) VALUES (
             v_rx_id, v_tenant_id, p_workspace_id, v_patient_id, v_encounter_id,
             '(Digitised record — prescriber not extracted)',
-            v_rx_date, 'active',
+            v_rx_date::DATE, 'active',
             'document_extraction', p_document_id
         );
 
@@ -1000,6 +1015,7 @@ BEGIN
             END IF;
 
             v_rx_item_id := gen_random_uuid()::TEXT;
+            -- prescription_items.id is TEXT (probed). prescription_id is TEXT.
             INSERT INTO prescription_items (
                 id, prescription_id,
                 medication_name, generic_name, nappi_code, atc_code,
@@ -1011,7 +1027,9 @@ BEGIN
                 COALESCE(NULLIF(btrim(v_row ->> 'dosage'), ''), '—'),
                 COALESCE(NULLIF(btrim(v_row ->> 'frequency'), ''), '—'),
                 COALESCE(NULLIF(btrim(v_row ->> 'duration'), ''), '—'),
-                NULLIF(btrim(COALESCE(v_row ->> 'quantity', '')), '')::INT,
+                -- quantity is TEXT in the live schema (values like '15 tablets'),
+                -- not INT — pass through as text, no cast.
+                NULLIF(btrim(COALESCE(v_row ->> 'quantity', '')), ''),
                 NULLIF(btrim(COALESCE(v_row ->> 'instructions', '')), ''),
                 'document_extraction', p_document_id
             );
@@ -1184,6 +1202,8 @@ BEGIN
         v_id   := v_entry ->> 'id';
         v_op   := v_entry ->> 'op';
         IF v_type = 'PrescriptionItem' AND v_op = 'created' THEN
+            -- prescription_items.id is TEXT in the live schema (despite
+            -- containing UUID-formatted values). TEXT = TEXT, no cast.
             DELETE FROM prescription_items WHERE id = v_id;
             IF FOUND THEN
                 v_deleted_rxi := v_deleted_rxi + 1;
@@ -1200,6 +1220,7 @@ BEGIN
         v_id   := v_entry ->> 'id';
         v_op   := v_entry ->> 'op';
         IF v_type = 'Prescription' AND v_op = 'created' THEN
+            -- prescriptions.id is TEXT in the live schema. TEXT = TEXT.
             DELETE FROM prescriptions WHERE id = v_id;
             IF FOUND THEN
                 v_deleted_rx := v_deleted_rx + 1;
@@ -1216,7 +1237,7 @@ BEGIN
         v_id   := v_entry ->> 'id';
         v_op   := v_entry ->> 'op';
         IF v_type = 'Diagnosis' AND v_op = 'created' THEN
-            DELETE FROM diagnoses WHERE id = v_id;
+            DELETE FROM diagnoses WHERE id = v_id::UUID;
             IF FOUND THEN
                 v_deleted_diag := v_deleted_diag + 1;
             END IF;
@@ -1232,7 +1253,7 @@ BEGIN
         v_id   := v_entry ->> 'id';
         v_op   := v_entry ->> 'op';
         IF v_type = 'Vital' AND v_op = 'created' THEN
-            DELETE FROM vitals WHERE id = v_id;
+            DELETE FROM vitals WHERE id = v_id::UUID;
             IF FOUND THEN
                 v_deleted_vital := v_deleted_vital + 1;
             END IF;
@@ -1248,7 +1269,7 @@ BEGIN
         v_id   := v_entry ->> 'id';
         v_op   := v_entry ->> 'op';
         IF v_type = 'Allergy' AND v_op = 'created' THEN
-            DELETE FROM allergies WHERE id = v_id;
+            DELETE FROM allergies WHERE id = v_id::UUID;
             IF FOUND THEN
                 v_deleted_allergy := v_deleted_allergy + 1;
             END IF;
@@ -1270,7 +1291,7 @@ BEGIN
                 UPDATE digitised_documents
                    SET encounter_id = v_prior_encounter,
                        patient_id   = NULL
-                 WHERE id = v_doc_id;
+                 WHERE id::TEXT = v_doc_id;
                 v_reverse_affected := v_reverse_affected || jsonb_build_array(jsonb_build_object(
                     'type', 'Document', 'id', v_doc_id, 'op', 'reversed_update',
                     'restored_encounter_id', v_prior_encounter
@@ -1286,7 +1307,9 @@ BEGIN
         v_id   := v_entry ->> 'id';
         v_op   := v_entry ->> 'op';
         IF v_type = 'Consultation' AND v_op = 'created' THEN
-            DELETE FROM encounters WHERE id = v_id;
+            -- encounters.id observed as TEXT in dev DB, but cast both sides
+            -- defensively in case of schema drift.
+            DELETE FROM encounters WHERE id::TEXT = v_id;
             IF FOUND THEN
                 v_deleted_enc := v_deleted_enc + 1;
             END IF;

@@ -372,7 +372,7 @@ def test_execute_promote_writes_audit_row_with_exact_affected_objects(
 
 @pytest.mark.slow_integration
 def test_execute_promote_holds_lock_against_concurrent_call(
-    supabase_client, validated_document_row
+    supabase_client, supabase_client_b, validated_document_row
 ):
     """Two threads call execute() simultaneously on the same document.
 
@@ -426,42 +426,72 @@ def test_execute_promote_holds_lock_against_concurrent_call(
     results: List[Any] = []
     errors: List[Exception] = []
 
-    def _runner():
+    # Barrier syncs all threads to fire their HTTP requests simultaneously.
+    # Without it, the per-thread setup cost is enough for one RPC to finish
+    # before another enters FOR UPDATE NOWAIT — and no race ever occurs.
+    n_threads = 4
+    barrier = threading.Barrier(n_threads)
+    clients = [supabase_client, supabase_client_b, supabase_client, supabase_client_b]
+
+    def _runner(client):
         try:
-            r = execute(_build_action(), actor=actor, supabase=sb)
+            barrier.wait(timeout=10)
+            r = execute(_build_action(), actor=actor, supabase=client)
             results.append(r)
         except Exception as exc:  # noqa: BLE001
             errors.append(exc)
 
     try:
         start = time.monotonic()
-        t1 = threading.Thread(target=_runner)
-        t2 = threading.Thread(target=_runner)
-        t1.start()
-        t2.start()
-        t1.join(timeout=15)
-        t2.join(timeout=15)
+        threads = [threading.Thread(target=_runner, args=(clients[i],))
+                   for i in range(n_threads)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=15)
         elapsed = time.monotonic() - start
 
         # No threads should still be alive
-        assert not t1.is_alive() and not t2.is_alive(), "executor hung"
+        assert all(not t.is_alive() for t in threads), "executor hung"
         assert not errors, f"unexpected exceptions: {errors}"
-        assert elapsed < 10, f"concurrent path took too long: {elapsed:.1f}s"
+        assert elapsed < 30, f"concurrent path took too long: {elapsed:.1f}s"
 
         # Exactly one should have an action_locked outcome, the other success
         # (or one success + one effect_failed if the data quality issues
         # kick in — accept either as long as the lock is observed)
-        outcomes = sorted([r.outcome for r in results])
-        codes = sorted([
-            (r.error.code if r.error else None) for r in results
-        ])
+        outcomes = [r.outcome for r in results]
+        codes = [(r.error.code if r.error else None) for r in results]
         assert ERROR_CODE_ACTION_LOCKED in codes, (
             f"expected one action_locked outcome among concurrent calls; "
-            f"got outcomes={outcomes}, error_codes={codes}"
+            f"got outcomes={outcomes}, error_codes={codes}, "
+            f"messages={[r.error.message if r.error else None for r in results]}"
         )
 
     finally:
-        sb.table("patients").delete().eq("id", patient_id).execute()
+        # Best-effort cleanup. The forward RPC's match-or-create may bind
+        # rows to a patient inferred from the document's demographics
+        # rather than `target_patient_id`; FK violations on `patients`
+        # delete are expected when that happens and don't invalidate
+        # the test's lock-semantics assertion. Wipe per-doc rows first
+        # (the source_document_id index makes this cheap), then drop
+        # the test patient.
+        try:
+            sb.table("prescription_items").delete().in_(
+                "prescription_id",
+                [r["id"] for r in (sb.table("prescriptions").select("id")
+                    .eq("source_document_id", doc_id).execute().data or [])],
+            ).execute()
+        except Exception:  # noqa: BLE001
+            pass
+        for tbl in ("prescriptions", "diagnoses", "vitals", "allergies", "encounters"):
+            try:
+                sb.table(tbl).delete().eq("source_document_id", doc_id).execute()
+            except Exception:  # noqa: BLE001
+                pass
+        try:
+            sb.table("patients").delete().eq("id", patient_id).execute()
+        except Exception:  # noqa: BLE001
+            pass  # match-or-create may have bound rows to a different patient
 
 
 @pytest.mark.slow_integration
