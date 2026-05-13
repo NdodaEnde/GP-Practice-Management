@@ -3,56 +3,42 @@ ActionExecutor — the single audited pathway for every clinical mutation.
 
 The execute() function:
     1. Constructs an in-flight audit row (the "audit_row_in_progress").
-    2. Acquires a Postgres advisory lock keyed on (action_name, document_id)
-       via the action_try_advisory_lock RPC. If the lock is taken,
-       returns ActionResult(outcome='precondition_failed',
-       error=ErrorDetail(code='action_locked', ...)).
-    3. Checks idempotency_key against the action_audit_log unique index.
-    4. Runs every precondition in order. If any fails, returns
+    2. Checks idempotency_key against the action_audit_log unique index.
+    3. Runs every precondition in order. If any fails, returns
        ActionResult(outcome='precondition_failed').
-    5. In dry-run mode: calls effect.plan() for each effect, records
+    4. In dry-run mode: calls effect.plan() for each effect, records
        descriptors, returns ActionResult(outcome='dry_run'). The audit
        row is written with dry_run=TRUE.
-    6. In real mode: calls effect.plan() to record the descriptor,
+    5. In real mode: calls effect.plan() to record the descriptor,
        then effect.apply() to perform the mutation. Records results
        into the audit row. Returns ActionResult(outcome='success' or
        'effect_failed').
-    7. Releases the advisory lock in finally.
-    8. Writes the audit row in finally (fail-safe — log errors never
+    6. Writes the audit row in finally (fail-safe — log errors never
        propagate to the caller).
 
-Locking approach (PR 1 outcome — see PR description and PHASE 0 below):
-    PR 1 ships WITHOUT real mutual exclusion at the Python layer. The
-    `_acquire_lock` function is a no-op that always returns True. This
-    is the honest outcome of the Phase 0 verification:
+Locking — PR 2 outcome
+----------------------
 
-      - Session-scoped pg_try_advisory_lock is NOT visible across
-        Supabase's HTTP-pooled requests (verified empirically by
-        test_advisory_lock_semantics.py::test_lock_visible_across_pooled_requests
-        — the second client successfully re-acquires a lock the first
-        client supposedly holds).
+PR 1 acknowledged the Phase 0 outcome: session-scoped Postgres advisory
+locks are NOT visible across Supabase's HTTP-pooled requests, so locking
+cannot be retrofitted at the Python layer. PR 1 shipped without mutual
+exclusion.
 
-      - The pre-designed pivot to SELECT ... FOR UPDATE NOWAIT inside a
-        one-shot RPC ALSO doesn't deliver work-level mutual exclusion at
-        this layer — the FOR UPDATE lock is held only for the duration of
-        the RPC's transaction (microseconds), not for the Python-side
-        promote work that follows.
+PR 2 closes the gap structurally. The PromoteExtractionsViaPromoter
+Effect's apply() now calls the PL/pgSQL RPC `execute_action_promote_document`
+which begins with SELECT...FOR UPDATE NOWAIT on the source document row.
+The lock holds for the full transaction (the entire work IS the
+transaction). Concurrent calls targeting the same document raise
+SQLSTATE 55P03 which the Effect's error classifier maps to
+ErrorDetail(code='action_locked').
 
-    Real mutual exclusion requires the entire mutation to run inside ONE
-    Postgres transaction. That's PR 2's PL/pgSQL port: `promote_extractions`
-    becomes `execute_action_promote_document(...)`, the RPC acquires
-    FOR UPDATE NOWAIT at the start, and the lock holds for the duration
-    of the whole transaction (which IS the work). Same end-state lock
-    semantics, but the locking mechanism cannot be retrofitted at the
-    Python layer.
-
-    PR 1 still ships: audit log, structured preconditions, structured
-    effects, dry-run mode, idempotency-key replay, ErrorDetail typing,
-    reverse() column reservations. Those don't depend on locking. The
-    concurrent-call test is skipped with this documented outcome.
+The advisory-lock helpers from migration 014 became dead code; migration
+017 drops them. The executor's _acquire_lock no-op is deleted from this
+file. Mutual exclusion now lives at the database, where it has always
+needed to live.
 
 Lock granularity (per-document, not per-patient):
-    PR 1 locks per-document because that extracts cleanly from the
+    PR 2 locks per-document because that extracts cleanly from the
     current promoter. When the morning-briefing / open-loops machinery
     lands, the right semantics may be per-patient (two simultaneous
     promotions to the same patient compute their "since last visit"
@@ -63,6 +49,22 @@ Lock granularity (per-document, not per-patient):
     seconds of each other. Zero rows over three months = per-document
     is correct in practice. Handful of rows = per-patient is the right
     next move.
+
+Reversal — PR 2
+---------------
+
+reverse(audit_id, actor) loads the original audit row, validates it
+(not dry-run, not already reversed, action is reversible), and calls
+the reverse RPC for the action's type. For PromoteDocumentToPatientRecord
+this is reverse_action_promote_document. The reverse RPC handles BOTH
+the data undo AND the audit-row writes (new reversal row + back-pointer
+update on the original) inside one transaction — required because the
+back-pointer UPDATE depends on the new row's id and atomicity matters
+for audit-trail integrity.
+
+The executor.reverse() wrapper validates in Python first (cheap, no DB
+round-trip for dry-run/already-reversed cases), then calls the RPC and
+parses the response into an ActionResult.
 """
 
 from __future__ import annotations
@@ -83,14 +85,14 @@ from app.actions.base import (
     ErrorDetail,
     ExecutorContext,
     ERROR_CODE_ACTION_LOCKED,
+    ERROR_CODE_CANNOT_REVERSE_DRY_RUN,
     ERROR_CODE_EFFECT_FAILED,
     ERROR_CODE_IDEMPOTENCY_REPLAY,
     ERROR_CODE_INTERNAL,
+    ERROR_CODE_NOT_FOUND,
     ERROR_CODE_PRECONDITION_FAILED,
     utcnow,
 )
-from app.actions.registry import get_action_class
-
 logger = logging.getLogger(__name__)
 
 
@@ -98,68 +100,18 @@ _AUDIT_LOG_TABLE = "action_audit_log"
 
 
 # ---------------------------------------------------------------------------
-# Lock acquisition + release
+# Mutual exclusion — lives at the database now
 # ---------------------------------------------------------------------------
-
-def _acquire_lock(supabase, action_name: str, resource_key: str) -> bool:
-    """No-op in PR 1. Always returns True.
-
-    Phase 0 verification (test_advisory_lock_semantics.py) revealed that
-    session-scoped Postgres advisory locks are NOT visible across
-    Supabase's HTTP-pooled requests — Client A acquires the lock,
-    Client B (separate HTTP request through PostgREST's pool) successfully
-    acquires the same lock. The lock primitive doesn't deliver
-    mutual exclusion at the Python layer.
-
-    The pre-designed pivot to SELECT ... FOR UPDATE NOWAIT inside a
-    one-shot RPC ALSO doesn't help: the FOR UPDATE lock releases when
-    the RPC's transaction commits (microseconds later), not when the
-    Python-side promotion finishes.
-
-    Real mutual exclusion requires the entire promotion to run inside
-    one Postgres transaction. That's PR 2's PL/pgSQL port —
-    `execute_action_promote_document(...)` will acquire FOR UPDATE NOWAIT
-    at the start, and the lock will hold for the duration of the whole
-    transaction (which IS the work). When PR 2 lands, this function's
-    body changes to acquire the lock via the new RPC; the executor's
-    public surface stays the same.
-
-    For PR 1: the audit log makes concurrent-call collisions DETECTABLE
-    after the fact (two audit rows for the same document within seconds
-    of each other = race). The double-write detection query +
-    `affected_objects @> '[{"type": "Document", "id": "<id>"}]'` lookup
-    is sufficient to spot the gap in operations until PR 2 closes it.
-
-    See scripts/audit_double_write_check.sql for the detection query
-    and the PR description's "Phase 0 outcome" section.
-    """
-    # PR 2: replace with a call to the new PL/pgSQL RPC that acquires
-    # FOR UPDATE NOWAIT inside the same transaction that does the work.
-    return True
-
-
-def _release_lock(supabase, action_name: str, resource_key: str) -> None:
-    """No-op companion to _acquire_lock. See _acquire_lock docstring."""
-    return None
-
-
-def _resource_key_for(action: Action) -> str:
-    """Derive the lock's resource_key from the action's parameters.
-
-    PR 1 uses the document_id when present (per-document locking). The
-    method walks action.to_audit_parameters() looking for a `document_id`
-    key. Actions without a natural resource_key use the action_name +
-    a UUID, effectively disabling cross-call mutual exclusion — fine
-    for actions that aren't subject to the two-simultaneous-approvals
-    race (e.g., MergePatient where the two patient IDs are the contention
-    surface).
-    """
-    params = action.to_audit_parameters()
-    if "document_id" in params:
-        return str(params["document_id"])
-    if "target_patient_id" in params:
-        return str(params["target_patient_id"])
-    return f"no-resource-key-{uuid.uuid4().hex[:8]}"
+#
+# PR 1's _acquire_lock / _release_lock no-ops are deleted. Phase 0
+# verification confirmed session-scoped advisory locks aren't visible
+# across Supabase's HTTP-pooled requests; the only working primitive is
+# the FOR UPDATE NOWAIT taken inside the PL/pgSQL RPC (migration 015).
+# The Effect's apply() handles SQLSTATE 55P03 (lock_not_available) and
+# surfaces it as ErrorDetail(code='action_locked') through the normal
+# error path, so the executor pipeline doesn't need a separate lock
+# step. Actions that aren't database-backed (none yet) can layer their
+# own mutual exclusion in their effects.
 
 
 # ---------------------------------------------------------------------------
@@ -331,25 +283,8 @@ def execute(
         audit_row_in_progress=audit_row,
     )
 
-    resource_key = _resource_key_for(action)
-    lock_acquired = False
-
     try:
-        # 1) Acquire the advisory lock
-        lock_acquired = _acquire_lock(supabase, action.__action_name__, resource_key)
-        if not lock_acquired:
-            audit_row["outcome"] = "precondition_failed"
-            audit_row["error_detail"] = ErrorDetail(
-                code=ERROR_CODE_ACTION_LOCKED,
-                message=(
-                    f"action {action.__action_name__} is already in progress for "
-                    f"resource_key={resource_key}; please retry shortly"
-                ),
-                context={"resource_key": resource_key},
-            ).to_dict()
-            return _finalise(audit_row, started_at, started_ts, supabase)
-
-        # 2) Run preconditions
+        # 1) Run preconditions
         for pre in action.preconditions():
             try:
                 cr = pre.check(ctx)
@@ -369,7 +304,7 @@ def execute(
                 ).to_dict()
                 return _finalise(audit_row, started_at, started_ts, supabase)
 
-        # 3) Plan effects (always — even in real mode, so descriptors land
+        # 2) Plan effects (always — even in real mode, so descriptors land
         # in the audit row before any mutation happens).
         effects = list(action.effects())
         descriptors: List[EffectDescriptor] = []
@@ -397,7 +332,7 @@ def execute(
                     audit_row["affected_objects"].append(entry)
             return _finalise(audit_row, started_at, started_ts, supabase)
 
-        # 4) Apply effects (real mode)
+        # 3) Apply effects (real mode)
         for idx, eff in enumerate(effects):
             try:
                 er = eff.apply(ctx)
@@ -440,11 +375,6 @@ def execute(
             context={"action_name": action.__action_name__},
         ).to_dict()
         return _finalise(audit_row, started_at, started_ts, supabase)
-
-    finally:
-        # Always release the lock if we acquired it
-        if lock_acquired:
-            _release_lock(supabase, action.__action_name__, resource_key)
 
 
 def _finalise(
@@ -489,8 +419,18 @@ def _finalise(
 
 
 # ---------------------------------------------------------------------------
-# reverse() — STUB for PR 1
+# reverse() — PR 2 implementation
 # ---------------------------------------------------------------------------
+
+# Per-action dispatch: maps an action_name on a forward audit row to the
+# PL/pgSQL RPC that reverses it. PR 2 ships exactly one entry; PR 3 will
+# add more as additional reversible actions arrive. Keeping this in one
+# place avoids burying the dispatch logic inside each Action class — the
+# reverse pathway is a property of the executor, not the Action.
+_REVERSE_RPC_FOR_ACTION: Dict[str, str] = {
+    "PromoteDocumentToPatientRecord": "reverse_action_promote_document",
+}
+
 
 def reverse(
     audit_id: str,
@@ -499,15 +439,213 @@ def reverse(
     supabase,
     reason: Optional[str] = None,
 ) -> ActionResult:
-    """STUB — reversal lands in PR 2.
+    """Reverse a previously-applied audit row.
 
-    Column reservations (reverses_audit_id, reversed_by_audit_id) exist
-    on the audit_log table; this function is the entry point that PR 2
-    fleshes out. For now, calling it raises NotImplementedError to make
-    the deferred work visible.
+    Loads the original row, validates it (not dry-run, not already
+    reversed, action is reversible), and calls the action-specific
+    reverse RPC. The RPC handles BOTH the data undo AND the audit-row
+    writes (new reversal row + back-pointer update on the original)
+    inside one transaction — required because the back-pointer UPDATE
+    depends on the new row's id and atomicity matters for audit-trail
+    integrity.
+
+    Returns an ActionResult with outcome='reversed' on success. The
+    audit_id field on the returned ActionResult is the NEW (reversal)
+    audit row's id, not the original's.
     """
-    raise NotImplementedError(
-        "ActionExecutor.reverse() is a PR 2 deliverable. "
-        "PR 1 ships the audit_log columns and the function signature; "
-        "PR 2 ships the implementation."
+    started_at = utcnow()
+    started_ts = time.monotonic()
+
+    # ----------------------------------------------------------------------
+    # 1) Load the original audit row.
+    # ----------------------------------------------------------------------
+    try:
+        original = (
+            supabase.table(_AUDIT_LOG_TABLE)
+            .select("*")
+            .eq("id", audit_id)
+            .limit(1)
+            .execute()
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("audit row lookup failed for reverse(%s)", audit_id)
+        return _build_reverse_error_result(
+            audit_id=audit_id,
+            action_name="<unknown>",
+            error=ErrorDetail(
+                code=ERROR_CODE_INTERNAL,
+                message=f"audit row lookup raised: {exc!r}",
+                context={"audit_id": audit_id},
+            ),
+            started_at=started_at,
+            started_ts=started_ts,
+        )
+
+    if not original.data:
+        return _build_reverse_error_result(
+            audit_id=audit_id,
+            action_name="<unknown>",
+            error=ErrorDetail(
+                code=ERROR_CODE_NOT_FOUND,
+                message=f"audit row not found: {audit_id}",
+                context={"audit_id": audit_id},
+            ),
+            started_at=started_at,
+            started_ts=started_ts,
+        )
+
+    row = original.data[0]
+    action_name = row.get("action_name", "<unknown>")
+
+    # ----------------------------------------------------------------------
+    # 2) Validate. These checks are also done inside the RPC for
+    # atomicity, but we run them in Python first so the cheap rejection
+    # cases (dry-run, already-reversed) don't burn a transaction.
+    # ----------------------------------------------------------------------
+    if row.get("dry_run"):
+        return _build_reverse_error_result(
+            audit_id=audit_id,
+            action_name=action_name,
+            error=ErrorDetail(
+                code=ERROR_CODE_CANNOT_REVERSE_DRY_RUN,
+                message=(
+                    f"audit row {audit_id} is a dry-run; there is nothing to undo. "
+                    "Dry-runs are previews, not mutations."
+                ),
+                context={"audit_id": audit_id, "action_name": action_name},
+            ),
+            started_at=started_at,
+            started_ts=started_ts,
+        )
+
+    if row.get("reversed_by_audit_id"):
+        return _build_reverse_error_result(
+            audit_id=audit_id,
+            action_name=action_name,
+            error=ErrorDetail(
+                code=ERROR_CODE_PRECONDITION_FAILED,
+                message=(
+                    f"audit row {audit_id} already reversed by "
+                    f"{row['reversed_by_audit_id']}"
+                ),
+                context={
+                    "audit_id": audit_id,
+                    "reversed_by": row.get("reversed_by_audit_id"),
+                },
+            ),
+            started_at=started_at,
+            started_ts=started_ts,
+        )
+
+    rpc_name = _REVERSE_RPC_FOR_ACTION.get(action_name)
+    if rpc_name is None:
+        return _build_reverse_error_result(
+            audit_id=audit_id,
+            action_name=action_name,
+            error=ErrorDetail(
+                code=ERROR_CODE_PRECONDITION_FAILED,
+                message=f"action {action_name!r} is not reversible",
+                context={"audit_id": audit_id, "action_name": action_name},
+            ),
+            started_at=started_at,
+            started_ts=started_ts,
+        )
+
+    # ----------------------------------------------------------------------
+    # 3) Call the reverse RPC. The RPC writes both the new reversal
+    # audit row AND the back-pointer update on the original. Symmetric
+    # data + audit atomicity inside one transaction.
+    # ----------------------------------------------------------------------
+    try:
+        response = supabase.rpc(
+            rpc_name,
+            {
+                "p_audit_id": audit_id,
+                "p_actor_user_id": actor.user_id,
+                "p_reason": reason,
+            },
+        ).execute()
+    except Exception as exc:  # noqa: BLE001
+        from app.actions.primitives import _classify_rpc_error
+        err = _classify_rpc_error(exc)
+        return _build_reverse_error_result(
+            audit_id=audit_id,
+            action_name=action_name,
+            error=err,
+            started_at=started_at,
+            started_ts=started_ts,
+        )
+
+    payload = response.data if hasattr(response, "data") else response
+    if not isinstance(payload, dict) or "audit_id" not in payload:
+        return _build_reverse_error_result(
+            audit_id=audit_id,
+            action_name=action_name,
+            error=ErrorDetail(
+                code=ERROR_CODE_EFFECT_FAILED,
+                message=f"unexpected reverse RPC payload: {type(payload).__name__}",
+                context={"payload": str(payload)[:500]},
+            ),
+            started_at=started_at,
+            started_ts=started_ts,
+        )
+
+    new_audit_id = payload["audit_id"]
+    finished_at = utcnow()
+    return ActionResult(
+        audit_id=new_audit_id,
+        action_name="ReverseActionPromoteDocument" if action_name == "PromoteDocumentToPatientRecord" else f"Reverse{action_name}",
+        outcome="reversed",
+        affected_objects=payload.get("affected_objects") or [],
+        preconditions_checked=[
+            {"name": "AuditRowExists", "passed": True, "detail": None},
+            {"name": "NotDryRun", "passed": True, "detail": None},
+            {"name": "NotAlreadyReversed", "passed": True, "detail": None},
+        ],
+        effects_applied=[{
+            "name": "ReverseDocumentPromotionViaRpc",
+            "descriptor": {"summary": f"reverse {action_name} via {rpc_name}"},
+            "result": {
+                "succeeded": True,
+                "deleted_counts": payload.get("deleted_counts"),
+            },
+        }],
+        error=None,
+        started_at=started_at,
+        finished_at=finished_at,
+        duration_ms=int((time.monotonic() - started_ts) * 1000),
+    )
+
+
+def _build_reverse_error_result(
+    *,
+    audit_id: str,
+    action_name: str,
+    error: ErrorDetail,
+    started_at: datetime,
+    started_ts: float,
+) -> ActionResult:
+    """Construct an ActionResult for a reversal that failed validation
+    or surfaced an error. Does NOT write an audit row for failed reversal
+    attempts — failed reversals are not themselves auditable events in PR 2.
+    PR 3 may revisit (audit-the-attempt is useful for security reviews)."""
+    finished_at = utcnow()
+    # outcome must be one of ACTION_OUTCOMES. For reversal errors we use
+    # 'precondition_failed' (the cheap-rejection cases) or 'effect_failed'
+    # (RPC errors). action_locked could surface from the FOR UPDATE NOWAIT
+    # inside the reverse RPC if another reversal is racing.
+    outcome = "precondition_failed"
+    if error.code in (ERROR_CODE_EFFECT_FAILED, ERROR_CODE_INTERNAL, ERROR_CODE_ACTION_LOCKED):
+        outcome = "effect_failed"
+    return ActionResult(
+        audit_id=f"reverse-failed-{audit_id}",
+        action_name=f"Reverse{action_name}" if action_name != "<unknown>" else "ReverseAction",
+        outcome=outcome,
+        affected_objects=[],
+        preconditions_checked=[],
+        effects_applied=[],
+        error=error,
+        started_at=started_at,
+        finished_at=finished_at,
+        duration_ms=int((time.monotonic() - started_ts) * 1000),
     )

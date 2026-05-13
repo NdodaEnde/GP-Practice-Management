@@ -56,6 +56,11 @@ ERROR_CODE_IDEMPOTENCY_REPLAY:   Final[str] = "idempotency_replay"
 ERROR_CODE_VALIDATION_FAILED:    Final[str] = "validation_failed"
 ERROR_CODE_INVARIANT_VIOLATED:   Final[str] = "invariant_violated"
 ERROR_CODE_INTERNAL:             Final[str] = "internal"
+# Surfaced when executor.reverse() is called on an audit row with
+# dry_run=TRUE. A dry-run is a "what would happen" preview; there is
+# nothing to undo. Decided once, here, so future actions don't each
+# re-invent the response.
+ERROR_CODE_CANNOT_REVERSE_DRY_RUN: Final[str] = "cannot_reverse_dry_run"
 
 KNOWN_ERROR_CODES: Final[frozenset[str]] = frozenset({
     ERROR_CODE_ACTION_LOCKED,
@@ -67,6 +72,7 @@ KNOWN_ERROR_CODES: Final[frozenset[str]] = frozenset({
     ERROR_CODE_VALIDATION_FAILED,
     ERROR_CODE_INVARIANT_VIOLATED,
     ERROR_CODE_INTERNAL,
+    ERROR_CODE_CANNOT_REVERSE_DRY_RUN,
 })
 
 
