@@ -27,9 +27,9 @@ from ontology.actions import promote_document  # noqa: F401
 from ontology.actions import reject_document        # noqa: F401
 from ontology.actions import reprocess_document     # noqa: F401
 from ontology.actions import void_prescription      # noqa: F401
-
-# PR 3 — pending implementation:
-# from ontology.actions import edit_extraction_field # noqa: F401
-# from ontology.actions import soft_delete_patient   # noqa: F401
+from ontology.actions import edit_extraction_field  # noqa: F401
+from ontology.actions import soft_delete_patient    # noqa: F401
+from ontology.actions import reassign_document      # noqa: F401
+from ontology.actions import merge_patient          # noqa: F401
 # from ontology.actions import reassign_document     # noqa: F401
 # from ontology.actions import merge_patient         # noqa: F401

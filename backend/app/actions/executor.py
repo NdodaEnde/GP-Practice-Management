@@ -442,6 +442,8 @@ def _finalise(
 # test_pr3_reverse_dispatch_has_no_overlap in the unit tier.
 _REVERSE_RPC_FOR_ACTION: Dict[str, str] = {
     "PromoteDocumentToPatientRecord": "reverse_action_promote_document",
+    "ReassignDocument":               "reverse_action_reassign_document",
+    "MergePatient":                   "reverse_action_merge_patient",
 }
 
 # Each callable receives the ORIGINAL audit row (dict, with parameters

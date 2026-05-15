@@ -772,8 +772,9 @@ async def reprocess_document(
     Flip a document back to status='queued_for_processing' so the
     document_watcher re-runs the LandingAI parse + extract pipeline against it.
 
-    Use this after upgrading the extraction schema (rich GPPatientRecordExtraction)
-    to backfill existing docs without a fresh upload.
+    PR 3: routed through the ActionExecutor so the reprocess is audited
+    in `action_audit_log`. NOT reversible (reprocess is idempotent at
+    the watcher level).
 
     Workspace-scoped + capability-gated.
     NOTE: this DOES re-spend LandingAI API credits — one parse + one extract per call.
@@ -782,28 +783,33 @@ async def reprocess_document(
     if not workspace_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No workspace context")
 
-    existing = (
-        supabase.table("digitised_documents")
-        .select("id, workspace_id, status, filename")
-        .eq("id", document_id)
-        .eq("workspace_id", workspace_id)
-        .execute()
-    )
-    if not existing.data:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+    from app.actions import ActorContext, execute
+    from ontology.actions.reprocess_document import ReprocessDocument
 
-    now = datetime.now(timezone.utc).isoformat()
-    supabase.table("digitised_documents").update({
-        "status":     "queued_for_processing",
-        "updated_at": now,
-        "error_message": None,  # clear any prior failure
-    }).eq("id", document_id).execute()
+    actor = ActorContext.from_user(current_user)
+    action = ReprocessDocument(
+        document_id=document_id,
+        actor_user_id=actor.user_id,
+        actor_email=actor.email,
+        practice_id=workspace_id,
+        workspace_id=workspace_id,
+    )
+    result = execute(action, actor=actor, supabase=supabase)
+
+    if result.outcome != "success":
+        err = result.error
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT if (err and err.code == "precondition_failed")
+                        else (status.HTTP_404_NOT_FOUND if (err and err.code == "not_found")
+                              else status.HTTP_500_INTERNAL_SERVER_ERROR),
+            detail=err.message if err else f"reprocess failed with outcome={result.outcome}",
+        )
 
     return {
-        "status":  "queued",
+        "status":      "queued",
         "document_id": document_id,
-        "filename": existing.data[0].get("filename"),
-        "message": "Document re-queued. The watcher will re-process within ~15s.",
+        "audit_id":    result.audit_id,
+        "message":     "Document re-queued. The watcher will re-process within ~15s.",
     }
 
 
@@ -860,32 +866,18 @@ async def save_validation_edits(
         session_id        = sess.data[0]["id"]
         prior_extractions = sess.data[0].get("extractions") or {}
 
-    # Diff and log every changed leaf as a separate audit row.
+    # Diff every leaf path between prior and new. PR 3: each changed
+    # leaf becomes one EditExtractionField action = one audit_log row.
+    # See migration 015's audit-write-atomicity caveat — same envelope.
     prior_flat = _flatten_for_diff(prior_extractions)
     new_flat   = _flatten_for_diff(new_extractions)
     changed_paths = sorted({*prior_flat.keys(), *new_flat.keys()})
-    diff_count = 0
-    for p in changed_paths:
-        if prior_flat.get(p) != new_flat.get(p):
-            _write_edit_log(
-                document_id=document_id,
-                workspace_id=workspace_id,
-                user_email=user_email,
-                action="edit",
-                session_id=session_id,
-                field_path=p,
-                from_value=prior_flat.get(p),
-                to_value=new_flat.get(p),
-            )
-            diff_count += 1
 
-    # Update the latest validation session.
-    if session_id:
-        supabase.table("gp_validation_sessions").update({
-            "extractions": new_extractions,
-            "updated_at":  now,
-        }).eq("id", session_id).execute()
-    else:
+    if not session_id:
+        # No existing session = first save. Insert it carrying the new
+        # extractions; per-field actions only make sense when we have
+        # prior state to diff against. Subsequent saves go through the
+        # action path below.
         new_session_id = str(uuid.uuid4())
         supabase.table("gp_validation_sessions").insert({
             "id":             new_session_id,
@@ -899,6 +891,46 @@ async def save_validation_edits(
             "updated_at":     now,
         }).execute()
         session_id = new_session_id
+        diff_count = 0
+    else:
+        # Run one EditExtractionField action per changed leaf.
+        from app.actions import ActorContext, execute
+        from ontology.actions.edit_extraction_field import EditExtractionField
+
+        actor = ActorContext.from_user(current_user)
+        diff_count = 0
+        for p in changed_paths:
+            if prior_flat.get(p) == new_flat.get(p):
+                continue
+            action = EditExtractionField(
+                document_id=document_id,
+                session_id=session_id,
+                field_path=p,
+                from_value=prior_flat.get(p),
+                to_value=new_flat.get(p),
+                actor_user_id=actor.user_id,
+                actor_email=actor.email,
+                practice_id=workspace_id,
+                workspace_id=workspace_id,
+            )
+            result = execute(action, actor=actor, supabase=supabase)
+            if result.outcome != "success":
+                err = result.error
+                raise HTTPException(
+                    status_code=(status.HTTP_409_CONFLICT if (err and err.code == "precondition_failed")
+                                 else status.HTTP_500_INTERNAL_SERVER_ERROR),
+                    detail=(
+                        f"edit on {p!r} failed: "
+                        f"{err.message if err else result.outcome}"
+                    ),
+                )
+            diff_count += 1
+
+        # Touch session.updated_at — the per-field actions wrote the
+        # extractions JSONB itself; we just bump the metadata.
+        supabase.table("gp_validation_sessions").update({
+            "updated_at": now,
+        }).eq("id", session_id).execute()
 
     # Touch the digitised_documents row so the queue picks up the activity.
     supabase.table("digitised_documents").update({
@@ -956,7 +988,7 @@ async def preview_patient_match(
     extractions = (sess.data[0].get("extractions") if sess.data else None) or {}
     demographics = (extractions.get("patient_demographics") or {})
 
-    from app.services.extraction_promoter import find_match_candidates
+    from app.services.patient_matching import find_match_candidates
     candidates = find_match_candidates(supabase, workspace_id, demographics, limit=5)
 
     return {
@@ -1034,7 +1066,7 @@ async def approve_validation(
         demo_for_match = (
             (sess_for_match.data[0].get("extractions") if sess_for_match.data else None) or {}
         ).get("patient_demographics") or {}
-        from app.services.extraction_promoter import find_match_candidates
+        from app.services.patient_matching import find_match_candidates
         candidates = find_match_candidates(supabase, workspace_id, demo_for_match, limit=5)
         if candidates:
             # Surface as a non-error response with a clear gate flag so the
@@ -1201,51 +1233,63 @@ async def reject_validation(
     payload: Optional[Dict[str, Any]] = None,
     current_user: dict = Depends(require_capability("digitisation_validation")),
 ):
-    """Reject a document. Workspace-scoped + capability-gated."""
+    """Reject a document. PR 3: routed through ActionExecutor; audited
+    in action_audit_log; reversible. Workspace-scoped + capability-gated."""
     workspace_id = current_user.get("workspace_id")
     if not workspace_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No workspace context")
 
+    # Snapshot current state for the audit row's previous_* fields so
+    # reversal can restore it. Tenancy check is the side-effect.
     existing = (
         supabase.table("digitised_documents")
-        .select("id, workspace_id")
+        .select("id, workspace_id, status, validated_at, validated_by, error_message")
         .eq("id", document_id)
         .eq("workspace_id", workspace_id)
         .execute()
     )
     if not existing.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+    snap = existing.data[0]
 
-    from datetime import datetime, timezone
-    now = datetime.now(timezone.utc).isoformat()
     reason = (payload or {}).get("reason") or "Rejected by reviewer"
 
-    result = supabase.table("digitised_documents").update({
-        "status":        "rejected",
-        "validated_at":  now,
-        "validated_by":  current_user.get("email") or "system",
-        "error_message": reason,
-        "updated_at":    now,
-    }).eq("id", document_id).execute()
+    from app.actions import ActorContext, execute
+    from ontology.actions.reject_document import RejectDocument
 
-    # Audit: record the rejection with reason.
-    sess = (
-        supabase.table("gp_validation_sessions")
-        .select("id")
-        .eq("document_id", document_id)
-        .order("created_at", desc=True)
-        .limit(1)
-        .execute()
-    )
-    _write_edit_log(
+    actor = ActorContext.from_user(current_user)
+    action = RejectDocument(
         document_id=document_id,
+        reason=reason,
+        actor_user_id=actor.user_id,
+        actor_email=actor.email,
+        practice_id=workspace_id,
         workspace_id=workspace_id,
-        user_email=current_user.get("email"),
-        action="reject",
-        session_id=sess.data[0]["id"] if sess.data else None,
-        notes=reason,
+        previous_status=snap.get("status") or "",
+        previous_validated_at=snap.get("validated_at"),
+        previous_validated_by=snap.get("validated_by"),
+        previous_error_message=snap.get("error_message"),
     )
-    return {"status": "success", "document": result.data[0] if result.data else None}
+    result = execute(action, actor=actor, supabase=supabase)
+
+    if result.outcome != "success":
+        err = result.error
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT if (err and err.code == "precondition_failed")
+                        else status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=err.message if err else f"reject failed with outcome={result.outcome}",
+        )
+
+    # Re-fetch so callers see the post-action state.
+    refreshed = (
+        supabase.table("digitised_documents")
+        .select("*").eq("id", document_id).execute()
+    )
+    return {
+        "status":    "success",
+        "audit_id":  result.audit_id,
+        "document":  refreshed.data[0] if refreshed.data else None,
+    }
 
 
 ALLOWED_UPLOAD_EXTS = {'.pdf', '.png', '.jpg', '.jpeg', '.tiff', '.tif'}
@@ -1279,43 +1323,11 @@ def _flatten_for_diff(node: Any, path: str = "", out: Optional[Dict[str, Any]] =
     return out
 
 
-def _write_edit_log(
-    document_id: str,
-    workspace_id: str,
-    user_email: Optional[str],
-    action: str,
-    *,
-    session_id: Optional[str] = None,
-    field_path: Optional[str] = None,
-    from_value: Any = None,
-    to_value: Any = None,
-    notes: Optional[str] = None,
-    metadata: Optional[Dict[str, Any]] = None,
-) -> None:
-    """
-    Append a single audit entry to validation_edit_log. Fail-safe: a failed
-    log write must never break the user's save/approve/reject — log + continue.
-    """
-    try:
-        supabase.table("validation_edit_log").insert({
-            "document_id":  document_id,
-            "session_id":   session_id,
-            "workspace_id": workspace_id,
-            "user_email":   user_email,
-            "action":       action,
-            "field_path":   field_path,
-            "from_value":   from_value,
-            "to_value":     to_value,
-            "notes":        notes,
-            "metadata":     metadata,
-        }).execute()
-    except Exception as e:
-        # If the table doesn't exist (migration 005 not yet run) downgrade silently.
-        msg = str(e).lower()
-        if "validation_edit_log" in msg or "relation" in msg:
-            logger.warning("validation_edit_log table missing — skipping audit write. Run migration 005 to fix.")
-            return
-        logger.error(f"Failed to write edit log: {e}")
+# _write_edit_log has been removed in PR 3. All validation-queue audit
+# writes now flow through action_audit_log via the ActionExecutor
+# (see RejectDocument, EditExtractionField, ReprocessDocument, and
+# PromoteDocumentToPatientRecord from PR 2). Migration 019 drops the
+# legacy validation_edit_log table itself.
 
 
 @router.post("/upload")
