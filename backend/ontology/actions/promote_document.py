@@ -51,6 +51,7 @@ from typing import Any, Dict, List, Optional
 from app.actions.base import Action, CheckResult, ExecutorContext, Precondition, Effect
 from app.actions.primitives import (
     BelongsToPractice,
+    ConfirmationActorMatches,
     ConfirmationFresh,
     HasPermission,
     HasStatus,
@@ -108,33 +109,6 @@ class PatientMatchEvidence:
             confirmed_at=confirmed_at,
             match_signals=list(d.get("match_signals") or []),
             confidence_score=float(d.get("confidence_score", 0.0)),
-        )
-
-
-# ---------------------------------------------------------------------------
-# Custom precondition — confirmation actor must match action actor
-# ---------------------------------------------------------------------------
-
-@dataclass
-class _ConfirmationActorMatches:
-    """Verify the user who clicked 'confirm match' is the same user who
-    invoked the action. This is the anti-replay defense: a confirmation
-    from user A cannot be reused by user B to promote into a different
-    patient.
-    """
-    confirmation_user_id: str
-    actor_user_id: str
-    name: str = "ConfirmationActorMatches"
-
-    def check(self, ctx: ExecutorContext) -> CheckResult:
-        passed = self.confirmation_user_id == self.actor_user_id
-        return CheckResult(
-            name=self.name,
-            passed=passed,
-            detail=None if passed else (
-                f"confirmation was made by {self.confirmation_user_id!r}, "
-                f"but action actor is {self.actor_user_id!r}"
-            ),
         )
 
 
@@ -215,7 +189,7 @@ class PromoteDocumentToPatientRecord(Action):
             BelongsToPractice("patients", self.target_patient_id, self.workspace_id),
 
             # Confirmation provenance
-            _ConfirmationActorMatches(
+            ConfirmationActorMatches(
                 confirmation_user_id=(
                     self.confirmation.confirmed_by_user_id if self.confirmation else ""
                 ),

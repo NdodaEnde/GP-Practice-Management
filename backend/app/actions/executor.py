@@ -73,7 +73,7 @@ import logging
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from app.actions.base import (
     Action,
@@ -422,14 +422,45 @@ def _finalise(
 # reverse() — PR 2 implementation
 # ---------------------------------------------------------------------------
 
-# Per-action dispatch: maps an action_name on a forward audit row to the
-# PL/pgSQL RPC that reverses it. PR 2 ships exactly one entry; PR 3 will
-# add more as additional reversible actions arrive. Keeping this in one
-# place avoids burying the dispatch logic inside each Action class — the
-# reverse pathway is a property of the executor, not the Action.
+# Per-action reverse dispatch — two maps, one per implementation tier.
+#
+# _REVERSE_RPC_FOR_ACTION: action_name → PL/pgSQL RPC name. For actions
+#   whose forward mutates >1 table or needs FOR UPDATE NOWAIT on
+#   anything, reversal must be a PL/pgSQL RPC so the data undo + new
+#   audit row + back-pointer update are all atomic in one transaction.
+#
+# _REVERSE_PYTHON_FOR_ACTION: action_name → callable returning List[Effect].
+#   For actions whose forward is a single-row UPDATE (RejectDocument,
+#   VoidPrescription, etc.), reversal can be a Python-side Effect re-run.
+#   The two writes (new audit row INSERT + back-pointer UPDATE on
+#   original) are NOT atomic — same ~5ms audit-write gap PR 2 documented
+#   for forward Python paths. The data state is still consistent; only
+#   the audit pointer-pair might be missing on a Python crash mid-flight.
+#
+# An action_name in NEITHER map is non-reversible (returns
+# precondition_failed). An action_name in BOTH is a bug — caught by
+# test_pr3_reverse_dispatch_has_no_overlap in the unit tier.
 _REVERSE_RPC_FOR_ACTION: Dict[str, str] = {
     "PromoteDocumentToPatientRecord": "reverse_action_promote_document",
 }
+
+# Each callable receives the ORIGINAL audit row (dict, with parameters
+# JSONB hydrated) and the reversing ActorContext, returns the list of
+# Effects to apply for reversal. Populated by ontology/actions/<name>.py
+# modules at import time via register_python_reversal().
+_REVERSE_PYTHON_FOR_ACTION: Dict[str, Callable[[Dict[str, Any], "ActorContext"], List[Any]]] = {}
+
+
+def register_python_reversal(action_name: str, builder: Callable[[Dict[str, Any], "ActorContext"], List[Any]]) -> None:
+    """Action modules call this at import time to register their reversal
+    builder. Splits the concern: each Action class declares its own
+    reverse behavior in its module, while the executor stays generic."""
+    if action_name in _REVERSE_RPC_FOR_ACTION:
+        raise RuntimeError(
+            f"action {action_name!r} already has an RPC reverse handler; "
+            "an action cannot be reversed via both Python and RPC paths"
+        )
+    _REVERSE_PYTHON_FOR_ACTION[action_name] = builder
 
 
 def reverse(
@@ -538,7 +569,9 @@ def reverse(
         )
 
     rpc_name = _REVERSE_RPC_FOR_ACTION.get(action_name)
-    if rpc_name is None:
+    python_builder = _REVERSE_PYTHON_FOR_ACTION.get(action_name)
+
+    if rpc_name is None and python_builder is None:
         return _build_reverse_error_result(
             audit_id=audit_id,
             action_name=action_name,
@@ -551,8 +584,28 @@ def reverse(
             started_ts=started_ts,
         )
 
+    if python_builder is not None:
+        # ------------------------------------------------------------------
+        # 3a) Python-side reversal. The action's registered builder turns
+        # the original audit row into a list of reversal Effects; we run
+        # them, then INSERT a new audit row pointing at the original and
+        # UPDATE the original's reversed_by_audit_id. Two statements,
+        # NOT atomic — same audit-write gap as forward Python actions.
+        # ------------------------------------------------------------------
+        return _reverse_via_python(
+            original=row,
+            audit_id=audit_id,
+            action_name=action_name,
+            builder=python_builder,
+            actor=actor,
+            supabase=supabase,
+            reason=reason,
+            started_at=started_at,
+            started_ts=started_ts,
+        )
+
     # ----------------------------------------------------------------------
-    # 3) Call the reverse RPC. The RPC writes both the new reversal
+    # 3b) Call the reverse RPC. The RPC writes both the new reversal
     # audit row AND the back-pointer update on the original. Symmetric
     # data + audit atomicity inside one transaction.
     # ----------------------------------------------------------------------
@@ -648,4 +701,188 @@ def _build_reverse_error_result(
         started_at=started_at,
         finished_at=finished_at,
         duration_ms=int((time.monotonic() - started_ts) * 1000),
+    )
+
+
+def _reverse_via_python(
+    *,
+    original: Dict[str, Any],
+    audit_id: str,
+    action_name: str,
+    builder: Callable[[Dict[str, Any], ActorContext], List[Any]],
+    actor: ActorContext,
+    supabase,
+    reason: Optional[str],
+    started_at: datetime,
+    started_ts: float,
+) -> ActionResult:
+    """Run a Python-side reversal: build effects, apply them, write the
+    new reversal audit row, update the original's back-pointer.
+
+    Atomicity caveat: the two audit-log writes (INSERT new + UPDATE
+    original) are not in a transaction together. If Python crashes
+    between them, the reversal data state is correct but the back-
+    pointer pair is asymmetric (new row points at original; original
+    doesn't point at new). Same audit-write gap PR 2 named for forward
+    actions; acceptable for the same reasons.
+    """
+    finished_at = utcnow()
+    new_audit_id = str(uuid.uuid4())
+
+    # 1) Build the reversal effects from the original audit row.
+    try:
+        effects = builder(original, actor)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception(
+            "python reversal builder for %s crashed: %s", action_name, exc
+        )
+        return _build_reverse_error_result(
+            audit_id=audit_id,
+            action_name=action_name,
+            error=ErrorDetail(
+                code=ERROR_CODE_INTERNAL,
+                message=f"reversal builder for {action_name} raised: {exc!r}",
+                context={"audit_id": audit_id},
+            ),
+            started_at=started_at,
+            started_ts=started_ts,
+        )
+
+    # 2) Apply each effect via a shared ExecutorContext so they can
+    # contribute to a single affected_objects list. The reversal
+    # equivalent of forward's effect-application loop.
+    reverse_audit_row: Dict[str, Any] = {
+        "affected_objects": [],
+    }
+    ctx = ExecutorContext(
+        supabase=supabase,
+        actor=actor,
+        practice_id=original.get("practice_id", "unknown"),
+        workspace_id=original.get("workspace_id", "unknown"),
+        audit_row_in_progress=reverse_audit_row,
+    )
+
+    effects_applied: List[Dict[str, Any]] = []
+    for eff in effects:
+        try:
+            desc = eff.plan(ctx)
+        except Exception as exc:  # noqa: BLE001
+            desc = EffectDescriptor(
+                name=getattr(eff, "name", eff.__class__.__name__),
+                summary=f"plan raised: {exc!r}",
+            )
+        try:
+            er = eff.apply(ctx)
+        except Exception as exc:  # noqa: BLE001
+            er = EffectResult(
+                name=getattr(eff, "name", eff.__class__.__name__),
+                succeeded=False,
+                error=ErrorDetail(
+                    code=ERROR_CODE_EFFECT_FAILED,
+                    message=f"reversal effect.apply raised: {exc!r}",
+                    context={"action_name": action_name},
+                ),
+            )
+        effects_applied.append({
+            "name": desc.name,
+            "descriptor": desc.to_dict(),
+            "result": er.to_dict(),
+        })
+        if not er.succeeded:
+            # Bail out — partial reversal is worse than no reversal because
+            # the original audit row's reversed_by_audit_id stays NULL.
+            return _build_reverse_error_result(
+                audit_id=audit_id,
+                action_name=action_name,
+                error=er.error or ErrorDetail(
+                    code=ERROR_CODE_EFFECT_FAILED,
+                    message=f"reversal effect for {action_name} failed",
+                    context={"action_name": action_name},
+                ),
+                started_at=started_at,
+                started_ts=started_ts,
+            )
+
+    # 3) Write the new reversal audit row.
+    finished_at = utcnow()
+    duration_ms = int((time.monotonic() - started_ts) * 1000)
+    reverse_action_name = f"Reverse{action_name}"
+    new_row = {
+        "id": new_audit_id,
+        "action_name": reverse_action_name,
+        "action_version": 1,
+        "actor_user_id": actor.user_id,
+        "actor_email": actor.email,
+        "practice_id": original.get("practice_id"),
+        "workspace_id": original.get("workspace_id"),
+        "idempotency_key": None,
+        "dry_run": False,
+        "parameters": {
+            "reverses_audit_id": audit_id,
+            "reason": reason,
+        },
+        "preconditions_checked": [
+            {"name": "AuditRowExists", "passed": True, "detail": None},
+            {"name": "NotDryRun", "passed": True, "detail": None},
+            {"name": "NotAlreadyReversed", "passed": True, "detail": None},
+        ],
+        "effects_applied": effects_applied,
+        "affected_objects": reverse_audit_row.get("affected_objects", []),
+        "outcome": "reversed",
+        "error_detail": None,
+        "reverses_audit_id": audit_id,
+        "reversed_by_audit_id": None,
+        "started_at": started_at.isoformat(),
+        "finished_at": finished_at.isoformat(),
+        "duration_ms": duration_ms,
+    }
+    inserted_id = _write_audit_row(supabase, new_row)
+    if inserted_id is None:
+        # Audit write failed; data has been undone but the trail is
+        # incomplete. Return effect_failed so the caller knows; the
+        # underlying log captures the write failure.
+        logger.error(
+            "python reversal of %s succeeded data-side but new audit row insert failed",
+            action_name,
+        )
+        return _build_reverse_error_result(
+            audit_id=audit_id,
+            action_name=action_name,
+            error=ErrorDetail(
+                code=ERROR_CODE_EFFECT_FAILED,
+                message="reversal applied but audit-row INSERT failed",
+                context={"audit_id": audit_id, "new_audit_id": new_audit_id},
+            ),
+            started_at=started_at,
+            started_ts=started_ts,
+        )
+
+    # 4) Update the original's back-pointer. If this fails the data is
+    # consistent but the pointer-pair is asymmetric; logged and tolerated.
+    try:
+        (
+            supabase.table(_AUDIT_LOG_TABLE)
+            .update({"reversed_by_audit_id": inserted_id})
+            .eq("id", audit_id)
+            .execute()
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "back-pointer UPDATE on original audit row %s failed: %s — "
+            "reversal succeeded, new row %s is intact, audit trail is "
+            "one-way until reconciliation",
+            audit_id, exc, inserted_id,
+        )
+
+    return ActionResult(
+        audit_id=inserted_id,
+        action_name=reverse_action_name,
+        outcome="reversed",
+        affected_objects=reverse_audit_row.get("affected_objects", []),
+        preconditions_checked=new_row["preconditions_checked"],
+        effects_applied=effects_applied,
+        error=None,
+        started_at=started_at,
+        finished_at=finished_at,
+        duration_ms=duration_ms,
     )

@@ -189,6 +189,46 @@ class HasStatus:
 
 
 @dataclass
+class StatusOneOf:
+    """Verify `<table>.<column>` is one of `allowed`. Generalisation of
+    HasStatus for actions that accept multiple inbound states.
+
+    Example: ReprocessDocument accepts documents in {error, parsed,
+    pending_validation, validated} but not {queued_for_processing,
+    rejected}. HasStatus's single-value test doesn't fit; StatusOneOf
+    does.
+    """
+    table: str
+    object_id: str
+    allowed: List[str]
+    column: str = "status"
+    name: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.name:
+            self.name = f"StatusOneOf({self.table}.{self.column} in {self.allowed})"
+
+    def check(self, ctx: ExecutorContext) -> CheckResult:
+        result = (
+            ctx.supabase.table(self.table)
+            .select(self.column)
+            .eq("id", self.object_id)
+            .execute()
+        )
+        if not result.data:
+            return CheckResult(self.name, False, f"no {self.table} row with id={self.object_id}")
+        actual = result.data[0].get(self.column)
+        passed = actual in self.allowed
+        return CheckResult(
+            name=self.name,
+            passed=passed,
+            detail=None if passed else (
+                f"{self.table}.{self.column} is {actual!r}, expected one of {self.allowed}"
+            ),
+        )
+
+
+@dataclass
 class BelongsToPractice:
     """Verify `<table>.workspace_id == practice_id` for the given object_id.
 
@@ -284,6 +324,35 @@ class ConfirmationFresh:
             detail=None if passed else (
                 f"confirmation is {age.total_seconds():.0f}s old, "
                 f"max allowed {self.window.total_seconds():.0f}s"
+            ),
+        )
+
+
+@dataclass
+class ConfirmationActorMatches:
+    """Verify the user who clicked 'confirm' in the UI is the same user
+    invoking the action.
+
+    Anti-replay defense: a confirmation captured from user A cannot be
+    reused by user B to perform a sensitive action (promote, merge,
+    soft-delete) on different state. Pair with ConfirmationFresh.
+
+    Originally lived in promote_document.py; extracted to primitives.py
+    in PR 3 so MergePatient (and any future patient-lifecycle action
+    that requires fresh confirmation) can reuse it.
+    """
+    confirmation_user_id: str
+    actor_user_id: str
+    name: str = "ConfirmationActorMatches"
+
+    def check(self, ctx: ExecutorContext) -> CheckResult:
+        passed = self.confirmation_user_id == self.actor_user_id
+        return CheckResult(
+            name=self.name,
+            passed=passed,
+            detail=None if passed else (
+                f"confirmation was made by {self.confirmation_user_id!r}, "
+                f"but action actor is {self.actor_user_id!r}"
             ),
         )
 
@@ -414,6 +483,275 @@ class SoftDelete:
                     code=ERROR_CODE_EFFECT_FAILED,
                     message=f"failed to soft-delete {self.table}: {exc}",
                     context={"table": self.table, "object_id": self.object_id},
+                ),
+            )
+
+
+@dataclass
+class SetMultipleFields:
+    """Update multiple columns on a single row in one UPDATE statement.
+
+    Where SetField is the right tool for a one-column update, this is
+    the right tool when an action's atomic semantics span 3-4 columns
+    on the same row (e.g. RejectDocument sets status + validated_at +
+    validated_by + error_message together; if those land separately the
+    audit trail records 4 effects for what is logically one mutation).
+
+    Single UPDATE = single round-trip = atomic by Postgres semantics.
+    affected_objects gets ONE entry, not N — the action's intent is
+    the row, not the columns.
+    """
+    table: str
+    object_id: str
+    columns: Dict[str, Any]
+    op: str = "updated"
+    object_type: str = ""
+    name: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.object_type:
+            self.object_type = self.table.rstrip("s").capitalize()
+        if not self.name:
+            keys = ", ".join(sorted(self.columns.keys()))
+            self.name = f"SetMultipleFields({self.table}: {keys})"
+
+    def plan(self, ctx: ExecutorContext) -> EffectDescriptor:
+        return EffectDescriptor(
+            name=self.name,
+            summary=(
+                f"would set {len(self.columns)} columns on {self.table} "
+                f"id={self.object_id}: {sorted(self.columns.keys())}"
+            ),
+            will_affect=[{"type": self.object_type, "id": self.object_id, "op": self.op}],
+        )
+
+    def apply(self, ctx: ExecutorContext) -> EffectResult:
+        try:
+            (
+                ctx.supabase.table(self.table)
+                .update(self.columns)
+                .eq("id", self.object_id)
+                .execute()
+            )
+            ctx.append_affected_object(
+                object_type=self.object_type, object_id=self.object_id, op=self.op
+            )
+            return EffectResult(
+                name=self.name,
+                succeeded=True,
+                affected=[{"type": self.object_type, "id": self.object_id, "op": self.op}],
+                detail=f"updated {len(self.columns)} columns",
+            )
+        except Exception as exc:  # noqa: BLE001
+            return EffectResult(
+                name=self.name,
+                succeeded=False,
+                error=ErrorDetail(
+                    code=ERROR_CODE_EFFECT_FAILED,
+                    message=f"failed to update {self.table}: {exc}",
+                    context={
+                        "table": self.table,
+                        "object_id": self.object_id,
+                        "columns": sorted(self.columns.keys()),
+                    },
+                ),
+            )
+
+
+@dataclass
+class RestoreSoftDeleted:
+    """The inverse of SoftDelete — UPDATE `deleted_at` to NULL.
+
+    Used by the executor's Python-side reversal pathway when a
+    SoftDelete action is reverse()d. Also usable on its own for admin
+    "restore patient" flows that aren't strictly reversals (the latter
+    is out of PR 3 scope).
+    """
+    table: str
+    object_id: str
+    object_type: str = ""
+    name: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.object_type:
+            self.object_type = self.table.rstrip("s").capitalize()
+        if not self.name:
+            self.name = f"RestoreSoftDeleted({self.table}, {self.object_id[:8]}...)"
+
+    def plan(self, ctx: ExecutorContext) -> EffectDescriptor:
+        return EffectDescriptor(
+            name=self.name,
+            summary=f"would clear deleted_at on {self.table} id={self.object_id}",
+            will_affect=[{"type": self.object_type, "id": self.object_id, "op": "updated"}],
+        )
+
+    def apply(self, ctx: ExecutorContext) -> EffectResult:
+        try:
+            (
+                ctx.supabase.table(self.table)
+                .update({"deleted_at": None})
+                .eq("id", self.object_id)
+                .execute()
+            )
+            ctx.append_affected_object(
+                object_type=self.object_type, object_id=self.object_id, op="updated"
+            )
+            return EffectResult(
+                name=self.name,
+                succeeded=True,
+                affected=[{"type": self.object_type, "id": self.object_id, "op": "updated"}],
+            )
+        except Exception as exc:  # noqa: BLE001
+            return EffectResult(
+                name=self.name,
+                succeeded=False,
+                error=ErrorDetail(
+                    code=ERROR_CODE_EFFECT_FAILED,
+                    message=f"failed to restore {self.table}: {exc}",
+                    context={"table": self.table, "object_id": self.object_id},
+                ),
+            )
+
+
+@dataclass
+class SetJsonPath:
+    """Set a value at a dotted path inside a JSONB column.
+
+    Read-modify-write semantics over PostgREST. The Python wrapper:
+      1. SELECTs the current JSONB column value
+      2. Navigates the dotted path (e.g. "patient_demographics.surname"
+         or "diagnoses.0.icd10_code")
+      3. Sets the leaf value
+      4. UPDATEs the entire column back
+
+    Per-call cost is one read + one write. Use one effect per logical
+    field change — see EditExtractionField for the canonical caller.
+
+    Why not jsonb_set in raw SQL: PostgREST's `update` doesn't expose
+    jsonb_set cleanly through its update() builder, and we already
+    pay the network cost — keeping the path resolution in Python lets
+    us validate the path's existence and report a clean
+    'precondition_failed' (path not found) error before the UPDATE.
+
+    Numeric path segments index into arrays; non-numeric segments
+    index into objects. `0` means "first element"; not the literal
+    key "0".
+    """
+    table: str
+    object_id: str
+    json_column: str
+    json_path: str
+    value: Any
+    object_type: str = ""
+    name: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.object_type:
+            self.object_type = self.table.rstrip("s").capitalize()
+        if not self.name:
+            self.name = f"SetJsonPath({self.table}.{self.json_column}[{self.json_path}])"
+
+    def plan(self, ctx: ExecutorContext) -> EffectDescriptor:
+        return EffectDescriptor(
+            name=self.name,
+            summary=(
+                f"would set {self.table}.{self.json_column}.{self.json_path} = "
+                f"{self.value!r} for id={self.object_id}"
+            ),
+            will_affect=[{"type": self.object_type, "id": self.object_id, "op": "updated"}],
+        )
+
+    def apply(self, ctx: ExecutorContext) -> EffectResult:
+        try:
+            # 1. Read the current JSONB value
+            res = (
+                ctx.supabase.table(self.table)
+                .select(self.json_column)
+                .eq("id", self.object_id)
+                .limit(1)
+                .execute()
+            )
+            if not res.data:
+                return EffectResult(
+                    name=self.name,
+                    succeeded=False,
+                    error=ErrorDetail(
+                        code=ERROR_CODE_NOT_FOUND,
+                        message=f"{self.table} id={self.object_id} not found",
+                        context={"table": self.table, "object_id": self.object_id},
+                    ),
+                )
+            blob = res.data[0].get(self.json_column) or {}
+
+            # 2. Navigate the dotted path, mutating in place
+            segments = self.json_path.split(".")
+            cursor = blob
+            for seg in segments[:-1]:
+                idx: Any = int(seg) if seg.isdigit() else seg
+                if isinstance(cursor, list):
+                    if not isinstance(idx, int) or idx >= len(cursor):
+                        return EffectResult(
+                            name=self.name,
+                            succeeded=False,
+                            error=ErrorDetail(
+                                code=ERROR_CODE_EFFECT_FAILED,
+                                message=f"json_path segment {seg!r} does not exist in list",
+                                context={"path": self.json_path, "segment": seg},
+                            ),
+                        )
+                    cursor = cursor[idx]
+                else:
+                    if idx not in cursor:
+                        # Create the intermediate object — matches
+                        # jsonb_set with create_missing=true.
+                        cursor[idx] = {}
+                    cursor = cursor[idx]
+
+            last = segments[-1]
+            last_idx: Any = int(last) if last.isdigit() else last
+            if isinstance(cursor, list):
+                if not isinstance(last_idx, int) or last_idx >= len(cursor):
+                    return EffectResult(
+                        name=self.name,
+                        succeeded=False,
+                        error=ErrorDetail(
+                            code=ERROR_CODE_EFFECT_FAILED,
+                            message=f"final json_path segment {last!r} not addressable",
+                            context={"path": self.json_path, "segment": last},
+                        ),
+                    )
+                cursor[last_idx] = self.value
+            else:
+                cursor[last_idx] = self.value
+
+            # 3. Write back
+            (
+                ctx.supabase.table(self.table)
+                .update({self.json_column: blob})
+                .eq("id", self.object_id)
+                .execute()
+            )
+            ctx.append_affected_object(
+                object_type=self.object_type, object_id=self.object_id, op="updated"
+            )
+            return EffectResult(
+                name=self.name,
+                succeeded=True,
+                affected=[{"type": self.object_type, "id": self.object_id, "op": "updated"}],
+                detail=f"set {self.json_path} to {self.value!r}",
+            )
+        except Exception as exc:  # noqa: BLE001
+            return EffectResult(
+                name=self.name,
+                succeeded=False,
+                error=ErrorDetail(
+                    code=ERROR_CODE_EFFECT_FAILED,
+                    message=f"SetJsonPath failed: {exc}",
+                    context={
+                        "table": self.table,
+                        "object_id": self.object_id,
+                        "json_path": self.json_path,
+                    },
                 ),
             )
 
