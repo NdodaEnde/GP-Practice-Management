@@ -5326,6 +5326,14 @@ app.include_router(api_router)
 from app.api.digitisation import router as digitisation_router  # noqa: E402
 app.include_router(digitisation_router)
 
+# PR 3 Clinical Actions router — void prescription, soft-delete patient,
+# reassign document, merge patient, universal reverse. Mounted under
+# /clinical/*. Equivalent inclusion already exists in main.py for the
+# :8001 micro-service; server.py serves the frontend on :8002 and needs
+# the same routes registered.
+from app.api.clinical_actions import router as clinical_actions_router  # noqa: E402
+app.include_router(clinical_actions_router)
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,

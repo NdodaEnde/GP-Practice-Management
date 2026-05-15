@@ -878,8 +878,15 @@ async def validation_history(
 
     # Pull every audit row whose affected_objects mentions this document.
     # JSONB containment (@>) hits the GIN index on action_audit_log.affected_objects.
+    #
+    # NOTE: supabase-py's .contains() expects a JSON STRING when the column
+    # is JSONB and the filter is an array-of-objects. A Python list-of-dicts
+    # raises TypeError inside the supabase client — silently swallowed by
+    # this try/except, surfacing as an empty drawer. json.dumps() is the
+    # correct shape.
     raw_history: List[Dict[str, Any]] = []
     try:
+        import json as _json
         log_resp = (
             supabase.table("action_audit_log")
             .select(
@@ -887,8 +894,10 @@ async def validation_history(
                 "affected_objects, outcome, error_detail, started_at, "
                 "reverses_audit_id, reversed_by_audit_id"
             )
-            .contains("affected_objects",
-                      [{"type": "Document", "id": document_id}])
+            .contains(
+                "affected_objects",
+                _json.dumps([{"type": "Document", "id": document_id}]),
+            )
             .order("started_at", desc=True)
             .limit(limit)
             .execute()
