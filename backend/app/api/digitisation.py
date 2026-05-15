@@ -667,6 +667,153 @@ async def nappi_search(
     return {"query": qstr, "count": len(results), "results": results}
 
 
+# ----------------------------------------------------------------------------
+# /history — audit-trail timeline for a single document
+# ----------------------------------------------------------------------------
+#
+# PR 1-3 backstory:
+#   PR 1 introduced action_audit_log (the typed audit table).
+#   PR 2 made promote-document write to it via the ActionExecutor.
+#   PR 3 retired validation_edit_log entirely; reject/save/reprocess now
+#     all write to action_audit_log too.
+#   PR 4 (this commit) rewires this endpoint to read from
+#     action_audit_log and project rows back into the shape the existing
+#     ValidationHistoryDrawer.jsx already renders.
+#
+# Why preserve the legacy row shape rather than return raw audit rows:
+#   The frontend drawer has icon mappings and conditional rendering keyed
+#   on `row.action` (a short legacy verb: 'edit', 'approve', 'reject',
+#   'reprocess'). Returning audit_log rows directly would break the
+#   drawer until PR 5 rewrites it. Keeping the contract here means
+#   doctors see the timeline come back to life immediately, and PR 5
+#   can iterate the drawer with the audit_log shape at its own pace.
+#
+# Action_name → drawer `action` mapping (per-row):
+#   RejectDocument                  → 'reject'
+#   EditExtractionField             → 'edit'
+#   ReprocessDocument               → 'reprocess'
+#   PromoteDocumentToPatientRecord  → 'approve'
+#   ReassignDocument                → 'reassign'    (drawer falls through to default icon)
+#   MergePatient                    → 'merge'
+#   VoidPrescription                → 'void_rx'
+#   SoftDeletePatient               → 'soft_delete_patient'
+#   ReverseAction*                  → 'reverse'     (single bucket for all reversals)
+#
+# Filter: every audit row whose affected_objects contains this document.
+# Uses the GIN index on action_audit_log.affected_objects (jsonb_path_ops).
+# Includes Reverse* rows because their affected_objects also reference
+# the document (Document entry with op='reversed_update').
+
+_ACTION_NAME_TO_DRAWER_VERB = {
+    "RejectDocument":                "reject",
+    "EditExtractionField":           "edit",
+    "ReprocessDocument":             "reprocess",
+    "PromoteDocumentToPatientRecord": "approve",
+    "ReassignDocument":              "reassign",
+    "MergePatient":                  "merge",
+    "VoidPrescription":              "void_rx",
+    "SoftDeletePatient":             "soft_delete_patient",
+}
+
+
+def _audit_row_to_drawer_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    """Transform an action_audit_log row into the shape the existing
+    ValidationHistoryDrawer.jsx expects: {id, action, field_path,
+    from_value, to_value, user_email, notes, metadata, created_at}.
+    """
+    action_name = row.get("action_name") or ""
+    params = row.get("parameters") or {}
+    affected = row.get("affected_objects") or []
+    outcome = row.get("outcome")
+
+    # Reverse rows: every action_name starting with 'Reverse'.
+    if action_name.startswith("Reverse"):
+        drawer_action = "reverse"
+        notes = params.get("reason") or f"Reversed: {action_name[len('Reverse'):]}"
+    else:
+        drawer_action = _ACTION_NAME_TO_DRAWER_VERB.get(action_name, action_name.lower())
+        notes = None
+
+    # Per-action field projection.
+    field_path = None
+    from_value = None
+    to_value = None
+    metadata: Dict[str, Any] = {}
+
+    if action_name == "EditExtractionField":
+        field_path = params.get("field_path")
+        from_value = params.get("from_value")
+        to_value   = params.get("to_value")
+    elif action_name == "RejectDocument":
+        notes = params.get("reason") or notes
+        metadata["previous_status"] = params.get("previous_status")
+    elif action_name == "ReprocessDocument":
+        notes = params.get("reason") or notes
+    elif action_name == "PromoteDocumentToPatientRecord":
+        # Build a `promotion` summary the drawer's approve-row code paths
+        # render. The shape mirrors what extraction_promoter used to put
+        # in validation_edit_log.metadata.promotion.
+        patient_entry = next(
+            (e for e in affected if e.get("type") == "Patient"), None
+        )
+        consult_count = sum(1 for e in affected if e.get("type") == "Consultation")
+        diag_count    = sum(1 for e in affected if e.get("type") == "Diagnosis")
+        vital_count   = sum(1 for e in affected if e.get("type") == "Vital")
+        rx_count      = sum(1 for e in affected if e.get("type") == "Prescription")
+        promotion = {
+            "patient_id": patient_entry.get("id") if patient_entry else None,
+            "patient_kind": patient_entry.get("op") if patient_entry else None,
+            "counts": {
+                "encounters":         consult_count,
+                "diagnoses":          diag_count,
+                "vitals":             vital_count,
+                "prescription_items": rx_count,
+            },
+        }
+        metadata["promotion"] = promotion
+        if outcome != "success":
+            err = row.get("error_detail") or {}
+            metadata["promotion_error"] = (
+                f"{err.get('code', 'unknown')}: {err.get('message', '')}"
+            )
+    elif action_name == "ReassignDocument":
+        notes = params.get("reason") or notes
+        metadata["new_patient_id"] = params.get("new_patient_id")
+    elif action_name == "MergePatient":
+        notes = params.get("merge_reason") or notes
+        metadata["source_patient_id"] = params.get("source_patient_id")
+        metadata["target_patient_id"] = params.get("target_patient_id")
+    elif action_name == "VoidPrescription":
+        notes = params.get("void_reason") or notes
+        metadata["prescription_id"] = params.get("prescription_id")
+    elif action_name == "SoftDeletePatient":
+        notes = params.get("erasure_reason") or notes
+        metadata["patient_id"] = params.get("patient_id")
+
+    # Carry the audit_id pair so PR 5's UI can render reversal lineage.
+    if row.get("reverses_audit_id"):
+        metadata["reverses_audit_id"] = row["reverses_audit_id"]
+    if row.get("reversed_by_audit_id"):
+        metadata["reversed_by_audit_id"] = row["reversed_by_audit_id"]
+
+    # Outcome surfaces in the drawer for non-success rows.
+    if outcome and outcome != "success":
+        metadata["outcome"] = outcome
+
+    return {
+        "id":          row.get("id"),
+        "action":      drawer_action,
+        "action_name": action_name,  # PR 4 add: lets future UI distinguish action types
+        "field_path":  field_path,
+        "from_value":  from_value,
+        "to_value":    to_value,
+        "user_email":  row.get("actor_email") or row.get("actor_user_id"),
+        "notes":       notes,
+        "metadata":    metadata or None,
+        "created_at":  row.get("started_at"),
+    }
+
+
 @router.get("/validation/{document_id}/history")
 async def validation_history(
     document_id: str,
@@ -674,16 +821,24 @@ async def validation_history(
     current_user: dict = Depends(require_capability("digitisation_validation")),
 ):
     """
-    Return the append-only edit log for a single document — every reviewer
-    edit, accept, approve, reject, plus reprocess events. Workspace-scoped.
+    Return the append-only audit timeline for a single document — every
+    reviewer edit, accept, approve, reject, reprocess, reassign, merge.
+    Plus any reversals. Workspace-scoped.
 
-    Response shape:
+    PR 4: rewired to read from action_audit_log (migration 014's table)
+    via the affected_objects GIN index. The legacy validation_edit_log
+    table was dropped by migration 019; this endpoint is now the
+    single canonical read path for per-document audit timelines.
+
+    Response shape (preserved from the legacy endpoint so the existing
+    ValidationHistoryDrawer.jsx works without changes):
       {
         document_id: str,
-        original:    JSONB | null,    # AI baseline at extract time (extractions_original)
+        original:    JSONB | null,    # AI baseline at extract time
         approved:    JSONB | null,    # current/approved extractions
         history:     [
-          { id, action, field_path, from_value, to_value, user_email, notes, created_at },
+          { id, action, action_name, field_path, from_value, to_value,
+            user_email, notes, metadata, created_at },
           ...
         ]
       }
@@ -692,7 +847,7 @@ async def validation_history(
     if not workspace_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No workspace context")
 
-    # Tenancy check
+    # Tenancy check.
     existing = (
         supabase.table("digitised_documents")
         .select("id, workspace_id")
@@ -719,41 +874,30 @@ async def validation_history(
             approved = sess.data[0].get("extractions")
             original = sess.data[0].get("extractions_original")
     except Exception as e:
-        if "extractions_original" in str(e).lower():
-            # column doesn't exist yet (migration 005 not run)
-            try:
-                sess = (
-                    supabase.table("gp_validation_sessions")
-                    .select("extractions")
-                    .eq("document_id", document_id)
-                    .order("created_at", desc=True)
-                    .limit(1)
-                    .execute()
-                )
-                if sess.data:
-                    approved = sess.data[0].get("extractions")
-            except Exception:
-                pass
-        else:
-            logger.error(f"Failed to fetch validation session for history: {e}")
+        logger.warning(f"failed to fetch validation session for history: {e}")
 
-    # Pull edit log.
-    history: List[Dict[str, Any]] = []
+    # Pull every audit row whose affected_objects mentions this document.
+    # JSONB containment (@>) hits the GIN index on action_audit_log.affected_objects.
+    raw_history: List[Dict[str, Any]] = []
     try:
         log_resp = (
-            supabase.table("validation_edit_log")
-            .select("id, action, field_path, from_value, to_value, user_email, notes, metadata, created_at")
-            .eq("document_id", document_id)
-            .order("created_at", desc=True)
+            supabase.table("action_audit_log")
+            .select(
+                "id, action_name, actor_email, actor_user_id, parameters, "
+                "affected_objects, outcome, error_detail, started_at, "
+                "reverses_audit_id, reversed_by_audit_id"
+            )
+            .contains("affected_objects",
+                      [{"type": "Document", "id": document_id}])
+            .order("started_at", desc=True)
             .limit(limit)
             .execute()
         )
-        history = log_resp.data or []
+        raw_history = log_resp.data or []
     except Exception as e:
-        if "validation_edit_log" in str(e).lower() or "relation" in str(e).lower():
-            logger.warning("validation_edit_log table missing — returning empty history. Run migration 005 to fix.")
-        else:
-            logger.error(f"Failed to fetch validation edit log: {e}")
+        logger.error(f"failed to fetch action_audit_log for /history: {e}")
+
+    history = [_audit_row_to_drawer_row(r) for r in raw_history]
 
     return {
         "document_id": document_id,
