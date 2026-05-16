@@ -5334,6 +5334,12 @@ app.include_router(digitisation_router)
 from app.api.clinical_actions import router as clinical_actions_router  # noqa: E402
 app.include_router(clinical_actions_router)
 
+# Phase-3 query-layer router (PR A) — POST /api/query/run. server.py
+# serves the frontend on :8002, so the same route must be registered
+# here as well as in main.py (mirrors the clinical_actions note above).
+from app.api.query import router as query_router  # noqa: E402
+app.include_router(query_router)
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,

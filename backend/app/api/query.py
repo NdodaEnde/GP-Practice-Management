@@ -1,0 +1,199 @@
+"""
+query — the HTTP surface for the Phase-3 query layer (PR A).
+
+One endpoint that matters: `POST /api/query/run`. It is the reason PR #13
+could not merge as-is. The runner and the provenance contract are sound,
+but a query result a clinician can act on did not exist over HTTP — a
+Python REPL is not the binding constraint; a demo doctor clicking a
+source is. This endpoint makes the safe artifact reachable, and reachable
+*only* in its safe form: every row comes back with its provenance
+resolved to an openable scan or an explicitly, visibly unresolvable
+marker — never a silent dead link — and the envelope carries a
+cohort-level `unresolvable_count` so the dead-link signal is visible at
+the altitude a clinician actually reads a 40-row answer.
+
+Security shape, deliberately tight (it is the highest-blast-radius read
+surface in the system — it runs cross-cutting clinical queries):
+
+  * `workspace_id` is taken from the authenticated user ONLY, never from
+    the request body. A forged body workspace is structurally inert: the
+    request model has no such field and the runner is handed the auth
+    workspace. Tenant scope is not a check here, it is the absence of any
+    other path.
+  * Gated on the `clinical_query` capability — explicit-grant, NOT in the
+    foundation set (locked decision #4; same posture as PR 3's
+    `patient_admin`).
+  * Per-user rate limited (same in-process sliding-window pattern as
+    digitisation `/search`).
+
+Read-only by construction: this does NOT route through the
+ActionExecutor (queries are not actions; no audit row). `run_template`
+is the one chokepoint a future POPIA access-log decorator attaches to
+(Phase 5 — deferred, chokepoint already exists).
+"""
+
+from __future__ import annotations
+
+import os
+import time as _time
+from collections import deque as _deque
+from threading import Lock as _Lock
+from typing import Any, Dict, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
+
+from app.api.auth import require_capability
+from ontology.query import QueryError, resolve_provenance, run_template
+
+router = APIRouter(prefix="/api/query", tags=["Query Layer"])
+
+
+# Lazy supabase client — mirrors clinical_actions._sb(). Avoids
+# hard-failing at import time during test collection when env is unset.
+_supabase = None
+
+
+def _sb():
+    global _supabase
+    if _supabase is None:
+        from supabase import create_client
+
+        url = os.environ.get("SUPABASE_URL")
+        key = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get(
+            "SUPABASE_KEY"
+        )
+        if not url or not key:
+            raise RuntimeError("SUPABASE_URL / SUPABASE_SERVICE_KEY missing")
+        _supabase = create_client(url, key)
+    return _supabase
+
+
+# ---------------------------------------------------------------------------
+# Per-user rate limiter — verbatim shape of digitisation._enforce_search_rate_limit.
+# Query execution is cheap but a runaway frontend or a scripted caller
+# should not be able to enumerate a practice's cohorts unbounded.
+# ---------------------------------------------------------------------------
+_rate_lock = _Lock()
+_rate_state: Dict[str, _deque] = {}
+_RATE_WINDOW_S = 60
+_RATE_MAX = 30
+
+
+def _enforce_rate_limit(user_email: str) -> None:
+    now = _time.monotonic()
+    with _rate_lock:
+        bucket = _rate_state.setdefault(user_email, _deque())
+        while bucket and now - bucket[0] > _RATE_WINDOW_S:
+            bucket.popleft()
+        if len(bucket) >= _RATE_MAX:
+            retry = int(_RATE_WINDOW_S - (now - bucket[0])) + 1
+            raise HTTPException(
+                status_code=429,
+                detail=f"Query rate limit: {_RATE_MAX}/min. Retry in {retry}s.",
+                headers={"Retry-After": str(retry)},
+            )
+        bucket.append(now)
+
+
+# QueryError.code → HTTP status. Kept explicit (not a catch-all) so the
+# vocabulary is auditable: a template bug is a 500, a caller mistake is a
+# 4xx, a cold PostgREST cache is a retryable 503.
+_CODE_TO_STATUS: Dict[str, int] = {
+    "unknown_template": status.HTTP_404_NOT_FOUND,
+    "missing_workspace": status.HTTP_400_BAD_REQUEST,
+    "unknown_param": status.HTTP_422_UNPROCESSABLE_CONTENT,
+    "invalid_param": status.HTTP_422_UNPROCESSABLE_CONTENT,
+    "provenance_missing": status.HTTP_500_INTERNAL_SERVER_ERROR,
+    "bad_rpc_shape": status.HTTP_500_INTERNAL_SERVER_ERROR,
+    "template_unavailable": status.HTTP_503_SERVICE_UNAVAILABLE,
+}
+_DEFAULT_ERROR_STATUS = status.HTTP_400_BAD_REQUEST
+
+
+class QueryRunRequest(BaseModel):
+    """Note the absence of `workspace_id`. It is intentional and
+    load-bearing: the only place a workspace can come from is the
+    authenticated user. A client that adds workspace_id to the body
+    achieves nothing — the field does not exist on this model and the
+    runner is never handed body data for scoping."""
+
+    template_id: str = Field(..., min_length=1)
+    params: Dict[str, Any] = Field(default_factory=dict)
+
+
+@router.get("/templates")
+async def list_templates(
+    current_user: dict = Depends(require_capability("clinical_query")),
+):
+    """The closed set of query shapes this practice may run. Read-only;
+    no data, just the registry — lets a UI (and PR C's NL layer) discover
+    what is answerable instead of guessing."""
+    from ontology.query import all_templates
+
+    return {
+        "templates": [
+            {
+                "id": t.id,
+                "version": t.version,
+                "description": t.description,
+                "data_maturity": t.data_maturity,
+                "params": [
+                    {
+                        "name": p.name,
+                        "type": p.py_type.__name__,
+                        "required": p.required,
+                        "default": p.default,
+                    }
+                    for p in t.params
+                ],
+            }
+            for t in all_templates()
+        ]
+    }
+
+
+@router.post("/run")
+async def run_query(
+    body: QueryRunRequest,
+    current_user: dict = Depends(require_capability("clinical_query")),
+):
+    """Run a registered query template, scoped to the caller's workspace,
+    and return every row with its provenance resolved (openable scan or
+    visible unresolvable marker) plus the cohort-level unresolvable_count.
+    """
+    _enforce_rate_limit(current_user.get("email") or "anonymous")
+
+    workspace_id = current_user.get("workspace_id")
+    if not workspace_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No workspace context",
+        )
+
+    supabase = _sb()
+
+    try:
+        result = run_template(
+            supabase,
+            body.template_id,
+            body.params or {},
+            workspace_id=workspace_id,
+        )
+    except QueryError as qe:
+        raise HTTPException(
+            status_code=_CODE_TO_STATUS.get(qe.code, _DEFAULT_ERROR_STATUS),
+            detail={
+                "error": qe.code,
+                "message": qe.message,
+                "context": qe.context,
+            },
+        )
+
+    # The safe/unsafe difference: a result NEVER leaves this process
+    # without provenance resolved. resolve_provenance does not raise on a
+    # missing/odd document — it renders it visibly unresolvable.
+    resolved = resolve_provenance(
+        supabase, result, workspace_id=workspace_id
+    )
+    return resolved.to_dict()

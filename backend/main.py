@@ -34,6 +34,7 @@ from app.services.storage import StorageManager
 # Import GP router
 from app.api.gp_endpoints import gp_router
 from app.api.clinical_actions import router as clinical_actions_router
+from app.api.query import router as query_router
 
 # Import Ontology router (introspectable schema for codegen / docs)
 from app.api.ontology import ontology_router
@@ -124,6 +125,9 @@ app.include_router(ontology_router)
 # Include PR 3 clinical-actions router (void prescription, soft-delete
 # patient, reassign document, merge patient, universal reverse).
 app.include_router(clinical_actions_router)
+
+# Include Phase-3 query-layer router (POST /api/query/run) — PR A.
+app.include_router(query_router)
 
 if not settings.DEBUG:
     app.add_middleware(

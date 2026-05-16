@@ -211,6 +211,128 @@ conn.close()
 ok("probe function dropped (no residue)")
 
 # ---------------------------------------------------------------------------
+# Probe (iv) — PR A RESOLUTION probe. The single highest-priority check
+# in Phase 3, in live form: the dominant 62% orphaned-source corpus
+# failure must render VISIBLY UNRESOLVABLE (explicit reason + truncated
+# id in the citation), never a blank or a silent dead link — AND a
+# genuinely present source must render OPENABLE with a real signed URL.
+# Read-only: run_template is STABLE; resolve_provenance does select +
+# create_signed_url. No writes.
+# ---------------------------------------------------------------------------
+print("\n(iv) PR A — provenance resolution: orphaned ⇒ visibly "
+      "unresolvable, present ⇒ openable")
+
+from ontology.query import (  # noqa: E402
+    run_template, resolve_provenance, QueryError, OPENABLE, UNRESOLVABLE,
+)
+
+sb2 = create_client(SB_URL, SB_KEY)
+
+# Grounded in the live probe done while writing PR A:
+#   typec-workspace-001  has doc 1ea97a59 (Patient file.pdf), 0 orphaned;
+#                         diagnoses incl. J06.9  → RESOLVABLE path.
+#   test-workspace-c9f4d540  has 1 diagnosis I10 whose source_document_id
+#                         …e15a71 is missing globally → UNRESOLVABLE path.
+RESOLVABLE_WS = "typec-workspace-001"
+RESOLVABLE_PREFIX = "J06"
+ORPHANED_WS = "test-workspace-c9f4d540"
+ORPHANED_PREFIX = "I10"
+
+
+def _run_with_cache_retry(ws, prefix):
+    """The template RPC may 404 (PGRST202) until PostgREST's schema cache
+    reloads after migration 024's NOTIFY. A verification script is
+    allowed to be patient; production is not (runner does not retry)."""
+    last = None
+    for attempt in range(6):
+        try:
+            return run_template(
+                sb2, "patients_with_diagnosis_prefix",
+                {"icd10_prefix": prefix}, workspace_id=ws,
+            )
+        except QueryError as qe:
+            last = qe
+            if qe.code in ("template_unavailable",):
+                time.sleep(4)
+                continue
+            raise
+    raise last or RuntimeError("rpc never resolved")
+
+
+try:
+    res_ok = _run_with_cache_retry(RESOLVABLE_WS, RESOLVABLE_PREFIX)
+    if res_ok.row_count == 0:
+        bad(f"resolvable probe: 0 rows for {RESOLVABLE_WS}/{RESOLVABLE_PREFIX} "
+            f"— corpus changed; pick another present-source workspace")
+    else:
+        resolved_ok = resolve_provenance(
+            sb2, res_ok, workspace_id=RESOLVABLE_WS
+        )
+        openable = [r for r in resolved_ok.rows
+                    if r.source.status == OPENABLE]
+        if openable and openable[0].source.signed_url:
+            ok(f"present source ⇒ OPENABLE with signed URL; "
+               f"citation={openable[0].source.citation!r}")
+        else:
+            bad("present source did NOT resolve to an openable signed URL "
+                "— the resolvable path is broken")
+        if resolved_ok.unresolvable_count == 0:
+            ok(f"{RESOLVABLE_WS} unresolvable_count == 0 (expected; "
+               f"0 orphaned there)")
+        else:
+            print(f"  ⚠ {RESOLVABLE_WS} unresolvable_count="
+                  f"{resolved_ok.unresolvable_count} (corpus drift; not a "
+                  f"PR A blocker — the openable assertion is the gate)")
+except QueryError as qe:
+    bad(f"resolvable probe raised QueryError({qe.code!r}: {qe.message}). "
+        f"If unknown_template/template_unavailable: apply migration 024 "
+        f"and wait for the PostgREST schema-cache reload before smoke.")
+except Exception as e:  # noqa: BLE001
+    bad(f"resolvable probe raised {e!r}")
+
+try:
+    res_orphan = _run_with_cache_retry(ORPHANED_WS, ORPHANED_PREFIX)
+    if res_orphan.row_count == 0:
+        bad(f"orphaned probe: 0 rows for {ORPHANED_WS}/{ORPHANED_PREFIX} "
+            f"— corpus changed; the 15/24 finding must be re-grounded")
+    else:
+        resolved_orphan = resolve_provenance(
+            sb2, res_orphan, workspace_id=ORPHANED_WS
+        )
+        unr = [r for r in resolved_orphan.rows
+               if r.source.status == UNRESOLVABLE]
+        if not unr:
+            bad("orphaned probe: the known-missing source resolved as "
+                "something OTHER than UNRESOLVABLE — the dominant 62% "
+                "corpus failure is being rendered authoritatively. THIS "
+                "is the Phase-3 unsafe artifact.")
+        else:
+            s = unr[0].source
+            visible = (s.signed_url is None
+                       and s.unresolvable_reason ==
+                       "source_document_not_found_in_workspace"
+                       and "…" in s.citation
+                       and "no longer available" in s.citation)
+            if visible:
+                ok(f"orphaned source ⇒ VISIBLY UNRESOLVABLE; "
+                   f"citation={s.citation!r}")
+            else:
+                bad(f"orphaned source unresolvable but NOT visibly so: "
+                    f"citation={s.citation!r} reason="
+                    f"{s.unresolvable_reason!r} url={s.signed_url!r}")
+        if resolved_orphan.unresolvable_count >= 1:
+            ok(f"cohort signal present: unresolvable_count="
+               f"{resolved_orphan.unresolvable_count} "
+               f"(read at cohort altitude, not buried per-row)")
+        else:
+            bad("unresolvable_count is 0 despite an unresolvable row — "
+                "the row/aggregate consistency invariant is violated")
+except QueryError as qe:
+    bad(f"orphaned probe raised QueryError({qe.code!r}: {qe.message})")
+except Exception as e:  # noqa: BLE001
+    bad(f"orphaned probe raised {e!r}")
+
+# ---------------------------------------------------------------------------
 print("\n" + "=" * 64)
 if FAIL:
     print("PHASE-0 OUTCOME: compile-to-RPC strategy NOT confirmed.")
@@ -222,8 +344,10 @@ if FAIL:
     for f in FAIL:
         print(f"  - {f}")
     sys.exit(1)
-print("PHASE-0 OUTCOME: compile-to-RPC strategy CONFIRMED.")
-print("STABLE TABLE(... jsonb) functions round-trip through supabase-py")
-print(".rpc() as typed dict rows. Proceed with the RPC-backed query")
-print("layer exactly as planned.")
+print("PHASE-0 OUTCOME: compile-to-RPC strategy CONFIRMED + PR A")
+print("resolution VERIFIED. STABLE TABLE(... jsonb) functions round-trip")
+print("through supabase-py .rpc() as typed dict rows; a present source")
+print("resolves OPENABLE with a signed URL; the dominant orphaned-source")
+print("corpus failure resolves VISIBLY UNRESOLVABLE (explicit reason +")
+print("truncated id), never a silent dead link. PR A is safe to smoke.")
 sys.exit(0)

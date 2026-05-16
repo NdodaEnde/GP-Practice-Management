@@ -26,6 +26,15 @@ from ontology.query.spec import ParamSpec, TemplateSpec
 from ontology.query.registry import register_template, get_template, all_templates
 from ontology.query.result import Provenance, QueryRow, QueryResult
 from ontology.query.runner import run_template, QueryError
+from ontology.query.provenance import (
+    resolve_provenance,
+    ResolvedSource,
+    ResolvedRow,
+    ResolvedQueryResult,
+    OPENABLE,
+    UNRESOLVABLE,
+    NO_SOURCE,
+)
 
 # Side-effect import: populates the registry at package import time
 # (mirrors app.actions importing .registered).
@@ -42,4 +51,11 @@ __all__ = [
     "QueryResult",
     "run_template",
     "QueryError",
+    "resolve_provenance",
+    "ResolvedSource",
+    "ResolvedRow",
+    "ResolvedQueryResult",
+    "OPENABLE",
+    "UNRESOLVABLE",
+    "NO_SOURCE",
 ]
