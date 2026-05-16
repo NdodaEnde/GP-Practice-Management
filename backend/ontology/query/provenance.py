@@ -79,6 +79,49 @@ _STATES = (OPENABLE, UNRESOLVABLE, NO_SOURCE)
 _STORAGE_BUCKET = "medical-records"
 _SIGNED_URL_TTL_S = 3600
 
+# Decision #1 (locked at PR B review): "low-confidence" per-fact is
+# BINARY — no numeric score, no threshold, never the word
+# "low-confidence", never a percentage. The only signal is
+# gp_validation_sessions.confidence_scores (section-level, recoverable
+# for ~1/16 source docs). Its ABSENCE is the dominant 15/16 case and is
+# NOT reassurance — it is rendered explicitly so it can never be read as
+# "this fact is fine".
+_CONF_SUFFIX_RECOVERABLE = (
+    " — extraction quality not individually verified "
+    "(document-level check available)"
+)
+_CONF_SUFFIX_UNVERIFIED = " — extraction quality not verified"
+# Decision #2 (locked): reversed/superseded source — per-row suffix PLUS
+# the mandatory cohort-level superseded_count (ResolvedQueryResult).
+_SUPERSEDED_SUFFIX = " (source promotion was reversed — fact may be stale)"
+
+
+@dataclass(frozen=True)
+class SourceQuality:
+    """Per-source quality signals. BOTH are coarse and honest:
+
+    - section_confidence_recoverable: a `gp_validation_sessions` row with
+      non-empty section confidence exists for this document. This is a
+      DOCUMENT-level signal (sections, not per-fact) — its presence does
+      NOT vouch for the specific fact; its ABSENCE is the dominant 15/16
+      corpus case and is rendered explicitly, never as silent
+      reassurance (Decision #1).
+    - superseded: the source document's promotion was reversed and not
+      later re-promoted, so the fact may be stale (Decision #2). The live
+      corpus produces 0 of this (the reverse RPC DELETEs the facts) — so
+      this field is construct-validity-only: exercised by fabricated unit
+      input, NEVER claimed as corpus-demonstrated.
+    """
+
+    section_confidence_recoverable: bool
+    superseded: bool
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "section_confidence_recoverable": self.section_confidence_recoverable,
+            "superseded": self.superseded,
+        }
+
 
 @dataclass(frozen=True)
 class ResolvedSource:
@@ -94,6 +137,10 @@ class ResolvedSource:
     signed_url: Optional[str]
     citation: str
     unresolvable_reason: Optional[str] = None
+    # PR B: coarse, honest quality signals. None for NO_SOURCE (a
+    # live_entry has no document to assess). Independent of the
+    # silent-dead-link invariant below — quality never changes openable.
+    quality: Optional[SourceQuality] = None
 
     def __post_init__(self) -> None:
         if self.status not in _STATES:
@@ -134,6 +181,7 @@ class ResolvedSource:
             "signed_url": self.signed_url,
             "citation": self.citation,
             "unresolvable_reason": self.unresolvable_reason,
+            "quality": self.quality.to_dict() if self.quality else None,
         }
 
 
@@ -144,12 +192,25 @@ class ResolvedRow:
     data: Dict[str, Any]
     provenance: Provenance
     source: ResolvedSource
+    # Decision #1 → option (a): the two-source representation exists as an
+    # OPTIONAL, ADDITIVE field — single-source path provably untouched
+    # (`additional_sources is None` for 100% of current-corpus rows is a
+    # tested CI invariant, not an assumption). The corpus has 0
+    # two-source facts AND no multi-source schema, so the resolver always
+    # leaves this None today; the field is structurally ready the day the
+    # promote path first assembles a fact from two documents.
+    additional_sources: Optional[List["ResolvedSource"]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             **self.data,
             "provenance": self.provenance.to_dict(),
             "source": self.source.to_dict(),
+            "additional_sources": (
+                [s.to_dict() for s in self.additional_sources]
+                if self.additional_sources is not None
+                else None
+            ),
         }
 
 
@@ -172,16 +233,33 @@ class ResolvedQueryResult:
     row_count: int
     data_maturity: str
     unresolvable_count: int
+    # PR B / Decision #2: the cohort-altitude superseded signal — the one
+    # that gets read when a clinician scans a 40-row cohort and acts on
+    # it whole without reading every per-row suffix. Defaulted so PR A's
+    # direct constructions (no superseded rows) stay valid.
+    superseded_count: int = 0
 
     def __post_init__(self) -> None:
         # Invariant 2 — row/aggregate signals cannot drift. The envelope
-        # physically cannot exist if the aggregate disagrees with the
-        # rows. PR B's superseded_count will add a sibling assertion here.
+        # physically cannot exist if an aggregate disagrees with the rows
+        # it summarises, because the aggregate is precisely the signal
+        # that gets read at cohort altitude.
         actual = sum(1 for r in self.rows if r.source.status == UNRESOLVABLE)
         if self.unresolvable_count != actual:
             raise ValueError(
                 f"unresolvable_count={self.unresolvable_count} disagrees "
                 f"with {actual} UNRESOLVABLE rows — the cohort-level and "
+                f"row-level safety signals must never drift apart"
+            )
+        # PR B sibling assertion (same drift-impossible pattern).
+        actual_sup = sum(
+            1 for r in self.rows
+            if r.source.quality is not None and r.source.quality.superseded
+        )
+        if self.superseded_count != actual_sup:
+            raise ValueError(
+                f"superseded_count={self.superseded_count} disagrees with "
+                f"{actual_sup} superseded rows — the cohort-level and "
                 f"row-level safety signals must never drift apart"
             )
         if self.row_count != len(self.rows):
@@ -198,6 +276,7 @@ class ResolvedQueryResult:
             "row_count": self.row_count,
             "data_maturity": self.data_maturity,
             "unresolvable_count": self.unresolvable_count,
+            "superseded_count": self.superseded_count,
             "rows": [r.to_dict() for r in self.rows],
         }
 
@@ -262,6 +341,90 @@ def _sign(supabase, file_path: Optional[str]) -> Optional[str]:
     return signed.get("signedURL") or signed.get("signed_url")
 
 
+def _safe_rows(supabase, table, columns, *, in_col=None, in_vals=None, eq=None):
+    """Best-effort, workspace-scoped read for the PR B quality lookups.
+
+    These lookups are *enrichment*, not the safety contract. A failure
+    here MUST NEVER raise — that would turn an enrichment fault into a
+    query failure — and MUST degrade to the SAFE side: no recoverable
+    signal (→ the explicit "extraction quality not verified", which is
+    honest not-reassurance, never silent reassurance) and no superseded
+    signal. Mirrors the resolver's "never raise on odd input" discipline.
+    """
+    try:
+        q = supabase.table(table).select(columns)
+        if in_col and in_vals:
+            q = q.in_(in_col, list(in_vals))
+        for k, v in (eq or {}).items():
+            q = q.eq(k, v)
+        data = getattr(q.execute(), "data", None)
+        return data if isinstance(data, list) else []
+    except Exception:  # noqa: BLE001 — enrichment must never break the query
+        return []
+
+
+def _recoverable_docs(supabase, doc_ids, workspace_id):
+    """Doc ids that have a non-empty section-confidence row. Decision #1:
+    presence ≠ per-fact vouch; absence (the dominant case) is rendered
+    explicitly, never as reassurance."""
+    out = set()
+    if not doc_ids:
+        return out
+    for r in _safe_rows(
+        supabase, "gp_validation_sessions",
+        "document_id, confidence_scores",
+        in_col="document_id", in_vals=doc_ids,
+        eq={"workspace_id": workspace_id},
+    ):
+        if not isinstance(r, dict):
+            continue
+        did = r.get("document_id")
+        cs = r.get("confidence_scores")
+        if did and cs not in (None, {}, [], ""):
+            out.add(did)
+    return out
+
+
+def _superseded_docs(supabase, workspace_id):
+    """Decision #2: source docs whose `PromoteDocumentToPatientRecord`
+    was reversed and NOT later re-promoted by a still-live promotion.
+
+    The identifier column is `action_name` (verified live — NOT
+    `action_type`; the wrong literal would silently match nothing and
+    report 0 for the wrong reason, indistinguishable from the true
+    corpus 0 — the single most dangerous failure shape in the phase).
+    Honest approximation without timestamp ordering: superseded =
+    {reversed docs} − {docs with a non-reversed promotion}. The corpus
+    produces 0 (the reverse RPC DELETEs facts) — construct-validity-only.
+    """
+    reversed_docs, live_docs = set(), set()
+    for r in _safe_rows(
+        supabase, "action_audit_log",
+        "parameters, reversed_by_audit_id",
+        eq={"action_name": "PromoteDocumentToPatientRecord",
+            "workspace_id": workspace_id},
+    ):
+        if not isinstance(r, dict):
+            continue
+        params = r.get("parameters")
+        did = params.get("document_id") if isinstance(params, dict) else None
+        if not did:
+            continue
+        if r.get("reversed_by_audit_id"):
+            reversed_docs.add(did)
+        else:
+            live_docs.add(did)
+    return reversed_docs - live_docs
+
+
+def _with_superseded(citation: str, quality: SourceQuality) -> str:
+    """The reversed-source suffix is a *fact-staleness* statement, so it
+    applies regardless of openable status (an OPENABLE scan whose
+    promotion was reversed is still potentially stale). Corpus produces
+    0 — construct-validity-only."""
+    return citation + _SUPERSEDED_SUFFIX if quality.superseded else citation
+
+
 def resolve_provenance(
     supabase,
     result: QueryResult,
@@ -309,62 +472,106 @@ def resolve_provenance(
         for d in (getattr(resp, "data", None) or []):
             docs[d["id"]] = d
 
+    # PR B enrichment lookups — workspace-scoped, best-effort, never
+    # raise. Computed once per call (batch), like the docs lookup.
+    recoverable = _recoverable_docs(supabase, needed, workspace_id)
+    superseded = _superseded_docs(supabase, workspace_id) if needed else set()
+
     resolved: List[ResolvedRow] = []
     for row in result.rows:
         prov = row.provenance
         doc_id = prov.source_document_id
 
         if prov.source_kind == LIVE_ENTRY or not doc_id:
+            # A live_entry has no document — no quality to assess.
             source = ResolvedSource(
                 status=NO_SOURCE,
                 document_id=None,
                 signed_url=None,
                 citation="entered directly in the EHR (no source document)",
+                quality=None,
             )
         else:
+            quality = SourceQuality(
+                section_confidence_recoverable=(doc_id in recoverable),
+                superseded=(doc_id in superseded),
+            )
             doc = docs.get(doc_id)
             if doc is None:
                 # The dominant 62% case, OR a cross-tenant id the
                 # workspace scope correctly refused. Either way: visible.
+                # NO confidence suffix — the document is gone, so a
+                # "document-level check available" claim would be false;
+                # the unavailable citation already says everything.
+                citation = _with_superseded(
+                    f"source document no longer available "
+                    f"(id …{_short_id(doc_id)})",
+                    quality,
+                )
                 source = ResolvedSource(
                     status=UNRESOLVABLE,
                     document_id=doc_id,
                     signed_url=None,
-                    citation=(
-                        f"source document no longer available "
-                        f"(id …{_short_id(doc_id)})"
-                    ),
+                    citation=citation,
                     unresolvable_reason="source_document_not_found_in_workspace",
+                    quality=quality,
                 )
             else:
                 url = _sign(supabase, doc.get("file_path"))
                 if not url:
                     # Found the row but cannot retrieve the object right
                     # now — STILL visible, STILL not a silent dead link.
+                    citation = _with_superseded(
+                        f"source document found but not retrievable "
+                        f"right now (id …{_short_id(doc_id)})",
+                        quality,
+                    )
                     source = ResolvedSource(
                         status=UNRESOLVABLE,
                         document_id=doc_id,
                         signed_url=None,
-                        citation=(
-                            f"source document found but not retrievable "
-                            f"right now (id …{_short_id(doc_id)})"
-                        ),
+                        citation=citation,
                         unresolvable_reason="signed_url_unavailable",
+                        quality=quality,
                     )
                 else:
+                    # OPENABLE — the document-level check IS available,
+                    # so the confidence suffix is meaningful here (and
+                    # only here). Decision #1: binary, no score/threshold.
+                    citation = _citation_for_doc(doc, prov)
+                    citation += (
+                        _CONF_SUFFIX_RECOVERABLE
+                        if quality.section_confidence_recoverable
+                        else _CONF_SUFFIX_UNVERIFIED
+                    )
+                    citation = _with_superseded(citation, quality)
                     source = ResolvedSource(
                         status=OPENABLE,
                         document_id=doc_id,
                         signed_url=url,
-                        citation=_citation_for_doc(doc, prov),
+                        citation=citation,
+                        quality=quality,
                     )
 
         resolved.append(
-            ResolvedRow(data=row.data, provenance=prov, source=source)
+            ResolvedRow(
+                data=row.data,
+                provenance=prov,
+                source=source,
+                # Decision #1 → (a): present-but-inert. The resolver
+                # never populates this on the current corpus (no
+                # multi-source schema); the inertness is a tested CI
+                # invariant, not an assumption.
+                additional_sources=None,
+            )
         )
 
     unresolvable_count = sum(
         1 for r in resolved if r.source.status == UNRESOLVABLE
+    )
+    superseded_count = sum(
+        1 for r in resolved
+        if r.source.quality is not None and r.source.quality.superseded
     )
     return ResolvedQueryResult(
         template_id=result.template_id,
@@ -374,4 +581,5 @@ def resolve_provenance(
         row_count=len(resolved),
         data_maturity=result.data_maturity,
         unresolvable_count=unresolvable_count,
+        superseded_count=superseded_count,
     )

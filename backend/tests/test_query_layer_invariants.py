@@ -348,9 +348,20 @@ def test_present_document_is_openable_with_honest_citation():
     s = out.rows[0].source
     assert s.status == OPENABLE and s.openable is True
     assert s.signed_url and s.signed_url.startswith("https://signed.example/")
-    # Honest citation: filename + date + page; NO doc_type fabrication.
-    assert s.citation == "Patient file.pdf, 7 May 2026, page 2"
+    # PR B locked-contract change (Decision #1): an OPENABLE citation now
+    # carries the binary quality suffix. This FakeSupabase serves no
+    # gp_validation_sessions row, so confidence is NOT recoverable — and
+    # absence is rendered EXPLICITLY as not-verified, never as silent
+    # reassurance. Still a strict exact assertion, just the new contract.
+    assert s.citation == (
+        "Patient file.pdf, 7 May 2026, page 2 "
+        "— extraction quality not verified"
+    )
+    assert s.quality is not None
+    assert s.quality.section_confidence_recoverable is False
+    assert s.quality.superseded is False
     assert out.unresolvable_count == 0
+    assert out.superseded_count == 0
 
 
 def test_missing_document_is_visibly_unresolvable():
@@ -448,6 +459,236 @@ def test_mixed_cohort_aggregate_equals_unresolvable_rows_exactly():
             assert r.source.signed_url, "openable row with no URL escaped"
     # The envelope serialises with the cohort signal a clinician reads.
     assert out.to_dict()["unresolvable_count"] == 2
+
+
+# ===========================================================================
+# PR B — ugly-case invariants (low-confidence binary, superseded
+# row+aggregate, two-source inertness), DB-free. A table-aware fake is
+# required here because PR B's resolver reads gp_validation_sessions and
+# action_audit_log in addition to digitised_documents.
+# ===========================================================================
+
+from ontology.query import SourceQuality  # noqa: E402
+
+
+class _PRBTable:
+    """Faithful fake: filters by the ACTUAL in_ column and all eq pairs
+    (the PR A _FakeTable hardcodes id-filtering, which is wrong for the
+    document_id-keyed gp_validation_sessions table)."""
+
+    def __init__(self, rows):
+        self._rows, self._inkey, self._invals, self._eq = rows, None, None, {}
+
+    def select(self, *_a, **_k):
+        return self
+
+    def in_(self, col, vals):
+        self._inkey, self._invals = col, set(vals)
+        return self
+
+    def eq(self, col, val):
+        self._eq[col] = val
+        return self
+
+    def execute(self):
+        out = []
+        for r in self._rows:
+            if self._inkey is not None and r.get(self._inkey) not in self._invals:
+                continue
+            if any(r.get(k) != v for k, v in self._eq.items()):
+                continue
+            out.append(r)
+        return types.SimpleNamespace(data=out)
+
+
+class _PRBSupabase:
+    def __init__(self, *, docs=None, sessions=None, audit=None,
+                 storage_mode="ok"):
+        self._t = {
+            "digitised_documents": docs or [],
+            "gp_validation_sessions": sessions or [],
+            "action_audit_log": audit or [],
+        }
+        self.storage = _FakeStorage(storage_mode)
+
+    def table(self, name):
+        return _PRBTable(self._t.get(name, []))
+
+
+_WS = "ws-prb"
+_DOC = {
+    "id": "doc-prb-1", "workspace_id": _WS,
+    "filename": "Briefing.pdf", "file_path": f"{_WS}/doc-prb-1/Briefing.pdf",
+    "upload_date": "2026-02-01T10:00:00", "created_at": "2026-02-01T10:00:00",
+}
+
+
+def _prb_result(*provs):
+    rows = [QueryRow(data={"patient_id": f"p{i}"}, provenance=p)
+            for i, p in enumerate(provs)]
+    return QueryResult(
+        template_id="patient_active_medications", template_version=1,
+        workspace_id=_WS, rows=rows, row_count=len(rows),
+        data_maturity="populated",
+    )
+
+
+def test_superseded_aggregate_cannot_drift_from_rows():
+    """Decision #2 sibling of the unresolvable drift invariant. The
+    envelope cannot exist if superseded_count disagrees with the rows."""
+    from ontology.query.provenance import ResolvedRow
+    q_sup = SourceQuality(section_confidence_recoverable=False,
+                          superseded=True)
+    q_clean = SourceQuality(section_confidence_recoverable=True,
+                            superseded=False)
+    rows = [
+        ResolvedRow(data={}, provenance=Provenance(source_kind="diagnosis",
+                    source_document_id="d"),
+                    source=ResolvedSource(status=OPENABLE, document_id="d",
+                    signed_url="u", citation="c", quality=q_sup)),
+        ResolvedRow(data={}, provenance=Provenance(source_kind="diagnosis",
+                    source_document_id="e"),
+                    source=ResolvedSource(status=OPENABLE, document_id="e",
+                    signed_url="u", citation="c", quality=q_clean)),
+    ]
+    ok = ResolvedQueryResult(
+        template_id="t", template_version=1, workspace_id=_WS, rows=rows,
+        row_count=2, data_maturity="populated", unresolvable_count=0,
+        superseded_count=1,
+    )
+    assert ok.superseded_count == 1
+    with pytest.raises(ValueError, match="must never drift apart"):
+        ResolvedQueryResult(
+            template_id="t", template_version=1, workspace_id=_WS, rows=rows,
+            row_count=2, data_maturity="populated", unresolvable_count=0,
+            superseded_count=0,  # drifted
+        )
+
+
+def test_superseded_and_unresolvable_are_independent_signals():
+    """Neither aggregate inflates the other: a superseded OPENABLE row is
+    NOT unresolvable; an UNRESOLVABLE row is not auto-superseded."""
+    out = resolve_provenance(
+        _PRBSupabase(
+            docs=[_DOC],
+            # Fixture MUST carry action_name (not action_type) — the
+            # resolver filters on it; a fixture without it tests nothing
+            # (the plan's load-bearing risk note).
+            audit=[{"action_name": "PromoteDocumentToPatientRecord",
+                    "workspace_id": _WS, "reversed_by_audit_id": "rev-1",
+                    "parameters": {"document_id": "doc-prb-1"}}],
+        ),
+        _prb_result(
+            Provenance(source_kind="diagnosis", source_document_id="doc-prb-1"),
+            Provenance(source_kind="diagnosis", source_document_id="gone-xyz"),
+        ),
+        workspace_id=_WS,
+    )
+    openable, missing = out.rows[0].source, out.rows[1].source
+    assert openable.status == OPENABLE and openable.quality.superseded is True
+    assert missing.status == UNRESOLVABLE
+    assert out.superseded_count == 1      # only the openable-superseded one
+    assert out.unresolvable_count == 1    # only the missing one
+    # Independence: the superseded row is not counted unresolvable and
+    # vice versa.
+    assert out.superseded_count + out.unresolvable_count == 2
+
+
+def test_citation_never_says_low_confidence_or_percentage():
+    """Decision #1 as an executable invariant. Drive BOTH branches
+    (recoverable / not) and assert the banned strings never appear and
+    the two locked phrases appear exactly."""
+    out = resolve_provenance(
+        _PRBSupabase(
+            docs=[_DOC],
+            sessions=[{"document_id": "doc-prb-1", "workspace_id": _WS,
+                       "confidence_scores": {"vitals": 0.9}}],
+        ),
+        _prb_result(Provenance(source_kind="diagnosis",
+                               source_document_id="doc-prb-1")),
+        workspace_id=_WS,
+    )
+    rec = out.rows[0].source.citation
+    assert "extraction quality not individually verified " \
+           "(document-level check available)" in rec
+    out2 = resolve_provenance(
+        _PRBSupabase(docs=[_DOC], sessions=[]),  # no session ⇒ not recoverable
+        _prb_result(Provenance(source_kind="diagnosis",
+                               source_document_id="doc-prb-1")),
+        workspace_id=_WS,
+    )
+    notrec = out2.rows[0].source.citation
+    assert notrec.endswith("extraction quality not verified")
+    for c in (rec, notrec):
+        assert "low-confidence" not in c.lower()
+        assert "%" not in c
+        assert not any(ch.isdigit() for ch in c.split("quality")[-1])
+
+
+def test_superseded_suffix_is_locked_wording():
+    out = resolve_provenance(
+        _PRBSupabase(
+            docs=[_DOC],
+            audit=[{"action_name": "PromoteDocumentToPatientRecord",
+                    "workspace_id": _WS, "reversed_by_audit_id": "rev-1",
+                    "parameters": {"document_id": "doc-prb-1"}}],
+        ),
+        _prb_result(Provenance(source_kind="diagnosis",
+                               source_document_id="doc-prb-1")),
+        workspace_id=_WS,
+    )
+    assert out.rows[0].source.citation.endswith(
+        " (source promotion was reversed — fact may be stale)"
+    )
+
+
+def test_additional_sources_is_inert_on_current_corpus():
+    """THE Decision-1 required-rider named gate. The two-source field
+    exists (option a) but the resolver NEVER populates it on the current
+    corpus (no multi-source schema). Inertness is a TESTED invariant, not
+    an assumption — a change that silently starts populating it fails
+    here, same drift-impossible status as superseded_count."""
+    out = resolve_provenance(
+        _PRBSupabase(
+            docs=[_DOC],
+            sessions=[{"document_id": "doc-prb-1", "workspace_id": _WS,
+                       "confidence_scores": {"x": 1}}],
+            audit=[{"action_name": "PromoteDocumentToPatientRecord",
+                    "workspace_id": _WS, "reversed_by_audit_id": "r",
+                    "parameters": {"document_id": "doc-prb-1"}}],
+        ),
+        _prb_result(
+            Provenance(source_kind="diagnosis", source_document_id="doc-prb-1"),
+            Provenance(source_kind="diagnosis", source_document_id="gone"),
+            Provenance(source_kind=LIVE_ENTRY),
+        ),
+        workspace_id=_WS,
+    )
+    # `additional_sources` lives on ResolvedRow (the two-source
+    # representation is per-row, not per-source). The resolver NEVER
+    # populates it on the current corpus — inertness is the tested gate.
+    for r in out.rows:
+        assert r.additional_sources is None
+        assert r.to_dict()["additional_sources"] is None
+
+
+def test_026_migration_ends_with_notify_pgrst():
+    """Migration 026 adds query RPC functions, so — unlike 025 — it MUST
+    end with NOTIFY pgrst or every new template 404s (PGRST202) until the
+    schema cache happens to reload. Comment-stripped scan (reuse PR A's
+    _strip_sql_comments)."""
+    f = _migrations_dir() / "026_query_layer_briefing_templates.sql"
+    assert f.is_file(), f"migration 026 not found: {f}"
+    body = _strip_sql_comments(f.read_text())
+    assert "notify pgrst" in body.lower(), (
+        "026 adds functions but does not NOTIFY pgrst — the new templates "
+        "will be invisible to PostgREST until the cache reloads"
+    )
+    # NOTIFY must come before the final COMMIT (inside the txn body).
+    low = body.lower()
+    assert low.rfind("notify pgrst") < low.rfind("commit"), (
+        "NOTIFY pgrst must precede COMMIT"
+    )
 
 
 def test_resolver_refuses_unscoped():

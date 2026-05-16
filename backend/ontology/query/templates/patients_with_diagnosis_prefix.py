@@ -38,11 +38,23 @@ def _validate_limit(v: int) -> None:
         raise ValueError("limit must be between 1 and 500")
 
 
+_ORDER_BY = ("name", "last_consultation")
+
+
+def _validate_order_by(v: str) -> None:
+    if v not in _ORDER_BY:
+        raise ValueError(f"order_by must be one of {_ORDER_BY}")
+
+
+# PR B: version 2 — adds order_by ('name' | 'last_consultation') and a
+# last_consultation output column. Supersedes v1 (migration 026 DROP+
+# CREATEs the backing function because the return shape changed).
 register_template(TemplateSpec(
     id="patients_with_diagnosis_prefix",
-    version=1,
+    version=2,
     rpc_name="query_patients_with_diagnosis_prefix",
-    description="Patients whose diagnosis ICD-10 code starts with a prefix.",
+    description="Patients whose diagnosis ICD-10 code starts with a prefix; "
+                "optionally ordered by last consultation.",
     data_maturity="populated",
     params=[
         ParamSpec(
@@ -60,6 +72,14 @@ register_template(TemplateSpec(
             default=100,
             validator=_validate_limit,
         ),
+        ParamSpec(
+            name="order_by",
+            py_type=str,
+            rpc_arg="p_order_by",
+            required=False,
+            default="name",
+            validator=_validate_order_by,
+        ),
     ],
     output_columns=[
         "patient_id",
@@ -68,6 +88,7 @@ register_template(TemplateSpec(
         "dob",
         "diagnosis_code",
         "diagnosis_display",
+        "last_consultation",
         "provenance",
     ],
 ))

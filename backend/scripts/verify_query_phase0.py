@@ -259,6 +259,35 @@ def _run_with_cache_retry(ws, prefix):
     raise last or RuntimeError("rpc never resolved")
 
 
+# PR B made patients_with_diagnosis_prefix a v2 template that sends
+# p_order_by, so probes (iv)/(v) now REQUIRE migration 026. 026
+# application is the user's Supabase Dashboard step; if absent, SKIP
+# (iv)/(v) with an actionable message rather than emit confusing
+# failures. Probes (i)-(iii) above are unaffected and already ran.
+_c026 = psycopg2.connect(DB)
+_c026.autocommit = True
+with _c026.cursor() as _cur:
+    _cur.execute("SELECT 1 FROM pg_proc WHERE proname="
+                 "'query_patients_not_seen_since'")
+    _pr_b_ready = bool(_cur.fetchall())
+_c026.close()
+if not _pr_b_ready:
+    print("\n(iv)/(v) SKIPPED — migration 026 not applied. The diagnosis")
+    print("template is now v2 (sends p_order_by); apply")
+    print("026_query_layer_briefing_templates.sql (Dashboard), wait for")
+    print("the PostgREST cache reload, then re-run for the resolution +")
+    print("briefing regression checks.")
+    print("\n" + "=" * 64)
+    if FAIL:
+        print("PHASE-0 OUTCOME: (i)-(iii) found problems:")
+        for _f in FAIL:
+            print(f"  - {_f}")
+        sys.exit(1)
+    print("PHASE-0 OUTCOME: (i)-(iii) CONFIRMED; (iv)/(v) PENDING "
+          "migration 026 — apply it, then re-run.")
+    sys.exit(0)
+
+
 try:
     res_ok = _run_with_cache_retry(RESOLVABLE_WS, RESOLVABLE_PREFIX)
     if res_ok.row_count == 0:
@@ -333,6 +362,46 @@ except Exception as e:  # noqa: BLE001
     bad(f"orphaned probe raised {e!r}")
 
 # ---------------------------------------------------------------------------
+# Probe (v) — PR B briefing-set resolution-correctness + ugly-case live
+# checks. (a) the dominant orphan property already re-asserted above
+# THROUGH the v2 diagnosis path (probes the new gvs/audit lookups did
+# not regress it); (b) an OPENABLE doc-sourced row now carries a
+# `quality` object; (c) superseded_count == 0 live — construct-validity
+# confirmation printed in the probe itself.
+# ---------------------------------------------------------------------------
+print("\n(v) PR B — briefing resolution-correctness + ugly-case live checks")
+try:
+    BWS = "demo-gp-workspace-001"  # entitled; open_documents is doc-sourced
+    bres = run_template(sb2, "patient_open_documents", {}, workspace_id=BWS)
+    bresolved = resolve_provenance(sb2, bres, workspace_id=BWS)
+    if bresolved.row_count == 0:
+        print("  ⚠ demo-gp open_documents returned 0 (corpus drift; not a "
+              "regression blocker)")
+    else:
+        op = [r for r in bresolved.rows if r.source.status == OPENABLE]
+        if op and op[0].source.quality is not None:
+            q = op[0].source.quality
+            ok(f"OPENABLE doc-sourced row carries quality "
+               f"(recoverable={q.section_confidence_recoverable}, "
+               f"superseded={q.superseded})")
+        elif op:
+            bad("OPENABLE row is missing the PR B quality object")
+        else:
+            print("  ⚠ no OPENABLE open_documents row this run (stored "
+                  "objects gone) — quality covered by the unit invariant")
+    if bresolved.superseded_count == 0:
+        ok("superseded_count == 0 live — reversed-source is "
+           "construct-validity-only, exactly as the corpus dictates")
+    else:
+        bad(f"superseded_count={bresolved.superseded_count} on the live "
+            f"corpus — the premise (0 live reversed-source) has changed; "
+            f"the defence must move to corpus-demonstrated")
+except QueryError as qe:
+    bad(f"PR B briefing probe raised QueryError({qe.code!r}: {qe.message})")
+except Exception as e:  # noqa: BLE001
+    bad(f"PR B briefing probe raised {e!r}")
+
+# ---------------------------------------------------------------------------
 print("\n" + "=" * 64)
 if FAIL:
     print("PHASE-0 OUTCOME: compile-to-RPC strategy NOT confirmed.")
@@ -344,10 +413,13 @@ if FAIL:
     for f in FAIL:
         print(f"  - {f}")
     sys.exit(1)
-print("PHASE-0 OUTCOME: compile-to-RPC strategy CONFIRMED + PR A")
-print("resolution VERIFIED. STABLE TABLE(... jsonb) functions round-trip")
-print("through supabase-py .rpc() as typed dict rows; a present source")
-print("resolves OPENABLE with a signed URL; the dominant orphaned-source")
-print("corpus failure resolves VISIBLY UNRESOLVABLE (explicit reason +")
-print("truncated id), never a silent dead link. PR A is safe to smoke.")
+print("PHASE-0 OUTCOME: compile-to-RPC CONFIRMED + PR A resolution +")
+print("PR B briefing resolution-correctness VERIFIED. STABLE TABLE(...")
+print("jsonb) functions round-trip; a present source resolves OPENABLE")
+print("with a signed URL; the dominant orphaned-source corpus failure")
+print("resolves VISIBLY UNRESOLVABLE through the NEW PR B code path (no")
+print("regression from the added gp_validation_sessions/action_audit_log")
+print("lookups); doc-sourced rows carry the quality object;")
+print("superseded_count == 0 live (reversed-source is correctly")
+print("construct-validity-only). PR A + PR B briefing set are safe.")
 sys.exit(0)

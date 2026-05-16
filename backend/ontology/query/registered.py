@@ -14,3 +14,11 @@ To add a query shape:
 """
 
 from ontology.query.templates import patients_with_diagnosis_prefix  # noqa: F401
+
+# PR B — briefing / pre-consult set.
+from ontology.query.templates import patients_not_seen_since  # noqa: F401
+from ontology.query.templates import patient_active_medications  # noqa: F401
+from ontology.query.templates import patient_recent_consultations  # noqa: F401
+from ontology.query.templates import patients_with_abnormal_recent_vitals  # noqa: F401,E501
+from ontology.query.templates import patient_open_documents  # noqa: F401
+from ontology.query.templates import patients_with_lab_threshold  # noqa: F401
