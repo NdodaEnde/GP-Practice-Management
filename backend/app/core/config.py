@@ -69,6 +69,17 @@ class Settings(BaseSettings):
     # Monitoring
     SENTRY_DSN: Optional[str] = os.getenv("SENTRY_DSN")
     ENABLE_METRICS: bool = os.getenv("ENABLE_METRICS", "true").lower() == "true"
+
+    # Phase 3 PR C — natural-language query layer. SHIPS DISABLED.
+    # Default-off is structural: the env var is absent from .env and no
+    # commit sets it, so this is False at merge. With it False there is
+    # NO path that constructs an LLM client or makes any outbound call,
+    # and POST /api/query/ask hard-refuses WITHOUT sending the question
+    # text (which can itself be PII — a patient name) anywhere. The
+    # disabled-default IS the PII safety boundary; there is no scrubber.
+    # Enabling requires a deliberate operator governance act (provider
+    # authorisation), never a code change.
+    NL_QUERY_LLM_ENABLED: bool = os.getenv("NL_QUERY_LLM_ENABLED", "false").lower() == "true"
     
     # Rate Limiting
     RATE_LIMIT_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))

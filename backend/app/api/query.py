@@ -197,3 +197,96 @@ async def run_query(
         supabase, result, workspace_id=workspace_id
     )
     return resolved.to_dict()
+
+
+class QueryAskRequest(BaseModel):
+    """PR C. Note the absence of `workspace_id` — same load-bearing
+    reason as QueryRunRequest: the only place a workspace can come from
+    is the authenticated user; neither the body nor the LLM can supply
+    it. `question` may itself be PII (a patient name); with the NL flag
+    off it goes nowhere (the disabled-default IS the boundary)."""
+
+    question: str = Field(..., min_length=1, max_length=512)
+
+
+@router.post("/ask")
+async def ask_query(
+    body: QueryAskRequest,
+    current_user: dict = Depends(require_capability("clinical_query")),
+):
+    """PR C — thinnest NL surface. SHIPS DISABLED. Maps the question to
+    ONE registered template via a classifier constrained to the closed
+    registry enum (never SQL/free-form), then runs it through the
+    IDENTICAL `run_template` + `resolve_provenance` chokepoint `/run`
+    uses — there is NO other path to data, so NL answers structurally
+    inherit the verifiable-provenance contract.
+
+    Capability: `clinical_query` (reused, NOT a new capability). This is
+    the coherent choice and it pays twice: PR A's
+    `module_digitisation`-does-NOT-entail-`clinical_query` Type-C ratchet
+    automatically covers this NL surface by construction — the written
+    Type-C customer promise is enforced here for free, zero new ratchet
+    code, *because* the capability was reused rather than minted.
+
+    With `NL_QUERY_LLM_ENABLED` off (merge default) `classify_question`
+    hard-refuses on line 1 — no client, no network, the question text
+    goes nowhere.
+    """
+    from app.services.nl_query import (
+        NLClassification,
+        NLRefusal,
+        classify_question,
+    )
+
+    _enforce_rate_limit(current_user.get("email") or "anonymous")
+
+    workspace_id = current_user.get("workspace_id")
+    if not workspace_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No workspace context",
+        )
+
+    outcome = classify_question(body.question)
+
+    if isinstance(outcome, NLRefusal):
+        # Refusal (disabled / out-of-set / low-confidence) always carries
+        # the answerable list; never a 500, never a silent guess.
+        code = (status.HTTP_403_FORBIDDEN
+                if outcome.reason == "nl_disabled"
+                else status.HTTP_422_UNPROCESSABLE_CONTENT)
+        raise HTTPException(status_code=code, detail=outcome.to_dict())
+
+    # Successful classification: feed the SAME chokepoint /run uses.
+    # The classifier passed params uninterpreted; the runner validates.
+    assert isinstance(outcome, NLClassification)
+    supabase = _sb()
+    try:
+        result = run_template(
+            supabase,
+            outcome.template_id,
+            outcome.params or {},
+            workspace_id=workspace_id,
+        )
+    except QueryError as qe:
+        raise HTTPException(
+            status_code=_CODE_TO_STATUS.get(qe.code, _DEFAULT_ERROR_STATUS),
+            detail={
+                "error": qe.code,
+                "message": qe.message,
+                "context": qe.context,
+            },
+        )
+
+    resolved = resolve_provenance(
+        supabase, result, workspace_id=workspace_id
+    )
+    out = resolved.to_dict()
+    # Honest: the answer carries HOW the NL was mapped, so the caller
+    # can see the interpretation (and catch a misclassification — the
+    # failure mode no structural gate can see).
+    out["interpreted_as"] = {
+        "template_id": outcome.template_id,
+        "params": outcome.params,
+    }
+    return out
