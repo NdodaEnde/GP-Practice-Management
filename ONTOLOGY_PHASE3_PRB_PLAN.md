@@ -131,7 +131,7 @@ scale index.
 
 ## 2. The three carried constraints — scoped FIRST, equal weight, un-skippable
 
-### (i) Live browser openable-vs-unresolvable contrast (`:3001→:8002→:5001`)
+### (i) Live openable-vs-unresolvable contrast (real chain `:3000→:8002`; in-app render Phase-4-gated — see DISCHARGED note)
 Discharged by a checklist item in the PR B description with a literal
 screenshot/recording reference and a named human verifier (the user, at
 review), a row in the §4 ledger, and a postmortem line — mirroring PR A's
@@ -165,9 +165,18 @@ demo."* This is the **expected** path (§1.6).
 > intrinsically **two-workspace** — the only single-workspace way to show
 > all categories is to manufacture one, which the discipline forbids;
 > the corrected framing is the bar stated correctly, not relaxed.
-> Residual: the literal human pixel-click in `:3001` is the reviewer's
-> DoD checkbox; all backend the click exercises (incl. the PDF fetched
-> through the signed URL) is mechanically confirmed.
+> Residual — corrected against the running system (original preserved):
+> ~~"the literal human pixel-click in `:3001` is the reviewer's DoD
+> checkbox."~~ Wrong on two counts: the frontend is on `:3000` not
+> `:3001` (the `:3001→:8002→:5001` label is stale; there is no `:5001`),
+> and **PR B has no query UI** (briefing UI is Phase 4) and
+> `demo-briefing-workspace-001` has no login — so the in-app pixel-click
+> is **Phase-4-gated, not a PR B step** (PR A-shape deferral). PR B
+> stands on the backend real-stack verification (above) + an optional
+> Swagger eyeball (`:8002/docs`, `POST /api/query/run`) of the actual
+> output. All backend the eventual Phase-4 click will exercise (incl.
+> the PDF fetched through the signed URL) is already mechanically
+> confirmed.
 
 ### (ii) Seeded briefing workspace provisioned for briefing verification FIRST
 Empirical answer to the briefing's question: a workspace both entitled
