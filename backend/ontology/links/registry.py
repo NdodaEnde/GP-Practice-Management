@@ -118,6 +118,27 @@ LINKS: tuple[LinkType, ...] = (
                     "the canonical record.",
     ),
 
+    # Patient <-> OpenLoop (Phase 4 PR F) ------------------------------
+    # The ONE structural link the OpenLoop substrate intrinsically needs:
+    # every loop belongs to a patient (sourced from OpenLoop.patient_id).
+    # The opening-event link (Consultation --opened--> OpenLoop) and the
+    # closing-evidence link (Document --evidences_loop_closure-->
+    # OpenLoop) are deliberately NOT declared here: they describe how
+    # loops get opened/closed, which is detector/lifecycle work, and
+    # detectors are F-4-locked as PR G. Declaring them now would be PR-G
+    # relationships pulled into PR F for tidiness — the same anti-pattern
+    # F-1=B refuses. Named-not-built, PR G adds them WITH its detectors.
+    LinkType(
+        name="has_open_loop",
+        source_type="Patient",
+        target_type="OpenLoop",
+        cardinality=Cardinality.ONE_TO_MANY,
+        inverse_name="open_loop_for_patient",
+        description="A Patient has many OpenLoops (tracked clinical "
+                    "loops). Sourced from OpenLoop.patient_id; the "
+                    "registry makes the reverse traversal first-class.",
+    ),
+
     # MedicalAidScheme -> Patient -------------------------------------
     LinkType(
         name="covers_patient",

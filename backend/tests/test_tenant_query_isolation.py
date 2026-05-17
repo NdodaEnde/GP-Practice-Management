@@ -89,6 +89,15 @@ TENANT_TABLES: Set[str] = {
     # new BASELINE keys — a new tenant table joins the scanned set
     # born-scoped, the ratchet doing its job (it only goes down).
     "briefing_items",
+    # PR F: OpenLoop substrate. RLS-deny-all (migration 028, the 018
+    # idiom verbatim). Under F-1=B the only writes are via the existing
+    # audited Effect primitives, which use `.table(self.table)` (a
+    # variable, NOT a string literal) and scope by row id through the
+    # executor — so the static scanner finds ZERO `.table("open_loops")`
+    # string-literal chains and adding it here adds ZERO new BASELINE
+    # keys: born tenant-scoped, the ratchet only goes down. (Verified by
+    # running test_no_new_unscoped_tenant_queries, not asserted.)
+    "open_loops",
 }
 
 # Predicates that count as a tenant scope on a query chain. First-arg

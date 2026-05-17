@@ -34,8 +34,15 @@ from ontology.enums.consultation_enums import (
     EncounterType,
 )
 from ontology.enums.document_enums import DocumentSource, DocumentStatus
+from ontology.enums.open_loop_enums import (
+    LoopKind,
+    LoopUrgency,
+    OpenLoopEvent,
+    OpenLoopState,
+)
 from ontology.objects.consultation import Consultation
 from ontology.objects.document import Document
+from ontology.objects.open_loop import OpenLoop
 from ontology.objects.patient import Patient
 
 __all__ = [
@@ -52,4 +59,9 @@ __all__ = [
     "ConsultationStatus",
     "EncounterSetting",
     "EncounterType",
+    "OpenLoop",
+    "OpenLoopState",
+    "OpenLoopEvent",
+    "LoopKind",
+    "LoopUrgency",
 ]

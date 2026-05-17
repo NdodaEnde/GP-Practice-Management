@@ -33,3 +33,10 @@ from ontology.actions import reassign_document      # noqa: F401
 from ontology.actions import merge_patient          # noqa: F401
 # from ontology.actions import reassign_document     # noqa: F401
 # from ontology.actions import merge_patient         # noqa: F401
+
+# Phase 4 PR F — OpenLoop substrate (F-1=B: substrate + state machine +
+# audited mutation actions only; no detector, no real instance — PR G).
+from ontology.actions import open_loop_open         # noqa: F401
+from ontology.actions import open_loop_advance      # noqa: F401
+from ontology.actions import open_loop_breach       # noqa: F401
+from ontology.actions import open_loop_close        # noqa: F401
