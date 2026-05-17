@@ -127,6 +127,25 @@ register_standing(StandingQuery(
     description="Patients not seen in the last 180 days (recall cohort).",
 ))
 
+# ── PR G (option B, G-1 locked) — the SECOND registered kind ───────────────
+# PR D's "EXACTLY ONE at merge" was Phase-3-merge-scoped (decision #2).
+# PR G deliberately adds ONE more: `immunisation_overdue`, the single
+# honestly-backed derived cohort (live corpus: 1 overdue / 31 — thin but
+# real). This is the PR-D "configuration, not a project" payoff: a new
+# derived kind is just a template + this registration; the existing
+# (default-off) materialiser serves it — no new tick, no loop detector
+# (G-2-under-B). STATELESS (locked Decision 3 / §2.0): NOT an OpenLoop.
+# specialist-referral-pending + the 5 unbacked taxonomy kinds are
+# NAMED-NOT-BUILT (G-3 / §2.0 falsification note): registering any of
+# them with no backing would be the fake-property anti-pattern.
+register_standing(StandingQuery(
+    kind="immunisation_overdue",
+    template_id="immunisations_overdue",
+    params={},
+    description="Patients with an overdue next immunisation dose "
+                "(recall; data_maturity=thin — 1/31 on the live corpus).",
+))
+
 
 def _entitled_workspaces(supabase) -> List[str]:
     """The ONLY workspace source — TRUSTED, never caller input. Every

@@ -22,3 +22,6 @@ from ontology.query.templates import patient_recent_consultations  # noqa: F401
 from ontology.query.templates import patients_with_abnormal_recent_vitals  # noqa: F401,E501
 from ontology.query.templates import patient_open_documents  # noqa: F401
 from ontology.query.templates import patients_with_lab_threshold  # noqa: F401
+
+# PR G (option B) — one real derived cohort (immunisation-overdue, thin).
+from ontology.query.templates import immunisations_overdue  # noqa: F401
