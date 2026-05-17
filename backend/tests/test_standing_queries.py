@@ -319,30 +319,106 @@ _INTEG = pytest.mark.skipif(
 def test_orphaned_source_still_unresolvable_through_briefing_path():
     """THE highest-priority Phase-3 regression at the PR-D boundary.
 
+    NOTE — this test was REWRITTEN after a found defect (post-mortem
+    §D.1): the prior form drove only the one production kind
+    (`morning_briefing` → `patients_not_seen_since`, ENCOUNTER-sourced)
+    over `test-workspace-c9f4d540`, whose orphan is on a DIAGNOSIS;
+    `patients_not_seen_since` returns 0 rows there, so the materialiser
+    wrote nothing and the sole assertion passed green having
+    demonstrated nothing — a false green in the highest-priority guard,
+    caught by integration-premise-verification. The test now genuinely
+    routes a diagnosis-orphaned-source row through the FULL materialiser
+    path and asserts it persisted visibly-unresolvable.
+
     HONEST SCOPE (verbatim — read this): this asserts the resolver
     contract survives the materialisation CODE PATH; it does NOT assert
     this workspace is ever materialised in production. Orphaned data
     lives in `test-workspace-c9f4d540`, which is NOT clinical_query-
     entitled, so the production materialiser (entitled-only) NEVER
-    reaches it. We drive the inner per-workspace path with an explicit
-    non-entitled `only_workspace` arg (bypassing the entitlement filter
-    for the test only) — exactly how PR B drove non-entitled corpus to
-    prove the resolver property. The entitled production path is
-    NULL-sourced/openable per Findings S/E. No orphan injected anywhere.
+    reaches it; and the ONE production kind is encounter-sourced and
+    cannot surface a diagnosis orphan even on the inner path. We
+    register a TEST-LOCAL diagnosis-sourced StandingQuery, drive the
+    real `materialise_standing_queries` with an explicit non-entitled
+    `only_workspace` arg (bypassing the entitlement filter for the test
+    only), and read the persisted `briefing_items` row back. The
+    production registry stays exactly one kind (decision #2 untouched) —
+    asserted, not assumed (teardown non-vacuity). No orphan injected
+    anywhere; the orphan is pre-existing live corpus data.
     """
+    import psycopg2
     from dotenv import load_dotenv
     load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
     from supabase import create_client
 
+    KIND = "__test_orphan_diag__"
+    WS = "test-workspace-c9f4d540"
     sb = create_client(
         os.environ["SUPABASE_URL"],
         os.environ.get("SUPABASE_SERVICE_KEY") or os.environ["SUPABASE_KEY"])
-    out = standing.materialise_standing_queries(
-        sb, as_of_date=date(2026, 5, 17),
-        only_workspace="test-workspace-c9f4d540")
-    # The materialise call itself must not raise; the resolver contract
-    # holding (unresolvable rendered, not crashed) is the property.
-    assert "test-workspace-c9f4d540:morning_briefing" in out["results"]
+
+    # Register a TEST-LOCAL diagnosis-sourced standing query. This is the
+    # ONLY way to route the diagnosis orphan through the materialiser:
+    # the one production kind is encounter-sourced (the found defect).
+    standing.register_standing(standing.StandingQuery(
+        kind=KIND, template_id="patients_with_diagnosis_prefix",
+        params={"icd10_prefix": "I"},
+        description="TEST-LOCAL — orphan-through-materialiser regression.",
+    ))
+
+    body_exc = None
+    try:
+        standing.materialise_standing_queries(
+            sb, as_of_date=date(2026, 5, 17), only_workspace=WS)
+        # Read the PERSISTED row back — proves it transited the full
+        # path run_template→resolve_provenance→_rewrite_partition→
+        # briefing_items, not just that resolve_provenance worked.
+        conn = psycopg2.connect(os.environ["DATABASE_URL"])
+        conn.autocommit = True
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT source_status, openable, citation, "
+                    "unresolvable_reason FROM briefing_items "
+                    "WHERE workspace_id=%s AND kind=%s", (WS, KIND))
+                rows = cur.fetchall()
+        finally:
+            conn.close()
+        assert rows, ("the orphaned diagnosis produced NO briefing_items "
+                      "row — the materialiser did not route it")
+        unres = [r for r in rows if r[0] == "unresolvable"]
+        assert unres, (f"orphaned-source row NOT persisted unresolvable: "
+                       f"{rows!r}")
+        st, openable, citation, reason = unres[0]
+        assert openable is False, f"openable should be False, got {openable!r}"
+        assert "e15a71" in (citation or ""), (
+            f"citation missing the truncated-id anchor: {citation!r}")
+        assert reason == "source_document_not_found_in_workspace", reason
+    except Exception as e:  # noqa: BLE001 — capture so teardown always runs
+        body_exc = e
+
+    # ── Teardown — ALWAYS runs, and is itself verified non-vacuous ──────
+    standing._STANDING.pop(KIND, None)
+    try:
+        c2 = psycopg2.connect(os.environ["DATABASE_URL"])
+        c2.autocommit = True
+        with c2.cursor() as cur:
+            cur.execute("DELETE FROM briefing_items WHERE workspace_id=%s "
+                        "AND kind=%s", (WS, KIND))
+        c2.close()
+    except Exception:  # noqa: BLE001 — best-effort row cleanup
+        pass
+
+    # Teardown NON-VACUITY (the tightening): prove the registry is
+    # restored to EXACTLY the one production kind — assert it, do not
+    # assume the pop worked. A future registry-mechanism refactor that
+    # silently leaves the test kind registered would contaminate
+    # decision #2's "exactly one kind at merge" and MUST fail here.
+    assert {s.kind for s in standing.all_standing()} == {"morning_briefing"}, (
+        "teardown vacuous: production registry NOT restored to exactly "
+        "{'morning_briefing'} — decision #2 contaminated by the test kind")
+
+    if body_exc is not None:
+        raise body_exc
 
 
 @_INTEG
