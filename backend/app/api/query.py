@@ -290,3 +290,68 @@ async def ask_query(
         "params": outcome.params,
     }
     return out
+
+
+@router.post("/briefing/refresh")
+async def refresh_briefing(
+    current_user: dict = Depends(require_capability("clinical_query")),
+):
+    """PR D — manually materialise the registered standing queries for
+    the caller's workspace (the autonomous tick ships DISABLED; this is
+    the proven path at merge). Mirrors /run's auth/gate/tenant exactly:
+    `workspace_id` from `current_user` ONLY (no body — load-bearing,
+    same reason as QueryRunRequest); reuses `clinical_query` (decision
+    #4 — the recognised design invariant: a new read surface that
+    reaches clinical data reuses `clinical_query` so PR A's
+    `module_digitisation`-does-NOT-entail-`clinical_query` Type-C
+    ratchet propagates the written Type-C customer promise to it for
+    free, by construction, zero per-surface ratchet code). The
+    materialiser rides the SAME run_template+resolve_provenance
+    chokepoint — no new data path. Read-only-derived; no ActionExecutor.
+    """
+    from datetime import datetime, timezone
+
+    from ontology.query.standing import materialise_standing_queries
+
+    _enforce_rate_limit(current_user.get("email") or "anonymous")
+    workspace_id = current_user.get("workspace_id")
+    if not workspace_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No workspace context",
+        )
+    as_of = datetime.now(timezone.utc).date()
+    return materialise_standing_queries(
+        _sb(), as_of_date=as_of, only_workspace=workspace_id,
+    )
+
+
+@router.get("/briefing")
+async def get_briefing(
+    kind: Optional[str] = None,
+    as_of_date: Optional[str] = None,
+    current_user: dict = Depends(require_capability("clinical_query")),
+):
+    """PR D — read the materialised briefing rows for the caller's
+    workspace. Each `row_payload` was provenance-resolved at
+    materialisation time (it was written by the chokepoint), so the
+    rows inherit the verifiable-provenance contract — there is no other
+    path to data. `.eq("workspace_id", …)` is the tenant scope (the
+    chain carries it, so it adds zero new PR-5-ratchet BASELINE keys)."""
+    workspace_id = current_user.get("workspace_id")
+    if not workspace_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No workspace context",
+        )
+    q = (
+        _sb().table("briefing_items").select("*")
+        .eq("workspace_id", workspace_id)
+    )
+    if kind:
+        q = q.eq("kind", kind)
+    if as_of_date:
+        q = q.eq("as_of_date", as_of_date)
+    resp = q.order("materialised_at", desc=True).execute()
+    rows = getattr(resp, "data", None) or []
+    return {"workspace_id": workspace_id, "count": len(rows), "items": rows}

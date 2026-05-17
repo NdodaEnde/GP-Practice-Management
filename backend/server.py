@@ -5373,6 +5373,17 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Failed to start document watcher: {e}")
 
+    # Phase 3 PR D — standing-query tick (D-W1). SHIPS DISABLED: with
+    # STANDING_QUERY_TICK_ENABLED off (merge default) this creates NO
+    # task and runs NO loop. Same lifecycle host as the watcher.
+    try:
+        from app.services.standing_query_scheduler import (
+            start_standing_query_scheduler,
+        )
+        await start_standing_query_scheduler(supabase)
+    except Exception as e:
+        logger.error(f"Failed to start standing-query scheduler: {e}")
+
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on shutdown"""
@@ -5380,6 +5391,16 @@ async def shutdown_event():
     try:
         from app.services.document_watcher import stop_document_watcher
         await stop_document_watcher()
+    except Exception:
+        pass
+
+    # Stop the standing-query scheduler (no-op if it was never started —
+    # the disabled default never created a task).
+    try:
+        from app.services.standing_query_scheduler import (
+            stop_standing_query_scheduler,
+        )
+        await stop_standing_query_scheduler()
     except Exception:
         pass
 

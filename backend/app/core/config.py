@@ -80,6 +80,20 @@ class Settings(BaseSettings):
     # Enabling requires a deliberate operator governance act (provider
     # authorisation), never a code change.
     NL_QUERY_LLM_ENABLED: bool = os.getenv("NL_QUERY_LLM_ENABLED", "false").lower() == "true"
+
+    # Phase 3 PR D — standing-query autonomous tick. SHIPS DISABLED
+    # (default-off STRUCTURAL: env var absent, no commit sets it). With
+    # it False NO scheduler task is created and NO materialisation loop
+    # runs — the merge proves only the substrate + the manual
+    # POST /api/query/briefing/refresh path; autonomous operation is a
+    # deliberate operator/governance act, never a code change (decision
+    # #3 D-W1: build the inert substrate now so enabling is a one-flag
+    # act against proven code, not a future from-scratch build).
+    STANDING_QUERY_TICK_ENABLED: bool = os.getenv("STANDING_QUERY_TICK_ENABLED", "false").lower() == "true"
+    # A morning-briefing is a daily artifact (decision #1). as_of_date is
+    # the materialiser's wall-clock UTC date (no per-workspace tz column;
+    # per-workspace tz is the named Phase-4-with-UI deferred refinement).
+    STANDING_QUERY_TICK_INTERVAL: int = int(os.getenv("STANDING_QUERY_TICK_INTERVAL", "86400"))
     
     # Rate Limiting
     RATE_LIMIT_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))

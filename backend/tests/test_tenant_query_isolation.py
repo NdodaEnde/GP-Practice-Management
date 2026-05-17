@@ -83,6 +83,12 @@ TENANT_TABLES: Set[str] = {
     "lab_orders",
     "immunizations",
     "procedures",
+    # PR D: materialised standing-query rows. RLS-deny-all (migration
+    # 027, the 018 idiom). Every standing.py / query.py briefing_items
+    # chain carries .eq("workspace_id", …), so adding it here adds ZERO
+    # new BASELINE keys — a new tenant table joins the scanned set
+    # born-scoped, the ratchet doing its job (it only goes down).
+    "briefing_items",
 }
 
 # Predicates that count as a tenant scope on a query chain. First-arg
