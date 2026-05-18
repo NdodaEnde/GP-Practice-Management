@@ -4852,15 +4852,29 @@ async def get_prescription(prescription_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.post("/sick-notes")
-async def create_sick_note(sick_note: SickNoteCreate):
-    """Create a new sick note/medical certificate"""
+async def create_sick_note(
+    sick_note: SickNoteCreate,
+    current_user: dict = Depends(require_capability("patient_ehr_basic")),
+):
+    """Create a new sick note/medical certificate.
+
+    Capability-gated (patient_ehr_basic): a sick note is a clinical-legal
+    document. Tenant/workspace are derived from the authenticated
+    principal — NEVER the DEMO constants — so a clinician's note lands in
+    their own workspace. The gate and the tenant derivation are one
+    non-severable change: gated-but-tenant-blind would *look* fixed while
+    still writing every note to the demo workspace."""
+    workspace_id = current_user.get("workspace_id")
+    tenant_id = current_user.get("tenant_id")
+    if not workspace_id or not tenant_id:
+        raise HTTPException(status_code=400, detail="No workspace/tenant context")
     try:
         sick_note_id = str(uuid.uuid4())
-        
+
         sick_note_data = {
             'id': sick_note_id,
-            'tenant_id': DEMO_TENANT_ID,
-            'workspace_id': DEMO_WORKSPACE_ID,
+            'tenant_id': tenant_id,
+            'workspace_id': workspace_id,
             'patient_id': sick_note.patient_id,
             'encounter_id': sick_note.encounter_id,
             'doctor_name': sick_note.doctor_name,
@@ -4888,12 +4902,23 @@ async def create_sick_note(sick_note: SickNoteCreate):
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/sick-notes/patient/{patient_id}")
-async def get_patient_sick_notes(patient_id: str):
-    """Get all sick notes for a patient"""
+async def get_patient_sick_notes(
+    patient_id: str,
+    current_user: dict = Depends(require_capability("patient_ehr_basic")),
+):
+    """Get a patient's sick notes, scoped to the caller's workspace.
+
+    An authenticated-but-tenant-blind read of a legal-medical record is
+    the same defect as the create hardcode, in mirror — closed here as
+    part of the same non-severable cut, not deferred."""
+    workspace_id = current_user.get("workspace_id")
+    if not workspace_id:
+        raise HTTPException(status_code=400, detail="No workspace context")
     try:
         sick_notes = supabase.table('sick_notes')\
             .select('*')\
             .eq('patient_id', patient_id)\
+            .eq('workspace_id', workspace_id)\
             .order('issue_date', desc=True)\
             .execute()
         
@@ -5339,6 +5364,12 @@ app.include_router(clinical_actions_router)
 # here as well as in main.py (mirrors the clinical_actions note above).
 from app.api.query import router as query_router  # noqa: E402
 app.include_router(query_router)
+
+# Deny-by-default authentication floor (ZERO). Added BEFORE CORS so CORS
+# stays outermost: CORS handles preflight OPTIONS and wraps the floor's
+# 401 with the proper CORS headers. The floor also bypasses OPTIONS itself.
+from app.core.auth_backstop import AuthBackstopMiddleware  # noqa: E402
+app.add_middleware(AuthBackstopMiddleware)
 
 # CORS middleware
 app.add_middleware(
