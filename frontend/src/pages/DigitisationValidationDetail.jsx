@@ -235,10 +235,26 @@ const DigitisationValidationDetail = () => {
   const submitApprove = async (overrides = {}) => {
     setBusy(true);
     try {
-      await axios.post(
+      const res = await axios.post(
         `${BACKEND_URL}/api/digitisation/validation/${documentId}/approve`,
         overrides,
       );
+      // A 200 does NOT mean the records were filed. The endpoint flips
+      // status to 'validated' even when promotion into the patient
+      // record fails, surfacing the failure as `promotion_error` while
+      // HTTP stays 200. Treating that as success silently told the
+      // reviewer the document was filed when NO clinical records were
+      // created. Only present success when promotion actually succeeded.
+      const promoErr = res?.data?.promotion_error;
+      if (promoErr) {
+        alert(
+          'Document marked validated, but promotion into the patient ' +
+          `record FAILED:\n\n${promoErr}\n\nNo clinical records were ` +
+          'created. This document is NOT filed — do not treat it as ' +
+          'complete.'
+        );
+        return false;
+      }
       setMatchModal({ open: false, candidates: [], demographics: null });
       navigate('/digitisation/validation');
       return true;

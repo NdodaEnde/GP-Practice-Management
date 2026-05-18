@@ -117,11 +117,25 @@ class ActorContext:
 
     @classmethod
     def from_user(cls, current_user: Dict[str, Any]) -> "ActorContext":
-        """Build an ActorContext from the dict the auth dependency returns."""
+        """Build an ActorContext from the dict the auth dependency returns.
+
+        Candidate-A fix: authorization data is `"capabilities"` EVERYWHERE
+        the auth layer produces it (get_current_user, require_capability,
+        entitlements.practice_capabilities). `"permissions"` is produced
+        NOWHERE — reading it made this `.get()` universally dead, so every
+        audited action's `HasPermission(...)` precondition was unsatisfiable
+        in production (verified: migrations/023 + the products seed define
+        ALL four HasPermission strings — digitisation_validation/_upload,
+        patient_admin, prescription_management — as real granted
+        capability ids). The field stays named `permissions` (the
+        cosmetic ActorContext.permissions / HasPermission / `capabilities`
+        vocabulary mismatch is a named-not-now optional cleanup, NOT
+        folded into this correctness fix).
+        """
         return cls(
             user_id=current_user.get("id") or current_user.get("email", "unknown"),
             email=current_user.get("email"),
-            permissions=current_user.get("permissions", []) or [],
+            permissions=current_user.get("capabilities", []) or [],
         )
 
     def has_permission(self, permission: str) -> bool:

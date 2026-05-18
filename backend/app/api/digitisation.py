@@ -1239,6 +1239,16 @@ async def approve_validation(
                     },
                 },
             )
+        else:
+            # No match candidate AND no explicit override: the reviewer
+            # approved a document whose patient does not yet exist. That
+            # is unambiguously "create the patient" — promote force-
+            # create. Without this the cleanest case (brand-new patient,
+            # no look-alike) fell through with force_create_patient=False
+            # + empty target_patient_id; promote precondition-failed
+            # silently while status still flipped to 'validated' (200 +
+            # promotion_error) — the browser end-to-end gap.
+            create_new_patient = True
 
     update_payload = {
         "status":       "validated",

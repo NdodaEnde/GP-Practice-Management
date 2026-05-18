@@ -175,7 +175,7 @@ class PromoteDocumentToPatientRecord(Action):
         precondition would be a behaviour change; capturing it as a
         future hardening once the wipe-and-rewrite semantics are revisited.
         """
-        return [
+        checks: List[Precondition] = [
             # Document side
             ObjectExists("digitised_documents", self.document_id),
             BelongsToPractice("digitised_documents", self.document_id, self.workspace_id),
@@ -184,15 +184,30 @@ class PromoteDocumentToPatientRecord(Action):
                 expected_status="validated",
                 column="status",
             ),
+        ]
 
-            # Target patient side
-            # NB: NotSoftDeleted("patients", ...) is NOT included because
-            # the patients table doesn't have a deleted_at column in
-            # setup_supabase.sql. When the schema migrates to support
-            # soft-deletion (future cleanup), add the precondition back.
-            ObjectExists("patients", self.target_patient_id),
-            BelongsToPractice("patients", self.target_patient_id, self.workspace_id),
+        # Target patient side — ONLY when NOT force-creating.
+        # On the force-create path target_patient_id is empty BY DESIGN:
+        # the real handler passes confirmed_patient_id or "" with
+        # force_create_patient=True (digitisation.py:1299-1308), and the
+        # patient is created inside execute_action_promote_document's
+        # `IF v_patient_id IS NULL` branch (migration 015 — premise-
+        # verified that the force-create path provably INSERTs patients).
+        # An UNCONDITIONAL ObjectExists("patients","") here failed every
+        # new-patient Type-C approval before any effect ran (the wedge's
+        # main case). The non-force path always carries a real
+        # confirmed_patient_id (digitisation.py ambiguity gate
+        # 1210-1238), so the existence + tenancy checks stay meaningful
+        # and are correctly KEPT there.
+        # NB: NotSoftDeleted("patients", ...) still omitted (no
+        # deleted_at column; future cleanup).
+        if not self.force_create_patient:
+            checks += [
+                ObjectExists("patients", self.target_patient_id),
+                BelongsToPractice("patients", self.target_patient_id, self.workspace_id),
+            ]
 
+        checks += [
             # Confirmation provenance
             ConfirmationActorMatches(
                 confirmation_user_id=(
@@ -211,6 +226,7 @@ class PromoteDocumentToPatientRecord(Action):
             # Actor permission
             HasPermission("digitisation_validation"),
         ]
+        return checks
 
     # ---- Effects -------------------------------------------------------
 
