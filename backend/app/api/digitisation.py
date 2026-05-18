@@ -1265,8 +1265,10 @@ async def approve_validation(
     extractions = (sess.data[0].get("extractions") if sess.data else None) or {}
 
     # ---- Promote into structured tables via the ActionExecutor ----------
-    # Routes through app.actions.execute() so the action is audited,
-    # locked, and (PR 2) reversible. The underlying mutation still calls
+    # Routes through app.actions.execute() so the action is audited and
+    # locked. NOT reversible: functional promote-reversal is named-not-
+    # built (the abandoned "PR 2"); executor.reverse() returns
+    # precondition_failed. The underlying mutation still calls
     # promote_extractions(); the executor adds the audit row, the
     # advisory lock, and the structured pre/post state. See
     # backend/app/actions/ and ONTOLOGY_INTEGRATION_POSTMORTEM.md.

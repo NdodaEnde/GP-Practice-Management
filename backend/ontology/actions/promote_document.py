@@ -137,7 +137,12 @@ class PromoteDocumentToPatientRecord(Action):
 
     __action_name__: str = "PromoteDocumentToPatientRecord"
     __action_version__: int = 1
-    __reversible__: bool = True   # functional reversal lands in PR 2
+    # Honest: functional reversal of a promote is NOT built (the
+    # abandoned "PR 2" work; named-not-built, its own deliberate act if
+    # ever). False makes executor.reverse() return precondition_failed —
+    # the same honest-refusal contract reprocess_document.py uses —
+    # rather than asserting a reversibility this action does not have.
+    __reversible__: bool = False
     __pii_level__: str = "high"
 
     # ---- Parameters ----------------------------------------------------
