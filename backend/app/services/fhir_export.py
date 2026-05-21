@@ -31,7 +31,9 @@ from fhir.resources.allergyintolerance import AllergyIntolerance
 from fhir.resources.bundle import Bundle, BundleEntry
 from fhir.resources.codeableconcept import CodeableConcept
 from fhir.resources.coding import Coding
+from fhir.resources.address import Address
 from fhir.resources.condition import Condition
+from fhir.resources.contactpoint import ContactPoint
 from fhir.resources.encounter import Encounter
 from fhir.resources.humanname import HumanName
 from fhir.resources.identifier import Identifier
@@ -89,12 +91,24 @@ def map_patient(row: Dict[str, Any]) -> Patient:
         # SA national ID — use the South African home affairs OID where possible.
         identifiers.append(Identifier(system="urn:oid:2.16.840.1.113883.4.301", value=row["id_number"]))
 
+    # Contact details (DS-EXPORT-2): carry validated phone/email/address into
+    # the bundle — previously dropped, leaving the exported record incomplete.
+    telecom = []
+    phone = row.get("contact_number") or row.get("telephone_cell")
+    if phone:
+        telecom.append(ContactPoint(system="phone", value=str(phone)))
+    if row.get("email"):
+        telecom.append(ContactPoint(system="email", value=str(row["email"])))
+    address = [Address(text=str(row["address"]))] if row.get("address") else None
+
     p = Patient(
         id=row["id"],
         identifier=identifiers,
         name=[name],
         gender=_normalise_gender(row.get("gender")),
         birthDate=row.get("date_of_birth") or row.get("dob"),
+        telecom=telecom or None,
+        address=address,
     )
     return p
 

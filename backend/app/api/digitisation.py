@@ -1829,6 +1829,28 @@ async def create_export_job(
     if requested_ids and not isinstance(requested_ids, list):
         raise HTTPException(status_code=400, detail="document_ids must be a list")
 
+    # Tenancy: caller-supplied document_ids MUST belong to the caller's
+    # workspace. Without this, a job could reference another tenant's doc IDs
+    # and the worker would bundle their PHI into a downloadable export
+    # (DS-EXPORT-1). Treat any non-owned id as not-found (don't confirm it
+    # exists elsewhere).
+    if requested_ids:
+        owned = (
+            supabase.table("digitised_documents")
+            .select("id")
+            .eq("workspace_id", workspace_id)
+            .in_("id", requested_ids)
+            .execute()
+            .data
+            or []
+        )
+        owned_ids = {d["id"] for d in owned}
+        if any(i not in owned_ids for i in requested_ids):
+            raise HTTPException(
+                status_code=404,
+                detail="One or more documents were not found in this workspace.",
+            )
+
     # If no doc list given, snapshot all currently-validated docs in the
     # workspace. The job records the snapshot — re-running later won't pick
     # up newly-validated docs unless explicitly re-requested.

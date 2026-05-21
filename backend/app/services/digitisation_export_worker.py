@@ -209,7 +209,11 @@ def _adapt_patient(extractions: Dict[str, Any], doc_id: str) -> Dict[str, Any]:
         "last_name":     demo.get("surname") or last,
         "id_number":     demo.get("id_number"),
         "date_of_birth": demo.get("date_of_birth"),
-        "gender":        demo.get("gender"),
+        # extraction uses 'sex'; FHIR wants gender (DS-EXPORT-2)
+        "gender":        demo.get("gender") or demo.get("sex"),
+        "contact_number": demo.get("telephone_cell") or demo.get("cell_number") or demo.get("phone"),
+        "email":         demo.get("email"),
+        "address":       demo.get("address") or demo.get("home_address") or demo.get("postal_address"),
     }
 
 
@@ -425,6 +429,7 @@ def run_export_job(supabase, job_id: str) -> None:
                     supabase.table("gp_validation_sessions")
                     .select("extractions")
                     .eq("document_id", doc_id)
+                    .eq("workspace_id", workspace_id)  # defense-in-depth: never bundle another tenant's session (DS-EXPORT-1)
                     .order("created_at", desc=True)
                     .limit(1)
                     .execute()
