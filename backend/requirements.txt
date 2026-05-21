@@ -64,3 +64,4 @@ isort
 flake8emergentintegrations
 openai
 reportlab==4.4.4
+fhir.resources>=7.0.0  # Phase 2.5 — FHIR R4 export for Module 01 Digitisation per v1.2 brochure §11

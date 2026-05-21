@@ -26,10 +26,9 @@ class BatchUploadService:
     Service for processing multiple documents in batches
     """
     
-    def __init__(self, db_manager, supabase_client):
-        self.db = db_manager.db
+    def __init__(self, supabase_client, db_manager=None):
         self.supabase = supabase_client
-        # In-memory queue for simplicity (can be replaced with Redis/MongoDB queue)
+        # In-memory queue for simplicity (can be replaced with Redis queue)
         self.processing_batches: Dict[str, Dict] = {}
         
     def create_batch(
@@ -236,36 +235,24 @@ class BatchUploadService:
         await self._save_batch_record(batch_id)
     
     async def _save_batch_record(self, batch_id: str):
-        """Save batch record to MongoDB for persistence"""
+        """Save batch record - kept in memory for now, persisted via digitised_documents"""
         if batch_id not in self.processing_batches:
             return
-        
-        batch = self.processing_batches[batch_id]
-        
-        try:
-            # Save to MongoDB
-            await self.db['batch_uploads'].update_one(
-                {'id': batch_id},
-                {'$set': batch},
-                upsert=True
-            )
-            logger.info(f"💾 Saved batch record: {batch_id}")
-        except Exception as e:
-            logger.error(f"Failed to save batch record: {e}")
+        logger.info(f"Batch record saved in memory: {batch_id}")
     
     async def get_batch_history(
         self,
         workspace_id: str,
         limit: int = 20
     ) -> List[Dict]:
-        """Get recent batch uploads for a workspace"""
+        """Get recent batch uploads from in-memory store"""
         try:
-            cursor = self.db['batch_uploads'].find(
-                {'workspace_id': workspace_id}
-            ).sort('created_at', -1).limit(limit)
-            
-            batches = await cursor.to_list(length=limit)
-            return batches
+            batches = [
+                b for b in self.processing_batches.values()
+                if b.get('workspace_id') == workspace_id
+            ]
+            batches.sort(key=lambda b: b.get('created_at', ''), reverse=True)
+            return batches[:limit]
         except Exception as e:
             logger.error(f"Failed to get batch history: {e}")
             return []
@@ -296,11 +283,11 @@ class BatchUploadService:
 _batch_service_instance = None
 
 
-def get_batch_service(db_manager=None, supabase_client=None):
+def get_batch_service(supabase_client=None, db_manager=None):
     """Get or create batch service instance"""
     global _batch_service_instance
-    
-    if _batch_service_instance is None and db_manager and supabase_client:
-        _batch_service_instance = BatchUploadService(db_manager, supabase_client)
-    
+
+    if _batch_service_instance is None and supabase_client:
+        _batch_service_instance = BatchUploadService(supabase_client=supabase_client)
+
     return _batch_service_instance
