@@ -105,10 +105,11 @@ const DigitisationDashboard = () => {
         <div className="bg-surface-container-lowest p-lg rounded-xl border border-outline-variant flex flex-col gap-md">
           <div className="flex justify-between items-start gap-md">
             <div className="flex flex-col gap-xs">
-              <p className="font-label-caps text-label-caps uppercase text-on-surface-variant">Page Credits This Month</p>
+              <p className="font-label-caps text-label-caps uppercase text-on-surface-variant">Pages This Month</p>
               <p className="font-h2 text-h2 text-on-surface">
                 {Number(credits.used).toLocaleString()} / {Number(credits.total).toLocaleString()}
               </p>
+              <p className="font-body-sm text-body-sm text-on-surface-variant">Monthly fair-use allowance</p>
             </div>
             <Link
               to="/digitisation/insights"
@@ -123,8 +124,18 @@ const DigitisationDashboard = () => {
               <span>{credits.percent}%</span>
             </div>
             <div className="h-3 w-full bg-surface-container-high rounded-full overflow-hidden">
-              <div className="h-full bg-primary" style={{ width: `${credits.percent}%` }} />
+              <div
+                className={`h-full ${credits.percent >= 100 ? 'bg-error' : credits.percent >= 80 ? 'bg-amber-500' : 'bg-primary'}`}
+                style={{ width: `${Math.min(credits.percent, 100)}%` }}
+              />
             </div>
+            {credits.percent >= 80 && (
+              <p className={`font-body-sm text-body-sm ${credits.percent >= 100 ? 'text-error' : 'text-amber-600'}`}>
+                {credits.percent >= 100
+                  ? 'Over your monthly fair-use allowance — uploads still work; we may reach out about usage.'
+                  : 'Approaching your monthly fair-use allowance.'}
+              </p>
+            )}
           </div>
         </div>
 

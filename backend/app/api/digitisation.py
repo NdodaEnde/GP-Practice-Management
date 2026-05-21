@@ -164,16 +164,31 @@ async def dashboard_summary(
     this_month = sum(1 for d in docs if (d.get("created_at") or "") >= _month_start)
     avg_conf = None  # placeholder — wire to real confidence scores in Phase B+
 
-    # Page credits: placeholder until page_credit_grants migration runs
-    credits_total = 1500
-    credits_used = min(total_digitised, credits_total)
+    # Page usage (fair-use): REAL pages digitised this calendar month vs the
+    # monthly fair-use allowance. Pricing is flat per practice, so we SHOW
+    # usage and warn near the cap but never block uploads (DS-INSIGHTS-1/H3).
+    # Summed directly (not bounded by the 200-row window above) for accuracy;
+    # allowance is env-configurable (per-tier allowances would need the
+    # digitisation_plan_allowances table — future).
+    page_allowance = int(os.environ.get("DIGITISATION_PAGE_ALLOWANCE", "1500"))
+    pages_resp = (
+        supabase.table("digitised_documents")
+        .select("pages_count")
+        .eq("workspace_id", workspace_id)
+        .gte("created_at", _month_start)
+        .execute()
+    )
+    pages_used = sum((r.get("pages_count") or 0) for r in (pages_resp.data or []))
 
     return {
         "industry_type": industry,
         "page_credits": {
-            "used":    credits_used,
-            "total":   credits_total,
-            "percent": round((credits_used / credits_total) * 100) if credits_total else 0,
+            "used":     pages_used,
+            "total":    page_allowance,
+            "percent":  round((pages_used / page_allowance) * 100) if page_allowance else 0,
+            "unit":     "pages",
+            "period":   "month",
+            "enforced": False,   # fair-use: usage shown + warned, uploads never blocked
         },
         "awaiting_validation": {
             "total":           awaiting_total,

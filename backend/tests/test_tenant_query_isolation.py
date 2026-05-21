@@ -219,25 +219,25 @@ def _key(item: Tuple[str, int, str]) -> str:
 #   pytest -q tests/test_tenant_query_isolation.py -s   (prints the set)
 # ---------------------------------------------------------------------------
 BASELINE: Set[str] = {
-    # Regenerated 2026-05-21 (line drift from dashboard this_month edit;
-    # no new tenant-table queries this round).
+    # Regenerated 2026-05-21 (line drift from the fair-use page-usage query;
+    # the new query is workspace-scoped, not a new unscoped query).
     "app/api/clinical_actions.py::121::prescriptions",
-    "app/api/digitisation.py::1110::gp_validation_sessions",
-    "app/api/digitisation.py::1136::gp_validation_sessions",
-    "app/api/digitisation.py::1185::gp_validation_sessions",
-    "app/api/digitisation.py::1190::digitised_documents",
-    "app/api/digitisation.py::1235::gp_validation_sessions",
-    "app/api/digitisation.py::1306::gp_validation_sessions",
-    "app/api/digitisation.py::1333::gp_validation_sessions",
-    "app/api/digitisation.py::1384::digitised_documents",
-    "app/api/digitisation.py::1388::gp_validation_sessions",
-    "app/api/digitisation.py::1469::digitised_documents",
-    "app/api/digitisation.py::1494::digitised_documents",
-    "app/api/digitisation.py::1571::digitised_documents",
-    "app/api/digitisation.py::1716::digitised_documents",
-    "app/api/digitisation.py::316::gp_validation_sessions",
-    "app/api/digitisation.py::339::gp_validation_sessions",
-    "app/api/digitisation.py::905::gp_validation_sessions",
+    "app/api/digitisation.py::1125::gp_validation_sessions",
+    "app/api/digitisation.py::1151::gp_validation_sessions",
+    "app/api/digitisation.py::1200::gp_validation_sessions",
+    "app/api/digitisation.py::1205::digitised_documents",
+    "app/api/digitisation.py::1250::gp_validation_sessions",
+    "app/api/digitisation.py::1321::gp_validation_sessions",
+    "app/api/digitisation.py::1348::gp_validation_sessions",
+    "app/api/digitisation.py::1399::digitised_documents",
+    "app/api/digitisation.py::1403::gp_validation_sessions",
+    "app/api/digitisation.py::1484::digitised_documents",
+    "app/api/digitisation.py::1509::digitised_documents",
+    "app/api/digitisation.py::1586::digitised_documents",
+    "app/api/digitisation.py::1731::digitised_documents",
+    "app/api/digitisation.py::331::gp_validation_sessions",
+    "app/api/digitisation.py::354::gp_validation_sessions",
+    "app/api/digitisation.py::920::gp_validation_sessions",
     "app/api/gp_endpoints.py::292::patients",
     "app/api/gp_endpoints.py::296::patients",
     "app/api/gp_endpoints.py::353::gp_validation_sessions",

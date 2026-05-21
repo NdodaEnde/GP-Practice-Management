@@ -100,7 +100,7 @@ INSERT INTO capabilities (id, display_name, description) VALUES
     ('workflow_dashboards',       'Workflow dashboards',           'Operational dashboards (patient flow, no-show rates, doctor productivity within the practice). Real-time / weekly cadence.'),
 
     -- Module 01 Digitisation capabilities
-    ('digitisation_upload',       'Digitisation upload',           'Document upload pipeline. Subject to monthly page-credit balance check.'),
+    ('digitisation_upload',       'Digitisation upload',           'Document upload pipeline. Flat per-practice plan with a monthly fair-use page allowance (usage shown + warned near the cap; uploads are not blocked).'),
     ('digitisation_validation',   'Digitisation validation queue', 'Human-in-the-loop validation queue with confidence scores.'),
     ('digitisation_auto_populate','Digitisation auto-population',  'Validated records auto-populate the EHR (allergies, diagnoses, vitals, medications) where applicable.'),
     ('digitisation_export_basic', 'Digitisation export (CSV/JSON)','Export validated records as CSV / JSON. Available v1.'),
