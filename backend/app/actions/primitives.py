@@ -14,6 +14,7 @@ The discipline:
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
@@ -756,6 +757,45 @@ class SetJsonPath:
             )
 
 
+# Pure decimal-comma numeric string: "36,7", "96,1", "-1,5". NOT "9,102,03"
+# (multiple commas), NOT "1,000" thousands-grouped (doesn't occur in vitals).
+_DECIMAL_COMMA = re.compile(r"^-?\d+,\d+$")
+
+
+def _normalise_decimal_commas(extractions: Dict[str, Any]) -> Dict[str, Any]:
+    """Canonicalise SA-locale decimal commas (36,7 °C; 96,1 kg) to points
+    before the promote RPC casts vitals to NUMERIC/INT.
+
+    Postgres rejects '36,7'::NUMERIC (SQLSTATE 22P02), which failed the
+    whole promote — the document validated but no patient record was
+    filed. SA documents write decimals with a comma, so this recurs on
+    real data. Scoped to `vitals_history` (the only numeric-cast section)
+    so free-text notes, dates, and ID numbers are untouched. Vitals never
+    carry thousands separators, so a lone comma here is unambiguously a
+    decimal point. Returns the input unchanged when there's nothing to fix.
+    """
+    rows = extractions.get("vitals_history")
+    if not isinstance(rows, list):
+        return extractions
+    changed = False
+    new_rows: List[Any] = []
+    for row in rows:
+        if isinstance(row, dict):
+            nr = dict(row)
+            for k, v in nr.items():
+                if isinstance(v, str) and _DECIMAL_COMMA.match(v.strip()):
+                    nr[k] = v.strip().replace(",", ".")
+                    changed = True
+            new_rows.append(nr)
+        else:
+            new_rows.append(row)
+    if not changed:
+        return extractions
+    out = dict(extractions)
+    out["vitals_history"] = new_rows
+    return out
+
+
 @dataclass
 class PromoteExtractionsViaPromoter:
     """The single Effect that wraps the document → patient-record promotion.
@@ -811,13 +851,17 @@ class PromoteExtractionsViaPromoter:
         _log = logging.getLogger(__name__)
 
         rpc_started = time.monotonic()
+        # SA decimals use a comma (36,7 °C). The RPC casts vitals to
+        # NUMERIC/INT and Postgres rejects '36,7' → the whole promote
+        # effect_failed. Canonicalise before sending.
+        extractions = _normalise_decimal_commas(self.extractions)
         try:
             response = ctx.supabase.rpc(
                 "execute_action_promote_document",
                 {
                     "p_document_id":          self.document_id,
                     "p_workspace_id":         self.workspace_id,
-                    "p_extractions":          self.extractions,
+                    "p_extractions":          extractions,
                     "p_created_by":           self.actor_email or "promoter",
                     "p_forced_patient_id":    self.forced_patient_id,
                     "p_force_create_patient": self.force_create_patient,
