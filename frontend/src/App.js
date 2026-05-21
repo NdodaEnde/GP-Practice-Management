@@ -9,11 +9,6 @@ import NewEncounter from './pages/NewEncounter';
 import AIScribe from './pages/AIScribe';
 import PatientPrescriptions from './pages/PatientPrescriptions';
 import ValidationInterface from './pages/ValidationInterface';
-import DocumentDigitization from './pages/DocumentDigitization';
-import GPPatientDigitization from './pages/GPPatientDigitization';
-import DigitisedDocuments from './pages/DigitisedDocuments';
-import DocumentValidation from './pages/DocumentValidation';
-import DocumentArchive from './pages/DocumentArchive';
 import ReceptionCheckIn from './pages/ReceptionCheckIn';
 import QueueDisplay from './pages/QueueDisplay';
 import WorkstationDashboard from './pages/WorkstationDashboard';
@@ -30,10 +25,6 @@ import ClaimsManagement from './pages/ClaimsManagement';
 import PaymentSuccess from './pages/PaymentSuccess';
 import PaymentCancelled from './pages/PaymentCancelled';
 import ExtractionConfiguration from './pages/ExtractionConfiguration';
-import ValidationQueue from './pages/ValidationQueue';
-import ValidationReview from './pages/ValidationReview';
-import DigitizationArchive from './pages/DigitizationArchive';
-import DigitizationModule from './pages/DigitizationModule';
 import DigitisationDashboard from './pages/DigitisationDashboard';
 import DigitisationStub from './pages/DigitisationStub';
 import DocumentsPipeline from './pages/DocumentsPipeline';
@@ -126,13 +117,8 @@ function App() {
             <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="briefing" element={<MorningBriefing />} />
-            <Route path="digitize" element={<DocumentDigitization />} />
-            <Route path="gp-digitize" element={<GPPatientDigitization />} />
-            <Route path="gp/documents" element={<DigitisedDocuments />} />
-            <Route path="gp/documents/:documentId/validate" element={<DocumentValidation />} />
             <Route path="patients" element={<PatientRegistry />} />
             <Route path="patients/:patientId" element={<PatientEHR />} />
-            <Route path="patients/:patientId/documents" element={<DocumentArchive />} />
             <Route path="patients/:patientId/prescriptions" element={<PatientPrescriptions />} />
             <Route path="patients/:patientId/ai-scribe" element={<AIScribe />} />
             <Route path="encounters/new/:patientId" element={<NewEncounter />} />
@@ -151,10 +137,6 @@ function App() {
             <Route path="financial-dashboard" element={<FinancialDashboard />} />
             <Route path="claims-management" element={<ClaimsManagement />} />
             <Route path="extraction-config" element={<ExtractionConfiguration />} />
-            <Route path="validation-queue" element={<ValidationQueue />} />
-            <Route path="document-validation/:extractionId" element={<ValidationReview />} />
-            <Route path="digitization-archive" element={<DigitizationArchive />} />
-            <Route path="digitization" element={<DigitizationModule />} />
 
             {/* Type C Digitisation Workspace (no EHR; capability-gated nav) */}
             <Route path="digitisation" element={<DigitisationDashboard />} />
