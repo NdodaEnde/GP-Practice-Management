@@ -30,10 +30,8 @@ import ClaimsManagement from './pages/ClaimsManagement';
 import PaymentSuccess from './pages/PaymentSuccess';
 import PaymentCancelled from './pages/PaymentCancelled';
 import ExtractionConfiguration from './pages/ExtractionConfiguration';
-import BatchUpload from './pages/BatchUpload';
 import ValidationQueue from './pages/ValidationQueue';
 import ValidationReview from './pages/ValidationReview';
-import DocumentUpload from './pages/DocumentUpload';
 import DigitizationArchive from './pages/DigitizationArchive';
 import DigitizationModule from './pages/DigitizationModule';
 import DigitisationDashboard from './pages/DigitisationDashboard';
@@ -153,10 +151,8 @@ function App() {
             <Route path="financial-dashboard" element={<FinancialDashboard />} />
             <Route path="claims-management" element={<ClaimsManagement />} />
             <Route path="extraction-config" element={<ExtractionConfiguration />} />
-            <Route path="batch-upload" element={<BatchUpload />} />
             <Route path="validation-queue" element={<ValidationQueue />} />
             <Route path="document-validation/:extractionId" element={<ValidationReview />} />
-            <Route path="document-upload" element={<DocumentUpload />} />
             <Route path="digitization-archive" element={<DigitizationArchive />} />
             <Route path="digitization" element={<DigitizationModule />} />
 
