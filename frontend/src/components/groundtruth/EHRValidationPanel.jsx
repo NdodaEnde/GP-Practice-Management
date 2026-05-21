@@ -4,7 +4,7 @@
  *
  * Props (same contract as ValidationPanel + onFieldFocus):
  *   docId         {string}  - document ID
- *   chunks        {array}   - ADE parse chunks from App.jsx
+ *   chunks        {array}   - parse chunks from App.jsx
  *   onFieldFocus  {fn}      - (fieldPath) => void  bridged to PDF highlight in App.jsx
  *   onSaveSuccess {fn}      - (validatedData) => void
  *
@@ -14,7 +14,7 @@
  *      GET  /api/nappi/lookup?drug_name=X new — NAPPI lookup
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import api from './api';
 import { useFieldMetadata, useFieldOriginal } from './FieldMetadataContext';
 import {
@@ -92,7 +92,7 @@ function EHRField({ label, fieldPath, value, confidence, required, multiline, on
   const [accepted, setAccepted] = useState(false);
   useEffect(() => { setLocal(value ?? ''); }, [value]);
 
-  // Live grounding metadata from LandingAI ADE (when available). When provided,
+  // Live grounding metadata from the extraction engine (when available). When provided,
   // overrides the panel's hardcoded `confidence` prop so doctors see the real
   // grounding signal instead of a placeholder. The badge provenance also drives
   // an "inferred" tooltip so reviewers know to double-check ungrounded values.
@@ -368,9 +368,14 @@ const DOC_TYPE_OPTIONS = [
   { value: 'medical_certificate', label: 'Medical Certificate' },
 ];
 
-const EHRValidationPanel = ({ docId, docType: initialDocType, chunks, onFieldFocus, onSaveSuccess, isRecord }) => {
+const EHRValidationPanel = forwardRef(({ docId, docType: initialDocType, chunks, onFieldFocus, onSaveSuccess, isRecord }, ref) => {
   const [activeTab,    setActiveTab]    = useState('demographics');
   const [editedData,   setEditedData]   = useState(null);
+  // True only after a genuine user field edit. `editedData` alone can't
+  // mean "dirty" — it's populated by the adapter on load, so gating the
+  // parent's save on `!!editedData` would re-save the (re-shaped) AI
+  // baseline on every approve. `dirty` is the honest signal.
+  const [dirty,        setDirty]        = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
   const [isSaving,     setIsSaving]     = useState(false);
   const [saveStatus,   setSaveStatus]   = useState(null);
@@ -403,6 +408,7 @@ const EHRValidationPanel = ({ docId, docType: initialDocType, chunks, onFieldFoc
       const data = res.data;
       const extracted = data.extracted_data || {};
       setEditedData(JSON.parse(JSON.stringify(extracted)));
+      setDirty(false);  // a freshly loaded/re-extracted baseline is clean
       setHasExtracted(true);
       validateICD10Codes(extracted);
       lookupNAPPICodes(extracted);
@@ -448,6 +454,7 @@ const EHRValidationPanel = ({ docId, docType: initialDocType, chunks, onFieldFoc
   };
 
   const handleEdit = useCallback((fieldPath, newValue) => {
+    setDirty(true);  // a real user edit — distinct from the adapter-loaded baseline
     setEditedData(prev => {
       if (!prev) return prev;
       const next = JSON.parse(JSON.stringify(prev));
@@ -461,18 +468,40 @@ const EHRValidationPanel = ({ docId, docType: initialDocType, chunks, onFieldFoc
 
   const handleFocus = useCallback((fieldPath) => { onFieldFocus?.(fieldPath); }, [onFieldFocus]);
 
-  const handleSave = async () => {
+  // Single source of truth for persisting reviewer edits. Returns true
+  // on success, false on failure. Used by the panel's own Save buttons
+  // AND by the parent's "Approve & Save" via the imperative handle below
+  // — that flow previously called /approve only, silently discarding
+  // every edit and promoting the un-corrected AI extraction.
+  const persistEdits = async () => {
+    if (!editedData) return true;  // nothing loaded → nothing to lose
     setIsSaving(true); setSaveStatus(null);
     try {
       await api.post(`${API_BASE}/validate`, editedData, { params: { doc_id: docId } });
       setSaveStatus('success');
+      setDirty(false);  // persisted — no longer ahead of the server
       onSaveSuccess?.(editedData);
+      return true;
     } catch (err) {
       setSaveStatus('error'); setError(err.message || 'Save failed');
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
+
+  const handleSave = async () => { await persistEdits(); };
+
+  // Let the parent flush pending edits before it approves. Without this,
+  // "Approve & Save" approved the ORIGINAL extraction and dropped the
+  // reviewer's corrections (no /save call → no EditExtractionField audit
+  // → wrong data promoted). `hasEdits` returns the real dirty flag so the
+  // parent saves ONLY when the reviewer actually changed something — not
+  // on every approve just because the adapter populated editedData.
+  useImperativeHandle(ref, () => ({
+    save: persistEdits,
+    hasEdits: () => dirty,
+  }), [dirty, editedData, docId]);
 
   const runMLAnalysis = async () => {
     if (!docId) return;
@@ -563,6 +592,8 @@ const EHRValidationPanel = ({ docId, docType: initialDocType, chunks, onFieldFoc
       )}
     </div>
   );
-};
+});
+
+EHRValidationPanel.displayName = 'EHRValidationPanel';
 
 export default EHRValidationPanel;

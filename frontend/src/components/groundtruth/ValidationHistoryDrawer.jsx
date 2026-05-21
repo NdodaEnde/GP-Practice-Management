@@ -242,7 +242,12 @@ export default function ValidationHistoryDrawer({
                   const conf = p.match_confidence || 'n/a';
                   // Confidence pill: high (id_number) green, medium (name_dob)
                   // amber, ambiguous warning red, created neutral.
-                  let confColor = '#6b7280', confLabel = 'NEW PATIENT';
+                  // Default label is honest about whether a NEW patient was
+                  // created vs an EXISTING one matched (backend sends
+                  // patient_kind: 'created' | 'updated'). Saying "NEW
+                  // PATIENT" for a matched existing record was a small lie.
+                  let confColor = '#6b7280';
+                  let confLabel = p.patient_kind === 'updated' ? 'EXISTING PATIENT' : 'NEW PATIENT';
                   if (conf === 'id_number')      { confColor = '#15803d'; confLabel = 'MATCHED · SA ID'; }
                   else if (conf === 'name_dob') {
                     confColor = ps.ambiguous ? '#dc2626' : '#a16207';

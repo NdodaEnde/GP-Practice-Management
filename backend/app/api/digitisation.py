@@ -759,10 +759,29 @@ def _audit_row_to_drawer_row(row: Dict[str, Any]) -> Dict[str, Any]:
         consult_count = sum(1 for e in affected if e.get("type") == "Consultation")
         diag_count    = sum(1 for e in affected if e.get("type") == "Diagnosis")
         vital_count   = sum(1 for e in affected if e.get("type") == "Vital")
-        rx_count      = sum(1 for e in affected if e.get("type") == "Prescription")
+        # The promoter emits one "PrescriptionItem" per drug line plus a
+        # parent "Prescription". The drawer's "prescription_items" stat
+        # means the drug lines — count PrescriptionItem, NOT the parent
+        # (counting "Prescription" under-reported a 2-drug script as 1).
+        rx_count      = sum(1 for e in affected if e.get("type") == "PrescriptionItem")
         promotion = {
             "patient_id": patient_entry.get("id") if patient_entry else None,
             "patient_kind": patient_entry.get("op") if patient_entry else None,
+            # `patient_summary` is the shape ValidationHistoryDrawer.jsx
+            # already reads ({first_name,last_name,dob,id_number}). The
+            # backend never populated it — so the drawer rendered
+            # "(unknown name) / DOB —" for EVERY promote, even a correct
+            # record. validation_history's batch resolver fills it from
+            # the patients row (this helper is pure/sync, no DB access).
+            # HONESTY: a genuinely hollow "Unknown / 1900-01-01"
+            # placeholder now shows truthfully as that placeholder, not
+            # masked as a missing-name UI artifact hiding a real defect.
+            "patient_summary": {
+                "first_name": None,
+                "last_name":  None,
+                "dob":        None,
+                "id_number":  None,
+            },
             "counts": {
                 "encounters":         consult_count,
                 "diagnoses":          diag_count,
@@ -858,21 +877,25 @@ async def validation_history(
     if not existing.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
-    # Pull session for original / approved values.
+    # Pull session for original / approved values. Also collect ALL session
+    # ids for this document — EditExtractionField audit rows are scoped to
+    # the ValidationSession (not the Document), so the timeline query below
+    # must look them up by session id too.
     original = None
     approved = None
+    session_ids: List[str] = []
     try:
         sess = (
             supabase.table("gp_validation_sessions")
-            .select("extractions, extractions_original")
+            .select("id, extractions, extractions_original")
             .eq("document_id", document_id)
             .order("created_at", desc=True)
-            .limit(1)
             .execute()
         )
         if sess.data:
             approved = sess.data[0].get("extractions")
             original = sess.data[0].get("extractions_original")
+            session_ids = [s["id"] for s in sess.data if s.get("id")]
     except Exception as e:
         logger.warning(f"failed to fetch validation session for history: {e}")
 
@@ -884,16 +907,18 @@ async def validation_history(
     # raises TypeError inside the supabase client — silently swallowed by
     # this try/except, surfacing as an empty drawer. json.dumps() is the
     # correct shape.
+    _AUDIT_COLS = (
+        "id, action_name, actor_email, actor_user_id, parameters, "
+        "affected_objects, outcome, error_detail, started_at, "
+        "reverses_audit_id, reversed_by_audit_id"
+    )
     raw_history: List[Dict[str, Any]] = []
     try:
         import json as _json
-        log_resp = (
+        # (a) Document-scoped rows: promote / reject / reprocess / reassign.
+        doc_resp = (
             supabase.table("action_audit_log")
-            .select(
-                "id, action_name, actor_email, actor_user_id, parameters, "
-                "affected_objects, outcome, error_detail, started_at, "
-                "reverses_audit_id, reversed_by_audit_id"
-            )
+            .select(_AUDIT_COLS)
             .contains(
                 "affected_objects",
                 _json.dumps([{"type": "Document", "id": document_id}]),
@@ -902,11 +927,71 @@ async def validation_history(
             .limit(limit)
             .execute()
         )
-        raw_history = log_resp.data or []
+        # (b) Session-scoped rows: EditExtractionField records the reviewer's
+        # per-field edits against the ValidationSession, NOT the Document, so
+        # the Document-only filter above silently dropped them — the user saw
+        # the approve row but never which fields they changed.
+        merged: Dict[str, Dict[str, Any]] = {r["id"]: r for r in (doc_resp.data or [])}
+        for sid in session_ids:
+            sess_resp = (
+                supabase.table("action_audit_log")
+                .select(_AUDIT_COLS)
+                .contains(
+                    "affected_objects",
+                    _json.dumps([{"type": "ValidationSession", "id": sid}]),
+                )
+                .order("started_at", desc=True)
+                .limit(limit)
+                .execute()
+            )
+            for r in (sess_resp.data or []):
+                merged[r["id"]] = r
+        # Dedupe by id, newest first, then apply the caller's limit.
+        raw_history = sorted(
+            merged.values(), key=lambda r: r.get("started_at") or "", reverse=True
+        )[:limit]
     except Exception as e:
         logger.error(f"failed to fetch action_audit_log for /history: {e}")
 
     history = [_audit_row_to_drawer_row(r) for r in raw_history]
+
+    # Resolve promoted-patient identities so the drawer can show WHO a
+    # promote landed on. Without this the drawer rendered "(unknown name)
+    # / DOB —" for every promote — including correct records — because the
+    # audit payload only carried patient_id. Batched (one query, no N+1);
+    # bounded by `limit`. A genuinely hollow "Unknown / 1900-01-01"
+    # placeholder now shows truthfully as that placeholder, not as a
+    # missing-name UI artifact that hides the real defect.
+    promo_pids = sorted({
+        h["metadata"]["promotion"]["patient_id"]
+        for h in history
+        if h.get("metadata") and h["metadata"].get("promotion")
+        and h["metadata"]["promotion"].get("patient_id")
+    })
+    if promo_pids:
+        try:
+            prows = (
+                supabase.table("patients")
+                .select("id, first_name, last_name, dob, id_number")
+                .in_("id", promo_pids)
+                .eq("workspace_id", workspace_id)
+                .execute()
+            )
+            by_id = {p["id"]: p for p in (prows.data or [])}
+            for h in history:
+                promo = (h.get("metadata") or {}).get("promotion")
+                if not promo:
+                    continue
+                p = by_id.get(promo.get("patient_id"))
+                if p:
+                    promo["patient_summary"] = {
+                        "first_name": p.get("first_name"),
+                        "last_name":  p.get("last_name"),
+                        "dob":        p.get("dob"),
+                        "id_number":  p.get("id_number"),
+                    }
+        except Exception as e:
+            logger.warning(f"history: patient identity resolve failed: {e}")
 
     return {
         "document_id": document_id,

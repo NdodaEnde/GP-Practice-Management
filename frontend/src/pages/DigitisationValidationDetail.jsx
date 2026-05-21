@@ -83,6 +83,13 @@ const DigitisationValidationDetail = () => {
   const [hoveredChunkId, setHoveredChunkId]   = useState(null);
   const [activeTab, setActiveTab]     = useState('parsed'); // 'parsed' | 'validate'
 
+  // Imperative handle to the validation panel so "Approve & Save" can
+  // flush the reviewer's pending edits through the unified /save BEFORE
+  // it approves. Previously approve ran /approve only — every in-panel
+  // correction was silently dropped and the original AI extraction was
+  // promoted (no EditExtractionField audit either).
+  const panelRef = useRef(null);
+
   // Edit-history drawer state. `original` holds the AI baseline (extractions
   // captured at extract time, never modified) when migration 005 is in place.
   const [historyOpen, setHistoryOpen]       = useState(false);
@@ -191,7 +198,7 @@ const DigitisationValidationDetail = () => {
   // Field clicked in EHRValidationPanel → look up its grounded chunk references
   // in extraction_metadata, jump the PDF + Parsed View to the first one.
   // Fallback: naive token-match (only used when this field has no metadata,
-  // e.g. on a doc processed before migration 004 / without LandingAI grounding).
+  // e.g. on a doc processed before migration 004 / without extraction grounding).
   const handleFieldFocus = (fieldPath) => {
     if (!chunks.length) return;
 
@@ -235,6 +242,22 @@ const DigitisationValidationDetail = () => {
   const submitApprove = async (overrides = {}) => {
     setBusy(true);
     try {
+      // Flush the reviewer's pending edits FIRST. The button says
+      // "Approve & Save"; it must actually save. Skipping this (the old
+      // behaviour) promoted the un-edited AI extraction and wrote no
+      // per-field audit. If the save fails, abort the approve so the
+      // reviewer's corrections are never lost behind a filed record.
+      if (panelRef.current?.hasEdits?.()) {
+        const saved = await panelRef.current.save();
+        if (!saved) {
+          alert(
+            'Your edits could not be saved, so approval was stopped to ' +
+            'avoid filing the un-corrected AI extraction. Nothing was ' +
+            'promoted — please retry.'
+          );
+          return false;
+        }
+      }
       const res = await axios.post(
         `${BACKEND_URL}/api/digitisation/validation/${documentId}/approve`,
         overrides,
@@ -501,16 +524,28 @@ const DigitisationValidationDetail = () => {
             </span>
           </div>
 
-          {/* Tab content */}
-          {activeTab === 'parsed' ? (
-            <div className="gt-overview-panel">
-              <div className="gt-overview-header">
-                <h3>📄 Document Overview</h3>
-                <p className="subtitle">
-                  {chunks.length} section{chunks.length !== 1 ? 's' : ''} · click any chunk to highlight on the PDF
-                </p>
-              </div>
-              <div className="gt-overview-content" ref={overviewScrollRef}>
+          {/* Tab content — BOTH panels stay MOUNTED; we toggle visibility
+              (Tailwind `hidden` = display:none) instead of mount/unmount.
+              Conditionally rendering the Validate panel destroyed the
+              reviewer's in-progress edits (the panel's local state) the
+              moment they peeked at Parsed View before approving. Keeping
+              it mounted preserves editedData + the panelRef across tab
+              switches so "Approve & Save" still flushes the corrections. */}
+          {/* Inline `display` (not Tailwind `hidden`) on purpose: the
+              .gt-overview-panel class hard-sets display:flex + height:100%,
+              same specificity as .hidden → cascade order would decide it
+              and currently keeps the parsed panel visible even when the
+              reviewer switches to Validate, squeezing the Validate panel
+              off-screen ("clicking Validate & Save did nothing"). Inline
+              style wins regardless of CSS load order. */}
+          <div className="gt-overview-panel" style={{ display: activeTab === 'parsed' ? undefined : 'none' }}>
+            <div className="gt-overview-header">
+              <h3>📄 Document Overview</h3>
+              <p className="subtitle">
+                {chunks.length} section{chunks.length !== 1 ? 's' : ''} · click any chunk to highlight on the PDF
+              </p>
+            </div>
+            <div className="gt-overview-content" ref={overviewScrollRef}>
                 {chunks.length === 0 ? (
                   <p className="text-center text-on-surface-variant italic py-md">No chunks parsed.</p>
                 ) : chunks.map((chunk) => {
@@ -537,25 +572,24 @@ const DigitisationValidationDetail = () => {
                     </div>
                   );
                 })}
-              </div>
             </div>
-          ) : (
-            <div className="flex-1 overflow-auto">
-              <FieldMetadataProvider
-                extractionMetadata={extractionMetadata}
-                originalExtractions={aiBaseline}
-                showOriginal={showAiBaseline}
-              >
-                <EHRValidationPanel
-                  docId={documentId}
-                  chunks={chunks}
-                  onFieldFocus={handleFieldFocus}
-                  onSaveSuccess={() => { refreshHistory(); }}
-                  isRecord={false}
-                />
-              </FieldMetadataProvider>
-            </div>
-          )}
+          </div>
+          <div className="flex-1 overflow-auto" style={{ display: activeTab === 'validate' ? undefined : 'none' }}>
+            <FieldMetadataProvider
+              extractionMetadata={extractionMetadata}
+              originalExtractions={aiBaseline}
+              showOriginal={showAiBaseline}
+            >
+              <EHRValidationPanel
+                ref={panelRef}
+                docId={documentId}
+                chunks={chunks}
+                onFieldFocus={handleFieldFocus}
+                onSaveSuccess={() => { refreshHistory(); }}
+                isRecord={false}
+              />
+            </FieldMetadataProvider>
+          </div>
         </div>
       </div>
 

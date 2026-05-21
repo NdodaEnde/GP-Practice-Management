@@ -113,6 +113,56 @@ class PatientMatchEvidence:
 
 
 # ---------------------------------------------------------------------------
+# ExtractionHasUsableIdentity — honest-failure guard for force-create
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ExtractionHasUsableIdentity:
+    """Refuse to force-create a patient from an extraction with no name.
+
+    migration 030's execute_action_promote_document fabricates a
+    placeholder — first_name='Unknown', last_name='Unknown',
+    dob='1900-01-01' — whenever `p_extractions -> 'patient_demographics'`
+    lacks full_names/surname/date_of_birth, then reports
+    outcome='success' over that hollow record.
+
+    That is the observed defect: documents whose extraction predates the
+    current schema key demographics under `demographics` (not
+    `patient_demographics`), so the promoter saw `{}`, manufactured an
+    'Unknown / 1900-01-01' patient with zero clinical rows, and the UI
+    showed a green success — a success that was a lie.
+
+    On the force-create path this returns precondition_failed instead of
+    letting the promoter manufacture an Unknown shell. It does NOT run on
+    the matched-existing path: there a confirmed patient_id already
+    carries the identity and no fabrication happens.
+    """
+    name: str
+    extractions: Dict[str, Any]
+
+    def check(self, ctx: ExecutorContext) -> CheckResult:
+        demo = (self.extractions or {}).get("patient_demographics")
+        if not isinstance(demo, dict):
+            return CheckResult(
+                self.name, False,
+                "extraction has no 'patient_demographics' object — promoting "
+                "would fabricate an 'Unknown / 1900-01-01' placeholder. This "
+                "document's extraction predates the current schema; "
+                "re-extract it before promoting.",
+            )
+        full_names = (demo.get("full_names") or "").strip()
+        surname    = (demo.get("surname") or "").strip()
+        if not full_names and not surname:
+            return CheckResult(
+                self.name, False,
+                "patient_demographics has neither full_names nor surname — "
+                "promoting would create an 'Unknown' patient. Capture the "
+                "patient's name in the validation screen before approving.",
+            )
+        return CheckResult(self.name, True, None)
+
+
+# ---------------------------------------------------------------------------
 # PromoteDocumentToPatientRecord
 # ---------------------------------------------------------------------------
 
@@ -206,6 +256,18 @@ class PromoteDocumentToPatientRecord(Action):
                 ObjectExists("patients", self.target_patient_id),
                 BelongsToPractice("patients", self.target_patient_id, self.workspace_id),
             ]
+        else:
+            # Force-create path: refuse rather than let migration 030
+            # manufacture an 'Unknown / 1900-01-01' shell from an
+            # extraction with no usable patient_demographics. Honest
+            # failure (precondition_failed surfaced to the reviewer) >
+            # a green "success" over a hollow record.
+            checks.append(
+                ExtractionHasUsableIdentity(
+                    name="extraction_has_usable_identity",
+                    extractions=self.extractions,
+                )
+            )
 
         checks += [
             # Confirmation provenance
