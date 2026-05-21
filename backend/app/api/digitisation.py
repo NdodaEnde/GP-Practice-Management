@@ -268,7 +268,7 @@ async def validation_detail(
         try:
             signed = supabase.storage.from_("medical-records").create_signed_url(
                 path=file_path,
-                expires_in=3600,
+                expires_in=28800,  # 8h — covers long validation sessions without a stale-URL PDF failure (L1)
             )
             pdf_url = signed.get("signedURL") or signed.get("signed_url")
         except Exception as e:
@@ -1557,6 +1557,17 @@ ALLOWED_UPLOAD_EXTS = {'.pdf', '.png', '.jpg', '.jpeg', '.tiff', '.tif'}
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50MB per file
 
 
+def _sniff_allowed_filetype(content: bytes) -> Optional[str]:
+    """Magic-byte check — the extension and client content-type are both
+    spoofable, so verify the actual bytes are one of the accepted document
+    types before we store/process them. Returns the type or None. (L3)"""
+    if content[:4] == b'%PDF':                 return 'pdf'
+    if content[:8] == b'\x89PNG\r\n\x1a\n':    return 'png'
+    if content[:3] == b'\xff\xd8\xff':         return 'jpeg'
+    if content[:4] in (b'II*\x00', b'MM\x00*'): return 'tiff'
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Edit-log writer + diff helper.
 # ---------------------------------------------------------------------------
@@ -1623,6 +1634,14 @@ async def upload_document(
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=f"File too large ({len(file_content)} bytes). Max is {MAX_UPLOAD_BYTES} bytes.",
+        )
+
+    # Verify the bytes really are a supported document — the extension and
+    # client content-type are both spoofable. (L3)
+    if _sniff_allowed_filetype(file_content) is None:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="File content is not a supported document (expected PDF, PNG, JPEG, or TIFF).",
         )
 
     document_id = str(uuid.uuid4())

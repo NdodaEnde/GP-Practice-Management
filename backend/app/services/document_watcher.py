@@ -53,6 +53,10 @@ class DocumentWatcher:
         # realistic parse+extract time so an actively-processing doc is never
         # yanked out from under a live worker.
         self._stale_parsing_minutes = int(os.environ.get('WATCHER_STALE_PARSING_MIN', '15'))
+        # Re-queue a failed doc up to this many times before marking it 'error'
+        # (transient LandingAI/network failures recover; permanent ones exhaust
+        # the budget). Each retry re-spends LandingAI credits — keep it small.
+        self._max_process_retries = int(os.environ.get('WATCHER_MAX_RETRIES', '2'))
         self._processing_semaphore = asyncio.Semaphore(self._max_concurrent)
         self._bucket = 'medical-records'
         # Track known file paths to avoid repeated DB lookups
@@ -317,7 +321,7 @@ class DocumentWatcher:
         # demo workspace the watcher was originally booted with. Per-doc
         # workspace_id is read from the row and passed into the processor.
         result = self.supabase.table('digitised_documents') \
-            .select('id, filename, file_path, file_size, workspace_id') \
+            .select('id, filename, file_path, file_size, workspace_id, retry_count') \
             .eq('status', 'queued_for_processing') \
             .order('created_at', desc=False) \
             .limit(self._max_concurrent) \
@@ -413,14 +417,32 @@ class DocumentWatcher:
 
             except Exception as e:
                 logger.error(f"Processing failed for {filename}: {e}")
-                self.supabase.table('digitised_documents') \
-                    .update({
-                        'status': 'error',
-                        'error_message': str(e)[:500],
-                        'updated_at': datetime.now(timezone.utc).isoformat()
-                    }) \
-                    .eq('id', document_id) \
-                    .execute()
+                retry_count = int(doc.get('retry_count') or 0)
+                if retry_count < self._max_process_retries:
+                    # Bounded auto-retry for transient failures (LandingAI/network).
+                    # Re-queue so it gets re-claimed next tick. NOTE: no backoff,
+                    # and each attempt re-spends LandingAI credits — capped by
+                    # _max_process_retries. (L5)
+                    self.supabase.table('digitised_documents') \
+                        .update({
+                            'status': 'queued_for_processing',
+                            'retry_count': retry_count + 1,
+                            'error_message': f"retry {retry_count + 1}/{self._max_process_retries}: {str(e)[:400]}",
+                            'updated_at': datetime.now(timezone.utc).isoformat()
+                        }) \
+                        .eq('id', document_id) \
+                        .execute()
+                    logger.warning(f"Re-queued {filename} for retry {retry_count + 1}/{self._max_process_retries}")
+                else:
+                    self.supabase.table('digitised_documents') \
+                        .update({
+                            'status': 'error',
+                            'error_message': str(e)[:500],
+                            'updated_at': datetime.now(timezone.utc).isoformat()
+                        }) \
+                        .eq('id', document_id) \
+                        .execute()
+                    logger.error(f"{filename} failed permanently after {retry_count} retries")
 
             finally:
                 # Remove from processing set
