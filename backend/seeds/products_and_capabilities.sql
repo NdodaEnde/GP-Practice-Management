@@ -104,7 +104,7 @@ INSERT INTO capabilities (id, display_name, description) VALUES
     ('digitisation_validation',   'Digitisation validation queue', 'Human-in-the-loop validation queue with confidence scores.'),
     ('digitisation_auto_populate','Digitisation auto-population',  'Validated records auto-populate the EHR (allergies, diagnoses, vitals, medications) where applicable.'),
     ('digitisation_export_basic', 'Digitisation export (CSV/JSON)','Export validated records as CSV / JSON. Available v1.'),
-    ('digitisation_export_fhir',  'Digitisation export (FHIR R4)', 'Export validated records as FHIR R4 with US Core profile validation. Pulled into v1 per v1.2 strategy doc §11.'),
+    ('digitisation_export_fhir',  'Digitisation export (FHIR R4)', 'Export validated records as base FHIR R4 (validated against the R4 base profiles with the official HL7 validator). Profile validation (e.g. US Core) is client-driven, added only if a client/IG requires it. Pulled into v1 per v1.2 strategy doc §11.'),
     ('digitisation_operational_analytics', 'Digitisation operational analytics', 'Throughput, latency, validation accuracy, page-credit consumption, engine health, peer benchmarking for the digitisation pipeline. Ships with Module 01. Distinct from clinical analytics (Module 02).'),
 
     -- Module 02 Analytics capabilities

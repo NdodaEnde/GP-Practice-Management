@@ -3,12 +3,17 @@ fhir_export.py — Build a FHIR R4 Bundle from a patient's SurgiScan record.
 
 Phase 2.5 (Module 01 Digitisation §11 commitment in v1.2 brochure): doctors
 who already run another EHR want to take their digitised data away in a
-standards-compliant format. FHIR R4 with US Core profile is the only export
-format major SA EHRs (Discovery Practice Studio, Healthbridge, etc.) accept
-without bespoke integration work.
+standards-compliant format. We emit base FHIR R4 — validated against the R4
+base profiles with the official HL7 validator (0 errors) — which is the
+lingua franca SA EHRs (Discovery Practice Studio, Healthbridge, etc.) accept.
+
+We deliberately do NOT validate against US Core: it is a US-specific
+implementation guide (OMB race/ethnicity, US identifiers/states) that would
+reject correct SA data. Profile validation is client-driven — add a specific
+profile only if a client or a national IG requires it.
 
 Scope decisions (v1):
-  • Bundle type: 'searchset' — simpler than 'document' (no Composition required)
+  • Bundle type: 'collection' — a distribution set (no Composition/search semantics)
   • Resources mapped: Patient, AllergyIntolerance, Condition, MedicationStatement,
     Observation (vitals), Encounter
   • Coding systems:
