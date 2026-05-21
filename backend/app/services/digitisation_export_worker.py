@@ -139,6 +139,15 @@ def _attempt_push(
     if not fhir_url:
         return
 
+    # SSRF guard: workspace-supplied URL — refuse internal targets before POST.
+    from app.core.url_safety import assert_safe_external_url, UnsafeURLError
+    _ssrf_refused: Optional[str] = None
+    try:
+        assert_safe_external_url(fhir_url)
+    except UnsafeURLError as e:
+        _ssrf_refused = f"refused URL (SSRF guard): {e}"
+        logger.warning(f"[export-worker] {_ssrf_refused}")
+
     headers = {
         "Content-Type": "application/fhir+json",
         "Accept":       "application/fhir+json,application/json",
@@ -152,15 +161,18 @@ def _attempt_push(
     error: Optional[str] = None
     ok = False
     try:
-        with httpx.Client(timeout=30.0, follow_redirects=True) as client:
-            r = client.post(fhir_url, headers=headers, content=bundle_content)
-        status_code = r.status_code
-        # FHIR transaction success: 200 OK with OperationOutcome bundle response.
-        # 201/202 also acceptable for some servers.
-        if 200 <= r.status_code < 300:
-            ok = True
+        if _ssrf_refused:
+            error = _ssrf_refused
         else:
-            error = f"HTTP {r.status_code}: {r.text[:200].strip()}"
+            with httpx.Client(timeout=30.0, follow_redirects=False) as client:
+                r = client.post(fhir_url, headers=headers, content=bundle_content)
+            status_code = r.status_code
+            # FHIR transaction success: 200 OK with OperationOutcome bundle
+            # response. 201/202 also acceptable for some servers.
+            if 200 <= r.status_code < 300:
+                ok = True
+            else:
+                error = f"HTTP {r.status_code}: {r.text[:200].strip()}"
     except httpx.ConnectError as e:
         error = f"Could not reach {fhir_url}: {e}"
     except httpx.TimeoutException:

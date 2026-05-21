@@ -4,8 +4,11 @@ Handles login, logout, token refresh, and password management
 Now integrated with Supabase database
 """
 
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import time as _time
+import threading as _threading
+from collections import deque as _deque
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 from datetime import datetime, timedelta, timezone
@@ -298,12 +301,49 @@ def require_capability(capability_id: str):
 
 # ==================== Routes ====================
 
+# --- Login brute-force / credential-stuffing guard -------------------------
+# In-process per-IP sliding window. Stops password-guessing against any
+# account and stuffing across accounts from one source. (Per-process; a
+# multi-worker deploy should move this to a shared store, but it's a real
+# guard today vs none.)
+_login_rate_lock = _threading.Lock()
+_login_rate_state: dict = {}
+_LOGIN_RATE_WINDOW_S = 300   # 5 minutes
+_LOGIN_RATE_MAX = 15         # attempts per window per client IP
+
+
+def _client_ip(request: Request) -> str:
+    # Behind a proxy/LB (Render), trust the first X-Forwarded-For hop.
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _enforce_login_rate_limit(request: Request) -> None:
+    key = _client_ip(request)
+    now = _time.monotonic()
+    with _login_rate_lock:
+        bucket = _login_rate_state.setdefault(key, _deque())
+        while bucket and now - bucket[0] > _LOGIN_RATE_WINDOW_S:
+            bucket.popleft()
+        if len(bucket) >= _LOGIN_RATE_MAX:
+            retry = int(_LOGIN_RATE_WINDOW_S - (now - bucket[0])) + 1
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Too many login attempts. Retry in {retry}s.",
+                headers={"Retry-After": str(retry)},
+            )
+        bucket.append(now)
+
+
 @router.post("/login", response_model=LoginResponse)
-async def login(login_data: LoginRequest):
+async def login(login_data: LoginRequest, request: Request):
     """
     Login endpoint - authenticate user and return JWT tokens
     Verifies credentials against Supabase database
     """
+    _enforce_login_rate_limit(request)
     try:
         # Fetch user from database
         result = supabase.table('users').select('*').eq('email', login_data.email).execute()

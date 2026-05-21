@@ -2241,6 +2241,14 @@ async def test_fhir_connection(
     base = (conn["fhir_url"] or "").rstrip("/")
     metadata_url = f"{base}/metadata"
 
+    # SSRF guard: the FHIR URL is workspace-supplied. Refuse internal targets
+    # (cloud metadata, loopback, private ranges) before fetching.
+    from app.core.url_safety import assert_safe_external_url, UnsafeURLError
+    try:
+        assert_safe_external_url(metadata_url)
+    except UnsafeURLError as e:
+        raise HTTPException(status_code=400, detail=f"Refused FHIR URL: {e}")
+
     # Build auth headers from the connection's metadata. Phase B supports
     # 'none' and 'bearer'; basic + oauth2/SMART live in metadata.credentials
     # but aren't applied yet (would need Vault for storage of secrets).
@@ -2253,7 +2261,7 @@ async def test_fhir_connection(
     ok = False
     err: Optional[str] = None
     try:
-        with httpx.Client(timeout=10.0, follow_redirects=True) as client:
+        with httpx.Client(timeout=10.0, follow_redirects=False) as client:
             r = client.get(metadata_url, headers=headers)
         if r.status_code == 200:
             ctype = r.headers.get("content-type", "")

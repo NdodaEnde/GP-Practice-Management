@@ -44,7 +44,15 @@ DEMO_WORKSPACE_ID = os.environ.get('DEMO_WORKSPACE_ID', 'demo-gp-workspace-001')
 MICROSERVICE_URL = os.environ.get('MICROSERVICE_URL', 'http://localhost:5001')
 
 # Create the main app
-app = FastAPI(title="SurgiScan API")
+# Disable interactive API docs + the OpenAPI schema in production (DEBUG off):
+# they expose the full endpoint surface unauthenticated. Enabled in dev only.
+_DOCS_ENABLED = os.environ.get("DEBUG", "false").lower() == "true"
+app = FastAPI(
+    title="SurgiScan API",
+    docs_url="/docs" if _DOCS_ENABLED else None,
+    redoc_url="/redoc" if _DOCS_ENABLED else None,
+    openapi_url="/openapi.json" if _DOCS_ENABLED else None,
+)
 api_router = APIRouter(prefix="/api")
 
 # ==================== Models ====================
