@@ -77,7 +77,10 @@ class GPDocumentProcessor:
 
             # STEP 1: Parse document
             logger.info("Parsing document with LandingAI...")
-            parsed_doc = self._parse_document(file_path)
+            # Offload the blocking LandingAI parse to a thread so it doesn't
+            # freeze the asyncio event loop (the watcher shares it with the
+            # FastAPI app — a sync SDK call here made API requests hang).
+            parsed_doc = await asyncio.to_thread(self._parse_document, file_path)
 
             # STEP 2: Process chunks and save parsed document to Supabase
             chunks_list, pages_processed = self._process_chunks(parsed_doc)
@@ -290,7 +293,8 @@ class GPDocumentProcessor:
         # investigations, referrals, etc).
         try:
             logger.info("   Extracting with rich GPPatientRecordExtraction schema (one call)...")
-            rich_result = self.client.extract(
+            rich_result = await asyncio.to_thread(
+                self.client.extract,
                 schema=gp_record_schema,
                 markdown=markdown_bytes,
             )
@@ -316,7 +320,7 @@ class GPDocumentProcessor:
         # The frontend normaliser maps this shape to the rich shape so the panel
         # still renders, just with fewer sections populated.
         try:
-            demographics_result = self.client.extract(schema=demographics_schema, markdown=markdown_bytes)
+            demographics_result = await asyncio.to_thread(self.client.extract, schema=demographics_schema, markdown=markdown_bytes)
             extractions["demographics"] = safe_model_dump(demographics_result)
             logger.info("   Demographics extracted (fallback)")
         except Exception as e:
@@ -325,7 +329,7 @@ class GPDocumentProcessor:
 
         markdown_bytes.seek(0)
         try:
-            chronic_result = self.client.extract(schema=chronic_schema, markdown=markdown_bytes)
+            chronic_result = await asyncio.to_thread(self.client.extract, schema=chronic_schema, markdown=markdown_bytes)
             extractions["chronic_summary"] = safe_model_dump(chronic_result)
             logger.info("   Chronic summary extracted (fallback)")
         except Exception as e:
@@ -334,7 +338,7 @@ class GPDocumentProcessor:
 
         markdown_bytes.seek(0)
         try:
-            vitals_result = self.client.extract(schema=vitals_schema, markdown=markdown_bytes)
+            vitals_result = await asyncio.to_thread(self.client.extract, schema=vitals_schema, markdown=markdown_bytes)
             extractions["vitals"] = safe_model_dump(vitals_result)
             logger.info("   Vitals extracted (fallback)")
         except Exception as e:
@@ -655,7 +659,10 @@ class GPDocumentProcessor:
 
             # STEP 1: Parse document with LandingAI
             logger.info("Parsing document with LandingAI...")
-            parsed_doc = self._parse_document(file_path)
+            # Offload the blocking LandingAI parse to a thread so it doesn't
+            # freeze the asyncio event loop (the watcher shares it with the
+            # FastAPI app — a sync SDK call here made API requests hang).
+            parsed_doc = await asyncio.to_thread(self._parse_document, file_path)
 
             # STEP 2: Process chunks and save parsed document to Supabase
             chunks_list, pages_processed = self._process_chunks(parsed_doc)
