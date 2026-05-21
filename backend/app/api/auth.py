@@ -27,7 +27,17 @@ SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Security configuration
-SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "your-secret-key-change-in-production")
+_JWT_DEFAULT = "your-secret-key-change-in-production"
+SECRET_KEY = os.environ.get("JWT_SECRET_KEY", _JWT_DEFAULT)
+# Fail closed: a production process (DEBUG off) must NOT run on the public
+# default secret — it would let anyone forge valid auth tokens. Dev (DEBUG=true)
+# may use the default. Set a strong unique JWT_SECRET_KEY in prod.
+if SECRET_KEY == _JWT_DEFAULT and os.environ.get("DEBUG", "false").lower() != "true":
+    raise RuntimeError(
+        "JWT_SECRET_KEY is unset/default in a non-DEBUG (production) environment. "
+        "Set a strong unique JWT_SECRET_KEY (e.g. `python -c \"import secrets; "
+        "print(secrets.token_urlsafe(48))\"`) before deploying."
+    )
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
 REFRESH_TOKEN_EXPIRE_DAYS = 7
