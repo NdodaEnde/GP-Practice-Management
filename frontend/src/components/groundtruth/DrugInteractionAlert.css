@@ -1,0 +1,122 @@
+/* DrugInteractionAlert styles */
+
+.dia-container {
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 8px 0;
+  background: #FAFAFA;
+}
+
+.dia-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #6B7280;
+  font-size: 12px;
+}
+
+.dia-clear {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #059669;
+  font-size: 12px;
+}
+
+.dia-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.dia-header-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1F2937;
+}
+
+.dia-major-count {
+  color: #DC2626;
+}
+
+.dia-ai-tag {
+  font-size: 9px;
+  font-weight: 500;
+  color: #6B7280;
+  background: #F3F4F6;
+  padding: 1px 6px;
+  border-radius: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-left: auto;
+}
+
+.dia-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dia-item {
+  border: 1px solid #E5E7EB;
+  border-left: 3px solid;
+  border-radius: 6px;
+  background: white;
+  overflow: hidden;
+}
+
+.dia-item-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.dia-item-header:hover {
+  background: #F9FAFB;
+}
+
+.dia-drugs {
+  font-size: 12px;
+  font-weight: 500;
+  color: #1F2937;
+  flex: 1;
+}
+
+.dia-severity {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+.dia-item-details {
+  padding: 8px 10px;
+  border-top: 1px solid #F3F4F6;
+  font-size: 12px;
+  color: #4B5563;
+}
+
+.dia-effect {
+  margin-bottom: 6px;
+}
+
+.dia-recommendation {
+  color: #059669;
+}
+
+.dia-disclaimer {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 6px 8px;
+  background: #FEF3C7;
+  border-radius: 6px;
+  font-size: 10px;
+  color: #92400E;
+  line-height: 1.4;
+}

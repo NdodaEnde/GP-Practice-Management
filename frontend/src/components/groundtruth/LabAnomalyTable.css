@@ -1,0 +1,116 @@
+/* LabAnomalyTable styles */
+
+.lab-anomaly-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  color: #6B7280;
+  font-size: 12px;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  margin: 8px 0;
+}
+
+.lab-anomaly-container {
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  margin: 8px 0;
+  background: #FAFAFA;
+  overflow: hidden;
+}
+
+.lab-anomaly-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #E5E7EB;
+}
+
+.lab-anomaly-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1F2937;
+}
+
+.lab-anomaly-count {
+  font-weight: 600;
+}
+
+.lab-anomaly-ai-tag {
+  font-size: 9px;
+  font-weight: 500;
+  color: #6B7280;
+  background: #F3F4F6;
+  padding: 1px 6px;
+  border-radius: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-left: auto;
+}
+
+.lab-anomaly-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.lab-anomaly-table thead {
+  background: #F9FAFB;
+}
+
+.lab-anomaly-table th {
+  text-align: left;
+  padding: 6px 10px;
+  font-weight: 600;
+  color: #6B7280;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.lab-anomaly-table td {
+  padding: 6px 10px;
+  border-top: 1px solid #F3F4F6;
+}
+
+.lab-test-name {
+  color: #1F2937;
+  font-weight: 500;
+}
+
+.lab-ref {
+  color: #9CA3AF;
+  font-size: 11px;
+}
+
+.lab-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.lab-row-critical {
+  background: #FEF2F2;
+}
+
+.lab-row-abnormal {
+  background: #FFFBEB;
+}
+
+.lab-anomaly-disclaimer {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 6px 10px;
+  background: #FEF3C7;
+  font-size: 10px;
+  color: #92400E;
+  line-height: 1.4;
+}

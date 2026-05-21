@@ -62,13 +62,17 @@ const Layout = () => {
     navigate('/login');
   };
 
-  // Type C = digitisation-only workspace (no EHR). Doctors who already have
-  // their own EHR and just need archive digitisation + export. They get a
-  // 6-section nav scoped to the digitisation pipeline.
+  // The ONE unified digitisation engine nav. Rendered for ANY workspace
+  // with digitisation capability — identical screens/components for the
+  // Digitisation-only (Type-C) tier AND the full GP-Practice tier, so the
+  // digitisation experience is the same everywhere (one engine, no
+  // legacy parallel path). `isTypeCWorkspace` (no EHR) now only decides
+  // whether the EHR nav + dev pages also appear and the subtitle — NOT
+  // which digitisation UI you get.
   const isTypeCWorkspace =
     !hasCapability('patient_ehr_basic') && hasCapability('digitisation_upload');
 
-  const typeCNav = [
+  const digitisationNav = [
     { name: 'Dashboard',            path: '/digitisation',            icon: 'dashboard',         capability: 'digitisation_upload' },
     { name: 'Documents',            path: '/digitisation/documents',  icon: 'description',       capability: 'digitisation_upload' },
     { name: 'Validation Queue',     path: '/digitisation/validation', icon: 'fact_check',        capability: 'digitisation_validation' },
@@ -86,12 +90,13 @@ const Layout = () => {
     { name: 'Reception Check-In',   path: '/reception',         icon: 'how_to_reg',        capability: 'reception_checkin' },
     { name: 'Vitals Station',       path: '/vitals',            icon: 'monitor_heart',     capability: 'vitals_station' },
     { name: 'Patients',             path: '/patients',          icon: 'group',             capability: 'patient_ehr_basic' },
-    { name: 'Digitization Module',  path: '/digitization',      icon: 'folder_managed',    capability: 'digitisation_upload' },
-    { name: 'Document Upload',      path: '/document-upload',   icon: 'cloud_upload',      capability: 'digitisation_upload' },
-    { name: 'Validation Queue',     path: '/validation-queue',  icon: 'fact_check',        capability: 'digitisation_validation' },
-    { name: 'Document Archive',     path: '/digitization-archive', icon: 'inventory_2',    capability: 'digitisation_upload' },
-    { name: 'Digitised Documents',  path: '/gp/documents',      icon: 'description',       capability: 'digitisation_upload' },
-    { name: 'Extraction Config',    path: '/extraction-config', icon: 'tune',              capability: 'digitisation_upload' },
+    { name: 'Morning Briefing',     path: '/briefing',          icon: 'summarize',         capability: 'clinical_query' },
+    // Digitisation is served by the ONE unified engine nav
+    // (digitisationNav, prepended below) — NOT duplicated here. The
+    // legacy /digitization, /document-upload, /validation-queue,
+    // /digitization-archive, /gp/documents and /extraction-config entries
+    // were removed so the GP-Practice tier uses the exact same
+    // digitisation engine (UI + features) as the Digitisation tier.
     { name: 'Billing',              path: '/billing',           icon: 'payments',          capability: 'billing_invoicing' },
     { name: 'Financial Dashboard',  path: '/financial-dashboard', icon: 'trending_up',     capability: 'billing_invoicing' },
     { name: 'Claims Management',    path: '/claims-management', icon: 'shield',            capability: 'billing_invoicing' },
@@ -114,7 +119,12 @@ const Layout = () => {
     { name: 'Billing Test',    path: '/billing-test',       icon: 'receipt_long' },
   ] : [];
 
-  const baseNav = isTypeCWorkspace ? typeCNav : healthcareNav;
+  // Digitisation-only tier: just the engine. Full GP-Practice tier: the
+  // SAME engine nav + the EHR-only screens. One digitisation experience
+  // everywhere; per-item hasCapability filter (below) still applies.
+  const baseNav = isTypeCWorkspace
+    ? digitisationNav
+    : [...digitisationNav, ...healthcareNav];
   const navigation = [
     ...baseNav.filter(item => !item.capability || hasCapability(item.capability)),
     ...adminNav,

@@ -86,7 +86,7 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete, onEx
   console.log('Raw chronic summary after normalization:', rawChronicSummary);
   
   // Normalize chronic_summary data structure
-  // LandingAI returns: conditions_mentioned, medications_mentioned
+  // The extraction engine returns: conditions_mentioned, medications_mentioned
   // We need: chronic_conditions, current_medications
   const chronicSummary = {
     ...rawChronicSummary,
@@ -101,7 +101,7 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete, onEx
   console.log('Final chronicSummary:', chronicSummary);
   
   // Normalize vitals data structure
-  // LandingAI returns: vital_entries
+  // The extraction engine returns: vital_entries
   // We need: vital_signs_records
   const vitals = {
     ...rawVitals,
@@ -120,7 +120,7 @@ const GPValidationInterface = ({ patientData, onBack, onValidationComplete, onEx
   const vitalsCount = vitals.vital_signs_records?.length || 0;
   const hasNotes = clinicalNotes?.notes || clinicalNotes?.text || false;
   const pagesProcessed = responseData.pages_processed;
-  const modelUsed = responseData.model_used || 'LandingAI';
+  const modelUsed = responseData.model_used || 'AI extraction';
   const chunks = responseData.chunks || [];
   const filePath = responseData.file_path || '';
   const documentId = responseData.document_id || '';

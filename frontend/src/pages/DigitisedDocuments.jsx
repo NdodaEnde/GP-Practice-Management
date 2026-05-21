@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  FileText, Upload, Eye, Trash2, Download, Filter, 
-  Search, CheckCircle, Clock, AlertCircle, FileCheck 
+import {
+  FileText, Upload, Eye, Trash2, Download, Filter,
+  Search, CheckCircle, Clock, AlertCircle, FileCheck,
+  RefreshCw, Loader2, RotateCcw, Activity, Play, PlayCircle
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,13 +12,18 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import axios from 'axios';
 
+const AUTO_REFRESH_INTERVAL = 10000; // 10 seconds when documents are processing
+
 const DigitisedDocuments = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  
+
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedDocs, setSelectedDocs] = useState([]);
+  const [watcherStatus, setWatcherStatus] = useState(null);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const refreshTimer = useRef(null);
   const [filters, setFilters] = useState({
     status: '',
     search: '',
@@ -27,13 +33,9 @@ const DigitisedDocuments = () => {
 
   const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
 
-  useEffect(() => {
-    fetchDocuments();
-  }, [filters]);
-
-  const fetchDocuments = async () => {
+  const fetchDocuments = useCallback(async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const params = new URLSearchParams();
       if (filters.status) params.append('status', filters.status);
       if (filters.search) params.append('search', filters.search);
@@ -43,24 +45,105 @@ const DigitisedDocuments = () => {
       const response = await axios.get(`${backendUrl}/api/gp/documents?${params.toString()}`);
       setDocuments(response.data.documents || []);
     } catch (error) {
-      console.error('Error fetching documents:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to load documents',
-        variant: 'destructive'
-      });
+      if (!silent) {
+        console.error('Error fetching documents:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to load documents',
+          variant: 'destructive'
+        });
+      }
     } finally {
       setLoading(false);
+    }
+  }, [filters, backendUrl]);
+
+  const fetchWatcherStatus = useCallback(async () => {
+    try {
+      const response = await axios.get(`${backendUrl}/api/gp/watcher/status`);
+      setWatcherStatus(response.data);
+    } catch (error) {
+      // Watcher status is non-critical, silently fail
+    }
+  }, [backendUrl]);
+
+  // Initial load
+  useEffect(() => {
+    fetchDocuments();
+    fetchWatcherStatus();
+  }, [filters]);
+
+  // Auto-refresh when documents are being processed
+  useEffect(() => {
+    if (refreshTimer.current) {
+      clearInterval(refreshTimer.current);
+      refreshTimer.current = null;
+    }
+
+    const hasProcessing = documents.some(doc =>
+      ['queued_for_processing', 'parsing', 'extracting'].includes(doc.status)
+    );
+
+    if (autoRefresh && hasProcessing) {
+      refreshTimer.current = setInterval(() => {
+        fetchDocuments(true);
+        fetchWatcherStatus();
+      }, AUTO_REFRESH_INTERVAL);
+    }
+
+    return () => {
+      if (refreshTimer.current) {
+        clearInterval(refreshTimer.current);
+      }
+    };
+  }, [documents, autoRefresh, fetchDocuments, fetchWatcherStatus]);
+
+  const handleQueueProcessing = async (docId) => {
+    try {
+      await axios.post(`${backendUrl}/api/gp/documents/${docId}/queue-processing`);
+      toast({
+        title: 'Processing Queued',
+        description: 'Document queued for parsing and extraction'
+      });
+      fetchDocuments();
+    } catch (error) {
+      console.error('Error queuing document:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to queue document for processing',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const handleQueueAllUploaded = async () => {
+    const uploadedCount = documents.filter(d => d.status === 'uploaded').length;
+    if (uploadedCount === 0) {
+      toast({ title: 'No documents', description: 'No uploaded documents to process' });
+      return;
+    }
+    if (!window.confirm(`This will process ${uploadedCount} document(s) and consume extraction credits. Continue?`)) return;
+
+    try {
+      const response = await axios.post(`${backendUrl}/api/gp/documents/queue-all-uploaded`);
+      toast({
+        title: 'Processing Queued',
+        description: response.data.message
+      });
+      fetchDocuments();
+    } catch (error) {
+      toast({ title: 'Error', description: 'Failed to queue documents', variant: 'destructive' });
     }
   };
 
   const getStatusBadge = (status) => {
     const statusConfig = {
-      uploaded: { color: 'bg-blue-100 text-blue-700', icon: Clock, label: 'Uploaded' },
-      parsing: { color: 'bg-yellow-100 text-yellow-700', icon: Clock, label: 'Parsing...' },
+      uploaded: { color: 'bg-blue-100 text-blue-700', icon: Clock, label: 'Awaiting Processing' },
+      queued_for_processing: { color: 'bg-amber-100 text-amber-700', icon: Clock, label: 'Queued' },
+      parsing: { color: 'bg-yellow-100 text-yellow-700', icon: Loader2, label: 'Parsing...', animate: true },
       parsed: { color: 'bg-green-100 text-green-700', icon: CheckCircle, label: 'Parsed' },
-      extracting: { color: 'bg-purple-100 text-purple-700', icon: Clock, label: 'Extracting...' },
-      extracted: { color: 'bg-teal-100 text-teal-700', icon: FileCheck, label: 'Extracted' },
+      extracting: { color: 'bg-purple-100 text-purple-700', icon: Loader2, label: 'Extracting...', animate: true },
+      extracted: { color: 'bg-teal-100 text-teal-700', icon: FileCheck, label: 'Ready for Review' },
       validated: { color: 'bg-indigo-100 text-indigo-700', icon: CheckCircle, label: 'Validated' },
       approved: { color: 'bg-emerald-100 text-emerald-700', icon: CheckCircle, label: 'Approved' },
       error: { color: 'bg-red-100 text-red-700', icon: AlertCircle, label: 'Error' }
@@ -71,7 +154,7 @@ const DigitisedDocuments = () => {
 
     return (
       <Badge className={`${config.color} flex items-center gap-1`}>
-        <Icon className="w-3 h-3" />
+        <Icon className={`w-3 h-3 ${config.animate ? 'animate-spin' : ''}`} />
         {config.label}
       </Badge>
     );
@@ -96,6 +179,24 @@ const DigitisedDocuments = () => {
       toast({
         title: 'Error',
         description: 'Failed to delete document',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const handleReprocess = async (docId) => {
+    try {
+      await axios.post(`${backendUrl}/api/gp/documents/${docId}/reprocess`);
+      toast({
+        title: 'Reprocessing',
+        description: 'Document queued for reprocessing'
+      });
+      fetchDocuments();
+    } catch (error) {
+      console.error('Error reprocessing document:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to reprocess document',
         variant: 'destructive'
       });
     }
@@ -130,8 +231,8 @@ const DigitisedDocuments = () => {
   };
 
   const toggleSelection = (docId) => {
-    setSelectedDocs(prev => 
-      prev.includes(docId) 
+    setSelectedDocs(prev =>
+      prev.includes(docId)
         ? prev.filter(id => id !== docId)
         : [...prev, docId]
     );
@@ -153,6 +254,10 @@ const DigitisedDocuments = () => {
     );
   }
 
+  const hasProcessing = documents.some(doc =>
+    ['uploaded', 'parsing', 'extracting'].includes(doc.status)
+  );
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* Header */}
@@ -162,16 +267,87 @@ const DigitisedDocuments = () => {
             <FileText className="w-8 h-8 text-teal-600" />
             Digitised Documents
           </h1>
-          <p className="text-slate-600 mt-1">Manage and validate scanned patient records</p>
+          <p className="text-slate-600 mt-1">
+            Documents are auto-detected from storage. Click "Process" to parse and extract.
+          </p>
         </div>
-        <Button 
-          onClick={() => navigate('/gp/digitization')}
-          className="bg-teal-600 hover:bg-teal-700 text-white"
-        >
-          <Upload className="w-4 h-4 mr-2" />
-          Upload New
-        </Button>
+        <div className="flex items-center gap-3">
+          {documents.some(d => d.status === 'uploaded') && (
+            <Button
+              onClick={handleQueueAllUploaded}
+              variant="outline"
+              size="sm"
+              className="border-amber-600 text-amber-600 hover:bg-amber-50"
+            >
+              <PlayCircle className="w-4 h-4 mr-1" />
+              Process All ({documents.filter(d => d.status === 'uploaded').length})
+            </Button>
+          )}
+          <Button
+            onClick={() => { fetchDocuments(); fetchWatcherStatus(); }}
+            variant="outline"
+            size="sm"
+          >
+            <RefreshCw className="w-4 h-4 mr-1" />
+            Refresh
+          </Button>
+          <Button
+            onClick={() => navigate('/gp/digitization')}
+            className="bg-teal-600 hover:bg-teal-700 text-white"
+          >
+            <Upload className="w-4 h-4 mr-2" />
+            Upload New
+          </Button>
+        </div>
       </div>
+
+      {/* Processing Queue Status */}
+      {watcherStatus && (
+        <Card className="mb-6 border-slate-200">
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-6">
+                <div className="flex items-center gap-2">
+                  <Activity className={`w-4 h-4 ${watcherStatus.watcher_running ? 'text-green-500' : 'text-red-500'}`} />
+                  <span className="text-sm font-medium text-slate-700">
+                    Auto-processing {watcherStatus.watcher_running ? 'active' : 'inactive'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-4 text-sm text-slate-600">
+                  {watcherStatus.pending_processing > 0 && (
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5 text-blue-500" />
+                      {watcherStatus.pending_processing} queued
+                    </span>
+                  )}
+                  {watcherStatus.currently_processing > 0 && (
+                    <span className="flex items-center gap-1">
+                      <Loader2 className="w-3.5 h-3.5 text-yellow-500 animate-spin" />
+                      {watcherStatus.currently_processing} processing
+                    </span>
+                  )}
+                  <span className="flex items-center gap-1">
+                    <CheckCircle className="w-3.5 h-3.5 text-green-500" />
+                    {watcherStatus.completed} complete
+                  </span>
+                  {watcherStatus.errors > 0 && (
+                    <span className="flex items-center gap-1">
+                      <AlertCircle className="w-3.5 h-3.5 text-red-500" />
+                      {watcherStatus.errors} errors
+                    </span>
+                  )}
+                </div>
+              </div>
+              {hasProcessing && (
+                <span className="text-xs text-slate-400 flex items-center gap-1">
+                  <RefreshCw className="w-3 h-3 animate-spin" />
+                  Auto-refreshing
+                </span>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Filters */}
       <Card className="mb-6">
@@ -197,9 +373,11 @@ const DigitisedDocuments = () => {
                 className="w-full px-3 py-2 border border-gray-300 rounded-md"
               >
                 <option value="">All Statuses</option>
-                <option value="uploaded">Uploaded</option>
+                <option value="uploaded">Awaiting Processing</option>
+                <option value="queued_for_processing">Queued</option>
+                <option value="parsing">Parsing</option>
                 <option value="parsed">Parsed</option>
-                <option value="extracted">Extracted</option>
+                <option value="extracted">Ready for Review</option>
                 <option value="validated">Validated</option>
                 <option value="approved">Approved</option>
                 <option value="error">Error</option>
@@ -234,14 +412,14 @@ const DigitisedDocuments = () => {
                 <strong>{selectedDocs.length}</strong> document(s) selected
               </span>
               <div className="flex gap-2">
-                <Button 
+                <Button
                   onClick={handleBulkExtract}
                   variant="outline"
                   className="border-teal-600 text-teal-600 hover:bg-teal-50"
                 >
                   Extract Selected
                 </Button>
-                <Button 
+                <Button
                   onClick={() => setSelectedDocs([])}
                   variant="outline"
                 >
@@ -276,7 +454,9 @@ const DigitisedDocuments = () => {
             <div className="text-center py-12 text-slate-500">
               <FileText className="w-16 h-16 mx-auto mb-4 text-slate-300" />
               <p className="text-lg font-medium">No documents found</p>
-              <p className="text-sm mt-2">Upload documents to get started</p>
+              <p className="text-sm mt-2">
+                Drop files into Supabase Storage or upload here — they'll be processed automatically
+              </p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -299,33 +479,75 @@ const DigitisedDocuments = () => {
                       <div className="flex items-center gap-3 mb-1">
                         <h3 className="font-semibold text-slate-800">{doc.filename}</h3>
                         {getStatusBadge(doc.status)}
+                        {doc.source === 'storage_watcher' && (
+                          <Badge className="bg-slate-100 text-slate-600 text-xs">Auto-detected</Badge>
+                        )}
                       </div>
                       <div className="text-sm text-slate-600 space-y-1">
-                        <div>
-                          Uploaded: {new Date(doc.upload_date).toLocaleString()}
+                        <div className="flex items-center gap-4">
+                          <span>
+                            {new Date(doc.upload_date || doc.created_at).toLocaleString()}
+                          </span>
+                          {doc.patient_name && (
+                            <span>
+                              Patient: <span className="font-medium">{doc.patient_name}</span>
+                            </span>
+                          )}
+                          {doc.file_size && (
+                            <span>
+                              {(doc.file_size / 1024).toFixed(1)} KB
+                            </span>
+                          )}
+                          {doc.pages_count && (
+                            <span>{doc.pages_count} pages</span>
+                          )}
                         </div>
-                        {doc.patient_name && (
-                          <div>
-                            Patient: <span className="font-medium">{doc.patient_name}</span>
-                          </div>
-                        )}
-                        {doc.file_size && (
-                          <div>
-                            Size: {(doc.file_size / 1024).toFixed(2)} KB
+                        {doc.error_message && (
+                          <div className="text-red-600 text-xs mt-1">
+                            Error: {doc.error_message}
                           </div>
                         )}
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleViewDocument(doc.id)}
-                        className="border-teal-600 text-teal-600 hover:bg-teal-50"
-                      >
-                        <Eye className="w-4 h-4 mr-1" />
-                        View
-                      </Button>
+                      {doc.status === 'uploaded' && (
+                        <Button
+                          size="sm"
+                          onClick={() => handleQueueProcessing(doc.id)}
+                          className="bg-teal-600 hover:bg-teal-700 text-white"
+                        >
+                          <Play className="w-4 h-4 mr-1" />
+                          Process
+                        </Button>
+                      )}
+                      {['extracted', 'validated', 'approved', 'parsed'].includes(doc.status) && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleViewDocument(doc.id)}
+                          className="border-teal-600 text-teal-600 hover:bg-teal-50"
+                        >
+                          <Eye className="w-4 h-4 mr-1" />
+                          Review
+                        </Button>
+                      )}
+                      {doc.status === 'error' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleReprocess(doc.id)}
+                          className="border-orange-600 text-orange-600 hover:bg-orange-50"
+                        >
+                          <RotateCcw className="w-4 h-4 mr-1" />
+                          Retry
+                        </Button>
+                      )}
+                      {['parsing', 'extracting', 'queued_for_processing'].includes(doc.status) && (
+                        <Button size="sm" variant="outline" disabled>
+                          <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                          Processing
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         variant="outline"

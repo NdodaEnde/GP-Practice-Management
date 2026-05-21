@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import { Activity, Lock, Mail, AlertCircle } from 'lucide-react';
+import { ScanLine, Lock, Mail, AlertCircle } from 'lucide-react';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -31,13 +31,21 @@ const Login = () => {
           description: `Welcome back, ${result.user.first_name}!`,
         });
 
-        // Redirect based on role
-        if (result.user.role === 'admin') {
-          navigate('/digitization');
-        } else if (result.user.role === 'validator') {
-          navigate('/digitization');
-        } else if (result.user.role === 'uploader') {
-          navigate('/document-upload');
+        // Redirect by capability shape, not role. A Type C workspace only
+        // bought Module 01 (Digitisation) — they have no EHR, so we land
+        // them on the Digitisation Workspace, not the Healthcare dashboard.
+        const caps = result.user.capabilities || [];
+        const hasDigitisation = caps.includes('digitisation_upload');
+        const hasEhr = caps.includes('patient_ehr_basic');
+
+        // Capability-based landing only — never the legacy /digitization
+        // or /document-upload screens. Digitisation-only tenants land on
+        // the unified engine; full-practice tenants land on the EHR home
+        // (whose nav now includes the SAME unified digitisation engine).
+        if (hasEhr) {
+          navigate('/dashboard');
+        } else if (hasDigitisation) {
+          navigate('/digitisation');
         } else {
           navigate('/dashboard');
         }
@@ -73,15 +81,15 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-teal-50 to-cyan-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Logo and Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-teal-500 to-cyan-600 mb-4 shadow-lg">
-            <Activity className="w-10 h-10 text-white" />
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-900 mb-4 shadow-sm">
+            <ScanLine className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">SurgiScan</h1>
-          <p className="text-gray-600">Digitization Module</p>
+          <h1 className="text-3xl font-bold text-blue-900 tracking-tight mb-1">SurgiScan</h1>
+          <p className="text-slate-600 text-sm">Sign in to your practice</p>
         </div>
 
         {/* Login Card */}
@@ -138,7 +146,7 @@ const Login = () => {
               {/* Submit Button */}
               <Button
                 type="submit"
-                className="w-full bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-600 hover:to-cyan-700"
+                className="w-full bg-blue-900 hover:bg-blue-800 text-white"
                 disabled={isLoading}
               >
                 {isLoading ? (
@@ -192,8 +200,8 @@ const Login = () => {
         </Card>
 
         {/* Footer */}
-        <p className="text-center text-sm text-gray-600 mt-6">
-          © 2025 SurgiScan. All rights reserved.
+        <p className="text-center text-sm text-slate-500 mt-6">
+          © {new Date().getFullYear()} SurgiScan. POPIA-compliant. Built in South Africa.
         </p>
       </div>
     </div>

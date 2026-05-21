@@ -27,33 +27,44 @@ const DocumentValidation = () => {
   const loadDocumentData = async () => {
     try {
       setLoading(true);
-      
+
       // Get document metadata from digitised_documents
       const docResponse = await axios.get(`${backendUrl}/api/gp/documents/${documentId}`);
       const document = docResponse.data.document;
-      
+
       console.log('Document metadata:', document);
       setDocumentStatus(document.status);
-      
+
       if (!document.parsed_doc_id) {
         throw new Error('Document has not been parsed yet');
       }
-      
-      // Only load full data if document is extracted or approved
-      if (document.status === 'extracted' || document.status === 'approved') {
-        // Get parsed data from MongoDB (our internal storage)
+
+      // Load data if document is extracted, validated, or approved
+      if (['extracted', 'validated', 'approved', 'parsed'].includes(document.status)) {
+        // Get parsed document (chunks/content)
         const parsedResponse = await axios.get(`${backendUrl}/api/gp/parsed-document/${document.parsed_doc_id}`);
-        
-        console.log('Document metadata:', document);
-        console.log('Parsed data from MongoDB:', parsedResponse.data);
-        
-        // Extract the microservice_response which has the full original structure
-        const microserviceData = parsedResponse.data.microservice_response || {};
-        
-        // parsedResponse.data.data contains the extracted data from structured_extraction
-        const extractedData = parsedResponse.data.data || {};
-        
-        // Format data for validation interface (wrap in extractions object)
+        console.log('Parsed data:', parsedResponse.data);
+
+        const parsedData = parsedResponse.data.parsed_data || {};
+        const chunks = parsedResponse.data.chunks || parsedData.chunks || [];
+
+        // Get validation session (extractions)
+        let extractions = {};
+        let validationSessionId = null;
+        try {
+          const sessionResponse = await axios.get(`${backendUrl}/api/gp/validation-session/${documentId}`);
+          console.log('Validation session:', sessionResponse.data);
+
+          const sessionData = sessionResponse.data.session || sessionResponse.data.data || {};
+          extractions = sessionData.extractions || {};
+          validationSessionId = sessionData.id || sessionData.validation_session_id;
+        } catch (sessionErr) {
+          console.warn('No validation session found, checking parsed data for extractions');
+          // Fallback: extractions might be in parsed_data
+          extractions = parsedResponse.data.data || {};
+        }
+
+        // Format data for GPValidationInterface
         const formattedData = {
           success: true,
           data: {
@@ -63,25 +74,24 @@ const DocumentValidation = () => {
               success: true,
               document_id: documentId,
               parsed_doc_id: document.parsed_doc_id,
-              scanned_doc_id: microserviceData.data?.scanned_doc_id,
-              validation_session_id: microserviceData.data?.validation_session_id,
+              validation_session_id: validationSessionId,
               extractions: {
-                demographics: extractedData.demographics || {},
-                chronic_summary: extractedData.chronic_summary || {},
-                vitals: extractedData.vitals || {},
-                clinical_notes: extractedData.clinical_notes || {}
+                demographics: extractions.demographics || {},
+                chronic_summary: extractions.chronic_summary || {},
+                vitals: extractions.vitals || {},
+                clinical_notes: extractions.clinical_notes || {}
               },
-              chunks: microserviceData.data?.chunks || [],
+              chunks: chunks,
               file_path: document.file_path
             }
           }
         };
-        
+
         console.log('Formatted data for GPValidationInterface:', formattedData);
-        
+
         setPatientData(formattedData);
       }
-      
+
     } catch (error) {
       console.error('Error loading document:', error);
       setError(error.response?.data?.detail || error.message || 'Failed to load document');
@@ -158,8 +168,8 @@ const DocumentValidation = () => {
     );
   }
 
-  // Show extraction prompt if document is only parsed, not yet extracted
-  if (documentStatus === 'parsed' && !patientData) {
+  // Show extraction prompt if document is only parsed/uploaded, not yet extracted
+  if (['parsed', 'uploaded'].includes(documentStatus) && !patientData) {
     return (
       <div className="min-h-screen bg-gray-50">
         <div className="bg-white border-b p-4">

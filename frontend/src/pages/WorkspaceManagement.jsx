@@ -71,7 +71,7 @@ const WorkspaceManagement = () => {
         description: "You don't have permission to access workspace management",
         variant: "destructive"
       });
-      navigate('/digitization');
+      navigate('/dashboard');
     }
   }, [user, navigate]);
 

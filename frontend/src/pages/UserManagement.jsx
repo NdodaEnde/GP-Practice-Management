@@ -62,7 +62,7 @@ const UserManagement = () => {
         description: "You don't have permission to access user management",
         variant: "destructive"
       });
-      navigate('/digitization');
+      navigate('/dashboard');
     }
   }, [user, navigate]);
 

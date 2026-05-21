@@ -1,0 +1,125 @@
+/* RiskScoreBadge styles */
+
+.risk-badge-compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid;
+  white-space: nowrap;
+}
+
+.risk-badge-card {
+  border: 1px solid #E5E7EB;
+  border-left: 4px solid;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 8px 0;
+  background: #FAFAFA;
+}
+
+.risk-badge-header {
+  cursor: pointer;
+}
+
+.risk-badge-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.risk-badge-model {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1F2937;
+}
+
+.risk-badge-ai-tag {
+  font-size: 9px;
+  font-weight: 500;
+  color: #6B7280;
+  background: #F3F4F6;
+  padding: 1px 6px;
+  border-radius: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.risk-badge-score-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.risk-badge-meter {
+  flex: 1;
+  height: 6px;
+  background: #E5E7EB;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.risk-badge-meter-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.5s ease;
+}
+
+.risk-badge-label {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+.risk-badge-details {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #E5E7EB;
+}
+
+.risk-badge-factors-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.risk-badge-factors ul {
+  margin: 4px 0 0 0;
+  padding-left: 16px;
+  font-size: 12px;
+  color: #4B5563;
+}
+
+.risk-badge-factors li {
+  margin-bottom: 3px;
+}
+
+.risk-factor-desc {
+  color: #9CA3AF;
+  font-size: 11px;
+}
+
+.risk-badge-confidence {
+  font-size: 11px;
+  color: #6B7280;
+  margin-top: 6px;
+}
+
+.risk-badge-disclaimer {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 6px 8px;
+  background: #FEF3C7;
+  border-radius: 6px;
+  font-size: 10px;
+  color: #92400E;
+  line-height: 1.4;
+}

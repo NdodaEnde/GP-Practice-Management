@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import Dashboard from './pages/Dashboard';
+import MorningBriefing from './pages/MorningBriefing';
 import PatientRegistry from './pages/PatientRegistry';
 import PatientEHR from './pages/PatientEHR';
 import NewEncounter from './pages/NewEncounter';
@@ -126,6 +127,7 @@ function App() {
             {/* Authenticated app routes (wrapped in Layout, gated by ProtectedRoute) */}
             <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route path="dashboard" element={<Dashboard />} />
+            <Route path="briefing" element={<MorningBriefing />} />
             <Route path="digitize" element={<DocumentDigitization />} />
             <Route path="gp-digitize" element={<GPPatientDigitization />} />
             <Route path="gp/documents" element={<DigitisedDocuments />} />

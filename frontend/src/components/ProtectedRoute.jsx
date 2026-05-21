@@ -1,9 +1,26 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import CapabilityUpsell from '@/components/CapabilityUpsell';
 
-const ProtectedRoute = ({ children, requiredRole = null }) => {
-  const { isAuthenticated, loading, user } = useAuth();
+/**
+ * ProtectedRoute guards rendered children behind three optional layers:
+ *
+ *   1. Authentication — redirects to /login if not signed in.
+ *   2. Role check (legacy) — denies access if `requiredRole` doesn't match.
+ *   3. Capability check (Phase 2) — renders an upsell card if the practice
+ *      doesn't have the named capability granted via active entitlements.
+ *
+ * Capability gating is the v2 model. Role gating remains for the few admin
+ * routes that depend on identity rather than entitlement (e.g. workspace
+ * management).
+ */
+const ProtectedRoute = ({
+  children,
+  requiredRole = null,
+  requiredCapability = null,
+}) => {
+  const { isAuthenticated, loading, user, hasCapability } = useAuth();
   const location = useLocation();
 
   // Show loading state while checking authentication
@@ -11,7 +28,7 @@ const ProtectedRoute = ({ children, requiredRole = null }) => {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-900 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading...</p>
         </div>
       </div>
@@ -46,7 +63,14 @@ const ProtectedRoute = ({ children, requiredRole = null }) => {
     );
   }
 
-  // Render children if authenticated (and role matches if required)
+  // Capability check — render upsell rather than denial when missing.
+  // The à la carte product model means the doctor knows exactly which
+  // Module they would buy to unlock the feature.
+  if (requiredCapability && !hasCapability(requiredCapability)) {
+    return <CapabilityUpsell capability={requiredCapability} />;
+  }
+
+  // Render children if authenticated (and role/capability checks pass)
   return children;
 };
 

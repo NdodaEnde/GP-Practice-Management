@@ -86,16 +86,16 @@ const PrescriptionBuilderNAPPI = ({ patientId, encounterId, doctorName, initialD
       if (!item.medication_name && !item.generic_name) return;
       
       allergies.forEach((allergy) => {
-        // Skip if allergy doesn't have allergen field
-        if (!allergy || !allergy.allergen) return;
+        // Skip if allergy doesn't have substance field
+        if (!allergy || !allergy.substance) return;
         
         const medName = (item.medication_name || '').toLowerCase();
         const genericName = (item.generic_name || '').toLowerCase();
-        const allergen = allergy.allergen.toLowerCase();
+        const substance = allergy.substance.toLowerCase();
         
-        // Check if medication name, generic name, or ingredient contains allergen
-        if (medName.includes(allergen) || genericName.includes(allergen) || 
-            allergen.includes(medName) || allergen.includes(genericName)) {
+        // Check if medication name, generic name, or ingredient contains substance
+        if (medName.includes(substance) || genericName.includes(substance) || 
+            substance.includes(medName) || substance.includes(genericName)) {
           conflicts.push({
             itemIndex: index,
             medication: item.medication_name || item.generic_name,
@@ -203,19 +203,35 @@ const PrescriptionBuilderNAPPI = ({ patientId, encounterId, doctorName, initialD
       return;
     }
 
-    // Check for allergy conflicts
+    // Check for allergy conflicts. Capture a clinical override reason if any
+    // exist — server enforces the same check and rejects with 409 if the reason
+    // is missing or too short.
+    let allergyOverride = null;
     if (allergyConflicts.length > 0) {
-      const conflictMessages = allergyConflicts.map(c => 
-        `${c.medication} may conflict with allergy: ${c.allergy.allergen}`
+      const conflictMessages = allergyConflicts.map(c =>
+        `• ${c.medication} may conflict with: ${c.allergy.substance}`
       ).join('\n');
-      
-      const confirmed = window.confirm(
-        `⚠️ ALLERGY WARNING!\n\n${conflictMessages}\n\nReaction: ${allergyConflicts[0].allergy.reaction}\nSeverity: ${allergyConflicts[0].allergy.severity}\n\nAre you sure you want to proceed with this prescription?`
+
+      const reason = window.prompt(
+        `⚠️ ALLERGY ALERT\n\n${conflictMessages}\n\n` +
+        `Reaction: ${allergyConflicts[0].allergy.reaction}\n` +
+        `Severity: ${allergyConflicts[0].allergy.severity}\n\n` +
+        `To proceed, type a clinical reason for the override (logged for audit; min 10 characters). ` +
+        `Click Cancel to abort the prescription.`
       );
-      
-      if (!confirmed) {
+
+      if (reason === null) {
         return;
       }
+      if (reason.trim().length < 10) {
+        toast({
+          title: "Override reason too short",
+          description: "An audit-grade override reason of at least 10 characters is required.",
+          variant: "destructive"
+        });
+        return;
+      }
+      allergyOverride = reason.trim();
     }
 
     setSaving(true);
@@ -235,7 +251,8 @@ const PrescriptionBuilderNAPPI = ({ patientId, encounterId, doctorName, initialD
           quantity: item.quantity,
           instructions: item.instructions
         })),
-        notes: notes
+        notes: notes,
+        allergy_override: allergyOverride
       });
 
       toast({
@@ -293,7 +310,7 @@ const PrescriptionBuilderNAPPI = ({ patientId, encounterId, doctorName, initialD
               <ul className="mt-2 list-disc list-inside space-y-1">
                 {allergies.map((allergy) => (
                   <li key={allergy.id} className="text-sm">
-                    <strong>{allergy.allergen}</strong> - {allergy.reaction} 
+                    <strong>{allergy.substance}</strong> - {allergy.reaction} 
                     <span className="ml-2 px-2 py-0.5 bg-red-200 text-red-800 rounded text-xs font-semibold">
                       {allergy.severity}
                     </span>
@@ -315,7 +332,7 @@ const PrescriptionBuilderNAPPI = ({ patientId, encounterId, doctorName, initialD
                   <li key={idx} className="text-sm bg-white p-2 rounded border border-orange-300">
                     <strong className="text-orange-900">Medication #{conflict.itemIndex + 1}: {conflict.medication}</strong>
                     <br />
-                    <span className="text-orange-700">May conflict with known allergy: {conflict.allergy.allergen}</span>
+                    <span className="text-orange-700">May conflict with known allergy: {conflict.allergy.substance}</span>
                     <br />
                     <span className="text-red-600 font-semibold">Reaction: {conflict.allergy.reaction} | Severity: {conflict.allergy.severity}</span>
                   </li>

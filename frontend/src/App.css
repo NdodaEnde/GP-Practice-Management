@@ -1,4 +1,5 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+/* Fonts loaded via <link> in public/index.html for performance.
+   Body: Public Sans. Headings: Manrope. */
 
 * {
   margin: 0;
@@ -7,10 +8,16 @@
 }
 
 body {
-  font-family: 'Inter', sans-serif;
+  margin: 0;
+  font-family: 'Public Sans', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: #f8fafc;
+  background: #f8f9fa; /* Clinical Integrity surface — matches mockup */
+  color: #191c1d;       /* on-surface */
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Manrope', system-ui, -apple-system, sans-serif;
 }
 
 .App {

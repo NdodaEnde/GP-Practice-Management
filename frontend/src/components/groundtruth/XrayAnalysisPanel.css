@@ -1,0 +1,309 @@
+.xray-panel {
+  padding: 0;
+}
+
+.xray-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  border-bottom: 1px solid #F3F4F6;
+}
+
+.xray-model-tag {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 2px 8px;
+  background: #EEF2FF;
+  color: #4338CA;
+  border-radius: 10px;
+}
+
+/* ── Drop zone ── */
+.xray-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 32px 20px;
+  margin: 16px;
+  border: 2px dashed #E5E7EB;
+  border-radius: 10px;
+  background: #FAFAFA;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.xray-dropzone:hover {
+  border-color: #93C5FD;
+  background: #F0F7FF;
+}
+
+.xray-dropzone p {
+  margin: 0;
+  font-size: 14px;
+  color: #374151;
+  font-weight: 500;
+}
+
+.xray-dropzone span {
+  font-size: 12px;
+  color: #9CA3AF;
+}
+
+.xray-browse-btn {
+  margin-top: 8px;
+  padding: 6px 14px;
+  background: #3B82F6;
+  color: white;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.xray-browse-btn:hover {
+  background: #2563EB;
+}
+
+/* ── Preview ── */
+.xray-preview-zone {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+}
+
+.xray-preview-img {
+  width: 100%;
+  max-width: 280px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #E5E7EB;
+}
+
+.xray-preview-img img {
+  width: 100%;
+  display: block;
+}
+
+.xray-preview-info {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.xray-filename {
+  font-size: 12px;
+  color: #374151;
+  font-weight: 500;
+}
+
+.xray-filesize {
+  font-size: 11px;
+  color: #9CA3AF;
+}
+
+.xray-preview-actions {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.xray-btn-analyze {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 16px;
+  background: #3B82F6;
+  color: white;
+  border: none;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.xray-btn-analyze:hover { background: #2563EB; }
+.xray-btn-analyze:disabled { opacity: 0.6; cursor: wait; }
+
+.xray-btn-reset {
+  padding: 9px 14px;
+  background: white;
+  border: 1px solid #E5E7EB;
+  border-radius: 7px;
+  font-size: 13px;
+  color: #6B7280;
+  cursor: pointer;
+}
+
+.xray-btn-reset:hover { background: #F9FAFB; }
+.xray-btn-reset:disabled { opacity: 0.5; }
+
+.xray-spin {
+  animation: xray-spin 1s linear infinite;
+}
+
+@keyframes xray-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ── Error ── */
+.xray-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 12px 16px;
+  padding: 10px 12px;
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  border-radius: 7px;
+  font-size: 13px;
+  color: #DC2626;
+}
+
+/* ── Results ── */
+.xray-results {
+  padding: 16px;
+}
+
+.xray-images-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.xray-img-card {
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.xray-img-label {
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #6B7280;
+  background: #F9FAFB;
+  border-bottom: 1px solid #F3F4F6;
+}
+
+.xray-img-card img {
+  width: 100%;
+  display: block;
+}
+
+/* ── Findings ── */
+.xray-findings {
+  margin-bottom: 14px;
+}
+
+.xray-findings h4 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.xray-finding-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+}
+
+.xray-finding-name {
+  width: 130px;
+  font-size: 12px;
+  color: #6B7280;
+  text-transform: capitalize;
+  flex-shrink: 0;
+}
+
+.xray-finding-bar-track {
+  flex: 1;
+  height: 14px;
+  background: #F3F4F6;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.xray-finding-bar {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s ease;
+  min-width: 2px;
+}
+
+.xray-finding-pct {
+  width: 42px;
+  text-align: right;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+/* ── All 14 ── */
+.xray-all-details {
+  margin-bottom: 12px;
+}
+
+.xray-all-details summary {
+  font-size: 12px;
+  color: #6B7280;
+  cursor: pointer;
+  padding: 6px 0;
+}
+
+.xray-all-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 16px;
+  padding: 8px 0;
+}
+
+.xray-all-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+}
+
+.xray-all-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.xray-all-name {
+  flex: 1;
+  font-size: 11px;
+  color: #6B7280;
+  text-transform: capitalize;
+}
+
+.xray-all-prob {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* ── Disclaimer ── */
+.xray-disclaimer {
+  padding: 10px 12px;
+  background: #FEF9C3;
+  border: 1px solid #FDE68A;
+  border-radius: 7px;
+  font-size: 11px;
+  color: #92400E;
+  line-height: 1.4;
+}

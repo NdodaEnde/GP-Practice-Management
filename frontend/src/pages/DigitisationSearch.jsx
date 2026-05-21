@@ -133,11 +133,10 @@ const DigitisationSearch = () => {
             ))}
           </div>
           <p className="font-body-sm text-body-sm text-on-surface-variant mt-md">
-            <strong>How it works.</strong> Each approved document is split into chunks (one per
-            section + per consultation) and indexed via OpenAI embeddings stored in pgvector.
-            Your query gets embedded the same way and we return the closest chunks by cosine
-            similarity. Results group by source document; click <em>View</em> to open the
-            validation panel.
+            <strong>How it works.</strong> Every approved document is indexed for
+            natural-language search. Type what you are looking for in plain English and
+            we return the closest-matching records. Results group by source document;
+            click <em>View</em> to open the validation panel.
           </p>
         </div>
       )}
