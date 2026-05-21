@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Progno Labs &mdash; After the demo (Type C)</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+  :root{
+    --ink:#1a1f1d; --ink-soft:#44504b; --ink-faint:#7a857f;
+    --paper:#fbfaf6; --paper-warm:#f4f1e8; --line:#d8d3c4;
+    --accent:#1f5c4a; --accent-soft:#e7efe9; --alert:#8a4b2a; --alert-soft:#f3e9e1;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  body{font-family:'IBM Plex Sans',sans-serif;color:var(--ink);background:#e8e6df;font-size:14px;line-height:1.6;}
+  .page{width:210mm;min-height:297mm;margin:0 auto;background:var(--paper);position:relative;overflow:hidden;}
+  .page+.page{margin-top:8mm;}
+  @media print{body{background:none;}.page{margin:0;box-shadow:none;page-break-after:always;}.page:last-child{page-break-after:auto;}}
+  @media screen{.page{box-shadow:0 4px 30px rgba(0,0,0,0.12);margin-top:30px;}.page:first-child{margin-top:30px;}body{padding-bottom:40px;}}
+  .pad{padding:20mm 19mm;}
+  .display{font-family:'Newsreader',serif;font-weight:500;line-height:1.14;letter-spacing:-0.01em;}
+  h1.display{font-size:38px;} h2.display{font-size:25px;} h3.display{font-size:19px;}
+  .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:0.18em;text-transform:uppercase;color:var(--accent);font-weight:500;}
+  .lede{font-family:'Newsreader',serif;font-size:18px;line-height:1.5;color:var(--ink-soft);font-weight:400;}
+  p{margin-bottom:13px;} p:last-child{margin-bottom:0;}
+  .small{font-size:12.5px;line-height:1.55;color:var(--ink-soft);}
+  .tiny{font-size:10.5px;color:var(--ink-faint);}
+  strong{font-weight:600;color:var(--ink);} em{font-style:italic;}
+
+  /* Cover */
+  .cover{display:flex;flex-direction:column;min-height:297mm;
+    background:radial-gradient(ellipse 80% 50% at 72% 12%,rgba(31,92,74,0.06),transparent 60%),var(--paper);}
+  .cover-top{padding:20mm 19mm 0;display:flex;justify-content:space-between;align-items:flex-start;}
+  .wordmark{font-family:'Newsreader',serif;font-size:16px;font-weight:600;letter-spacing:-0.01em;}
+  .wordmark span{color:var(--accent);}
+  .cover-meta{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:0.1em;color:var(--ink-faint);text-align:right;text-transform:uppercase;line-height:1.7;}
+  .cover-body{flex:1;padding:0 19mm;display:flex;flex-direction:column;justify-content:center;}
+  .cover-rule{width:54px;height:3px;background:var(--accent);margin:0 0 28px;}
+  .doc-kind{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:18px;}
+  .cover-body h1{font-size:42px;margin-bottom:20px;max-width:16ch;}
+  .cover-body .lede{max-width:48ch;font-size:19px;}
+  .type-badge{margin-top:30px;border:1px solid var(--line);border-radius:3px;padding:16px 20px;max-width:62ch;background:var(--paper-warm);}
+  .type-badge .k{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:0.14em;text-transform:uppercase;color:var(--accent);margin-bottom:6px;}
+  .type-badge .t{font-family:'Newsreader',serif;font-size:17px;color:var(--ink);margin-bottom:6px;}
+  .type-badge .s{font-size:12.5px;color:var(--ink-soft);}
+  .cover-foot{padding:0 19mm 20mm;display:flex;justify-content:space-between;align-items:flex-end;}
+  .cover-foot .small{max-width:42ch;}
+  .stamp{border:1.5px solid var(--line);border-radius:2px;padding:9px 15px;font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:0.12em;text-transform:uppercase;color:var(--ink-faint);line-height:1.6;text-align:center;}
+  .stamp strong{color:var(--accent);display:block;font-size:10.5px;}
+
+  /* Section heads */
+  .sec-head{display:flex;align-items:baseline;gap:13px;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:22px;}
+  .sec-num{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--accent);font-weight:500;}
+
+  /* Recap list */
+  .recap-intro{font-family:'Newsreader',serif;font-size:16.5px;line-height:1.5;color:var(--ink);margin-bottom:22px;}
+  .recap-item{display:grid;grid-template-columns:30px 1fr;gap:16px;margin-bottom:18px;}
+  .recap-item:last-child{margin-bottom:0;}
+  .recap-tick{color:var(--accent);font-family:'Newsreader',serif;font-size:20px;line-height:1.1;}
+  .recap-item h4{font-family:'Newsreader',serif;font-size:16px;font-weight:500;margin-bottom:5px;}
+  .recap-item p{font-size:13px;color:var(--ink-soft);}
+
+  /* Generic titled rows (operational reality, failure modes) */
+  .rowset{margin-top:6px;}
+  .rrow{display:grid;grid-template-columns:1fr 1.85fr;gap:24px;border-top:1px solid var(--line);padding:15px 0;}
+  .rrow:last-child{border-bottom:1px solid var(--line);}
+  .rrow .rk{font-family:'Newsreader',serif;font-size:15px;font-style:italic;color:var(--ink);line-height:1.3;}
+  .rrow .rv{font-size:13px;color:var(--ink-soft);}
+
+  /* Config block */
+  .config-intro{color:var(--ink-soft);font-size:14px;max-width:60ch;margin-bottom:22px;}
+  .config-item{margin-bottom:18px;padding-left:18px;border-left:2px solid var(--accent-soft);}
+  .config-item:last-of-type{margin-bottom:0;}
+  .config-item h4{font-family:'Newsreader',serif;font-size:16px;font-weight:500;margin-bottom:5px;}
+  .config-item p{font-size:13px;color:var(--ink-soft);}
+  .config-note{margin-top:22px;background:var(--paper-warm);border-radius:3px;padding:16px 20px;font-size:13px;color:var(--ink-soft);}
+
+  /* Why-us grid */
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px 30px;margin-top:6px;}
+  .grid2 .gi h4{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:0.1em;text-transform:uppercase;color:var(--accent);margin-bottom:6px;}
+  .grid2 .gi p{font-size:12.5px;color:var(--ink-soft);}
+
+  /* Limits */
+  .limit-row{border-top:1px solid var(--line);padding:13px 0;display:grid;grid-template-columns:1fr 2fr;gap:22px;}
+  .limit-row:last-child{border-bottom:1px solid var(--line);}
+  .limit-row .lk{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-faint);}
+  .limit-row .lv{font-size:12.5px;color:var(--ink-soft);}
+
+  /* Pilot / offer */
+  .offer{background:var(--accent);color:var(--paper);border-radius:4px;padding:30px 34px;margin-top:26px;}
+  .offer .eyebrow{color:rgba(251,250,246,0.65);}
+  .offer h2{font-family:'Newsreader',serif;font-size:24px;font-weight:500;color:var(--paper);margin:11px 0 13px;line-height:1.2;}
+  .offer p{color:rgba(251,250,246,0.86);font-size:14px;max-width:58ch;}
+  .offer .contact{margin-top:22px;padding-top:18px;border-top:1px solid rgba(251,250,246,0.2);font-family:'IBM Plex Mono',monospace;font-size:11.5px;letter-spacing:0.04em;color:rgba(251,250,246,0.75);line-height:1.95;}
+  .offer .contact strong{color:var(--paper);font-weight:500;}
+
+  .footer-line{margin-top:30px;padding-top:14px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;}
+  .footer-line .wordmark{font-size:13px;}
+  .footer-line .tiny{font-family:'IBM Plex Mono',monospace;letter-spacing:0.08em;}
+</style></head><body>
+
+<!-- COVER -->
+<div class="page"><div class="cover">
+  <div class="cover-top">
+    <div class="wordmark">Progno<span>&nbsp;</span>Labs</div>
+    <div class="cover-meta">For South African<br>general practice<br>2026</div>
+  </div>
+  <div class="cover-body">
+    <div class="cover-rule"></div>
+    <div class="doc-kind">After the demo &middot; for your review</div>
+    <h1 class="display">What you saw, and what we&rsquo;d recommend.</h1>
+    <p class="lede">A short, honest record of the demo &mdash; what it did on
+      your own files, what it costs your staff in real terms, what happens when
+      it doesn&rsquo;t work perfectly, and the smallest first step.</p>
+    <div class="type-badge">
+      <div class="k">Prepared for &mdash; Type C practice</div>
+      <div class="t">Practices with an EHR and a workflow that already works.</div>
+      <div class="s">Your system works. You have a back room of paper and no analytics. That is the whole gap.</div>
+    </div>
+  </div>
+  <div class="cover-foot">
+    <p class="small">This document is written specifically for a practice in
+      your situation. It is not a generic brochure &mdash; the recommendation
+      in it is the one configuration we would actually put in your practice.</p>
+    <div class="stamp"><strong>Read this</strong>before you decide.<br>It is deliberately short.</div>
+  </div>
+</div></div>
+
+<!-- PAGE 2 — RECAP -->
+<div class="page"><div class="pad">
+  <div class="sec-head"><span class="sec-num">01</span><span class="eyebrow">What you actually saw</span></div>
+  <p class="recap-intro">Your practice is already digital and your workflow already hangs together &mdash; so we are not going to pretend you need a new platform. The demo was deliberately narrow: your legacy archive becoming structured data, and the analytics view your current system does not give you. Those two things. Nothing else.</p>
+  <div class="recap-item">
+          <div class="recap-tick">&mdash;</div>
+          <div><h4>Your archive, structured, into the system you already run</h4><p>We took your own legacy files, extracted them into structured records, and showed the export landing in the format your EHR ingests. No change to your system of record.</p></div>
+        </div>
+<div class="recap-item">
+          <div class="recap-tick">&mdash;</div>
+          <div><h4>The analysis your EHR was never built for</h4><p>We asked a natural-language question across the archive &mdash; the cross-practice view your current system stores the data for but cannot surface &mdash; and it answered with the source attached.</p></div>
+        </div>
+<div class="recap-item">
+          <div class="recap-tick">&mdash;</div>
+          <div><h4>Nothing about your working setup disturbed</h4><p>No platform migration, no workflow change, no retraining. A layer on top of what already works.</p></div>
+        </div>
+
+  <div style="height:30px;"></div>
+  <div class="sec-head"><span class="sec-num">02</span><span class="eyebrow">What this actually costs you in staff time</span></div>
+  <p class="config-intro">The honest answer to the question you are really asking &mdash; &ldquo;my reception is already drowning, what does this add to her day?&rdquo;</p>
+  <div class="rowset"><div class="rrow"><div class="rk">Per document</div><div class="rv">30&ndash;60 seconds. The system extracts; your staff reviews what it found, corrects anything wrong, and approves. They know your handwriting; the system handles most of it; they catch the rest.</div></div>
+<div class="rrow"><div class="rk">Week one</div><div class="rv">Scanning happens into the same folder your reception already scans into. The only new habit is the validation queue &mdash; a list of documents waiting for a 30-second check. That is the entire workflow change.</div></div>
+<div class="rrow"><div class="rk">Month three</div><div class="rv">The queue is a background habit, not an event. The structured archive is large enough that the search and analytics start answering real questions. Nothing about the consult has changed.</div></div>
+<div class="rrow"><div class="rk">What does not change</div><div class="rv">How you consult. What you write. Your existing system, if you have one. We are a layer that adds capability, not a system that takes work away from one that already works.</div></div></div>
+</div></div>
+
+<!-- PAGE 3 — FAILURE MODES + WHY US -->
+<div class="page"><div class="pad">
+  <div class="sec-head"><span class="sec-num">03</span><span class="eyebrow">What happens when it doesn&rsquo;t work perfectly</span></div>
+  <p class="config-intro">Demos show the happy path. This is the part that matters more: what the system does when a scan is bad, the handwriting is unreadable, or the extraction is unsure. We would rather you read this now than discover it later.</p>
+  <div class="rowset"><div class="rrow"><div class="rk">Low-confidence extraction</div><div class="rv">Every extracted field carries a confidence score. Low-confidence fields are flagged for the validator, not silently accepted. The human sees exactly what the system was unsure about.</div></div>
+<div class="rrow"><div class="rk">An unreadable document</div><div class="rv">If a scan is too poor to extract, it does not get guessed at. It is held in the queue, flagged, and a person decides &mdash; rescan, enter by hand, or set aside. The system never invents data to fill a gap.</div></div>
+<div class="rrow"><div class="rk">The wrong-patient safeguard</div><div class="rv">Nothing enters a patient&rsquo;s record until a person confirms it is the right patient. The match is shown; the human says yes or no. Wrong-patient errors are caught at that gate &mdash; before they happen, not discovered months later.</div></div>
+<div class="rrow"><div class="rk">Every action is logged</div><div class="rv">Every approval, correction and reversal is recorded &mdash; who did it, when. If a medical aid audits the practice, or you need to show the basis of a record, the history is one query away.</div></div></div>
+
+  <div style="height:30px;"></div>
+  <div class="sec-head"><span class="sec-num">04</span><span class="eyebrow">Why a South African practice chooses this</span></div>
+  <div class="grid2"><div class="gi"><h4>Built here, not bolted on</h4><p>Medical-aid schemes, HPCSA prescription rules, NAPPI codes, the SA edition of ICD-10, local payments &mdash; native to the system, not adapted to it after the fact.</p></div>
+<div class="gi"><h4>Digitisation as a subscription, not a project</h4><p>The reason practices stay on paper is the six-figure project quote nobody signs. A predictable monthly page allowance instead &mdash; payable, cancellable, no capital sign-off.</p></div>
+<div class="gi"><h4>It works with what you already have</h4><p>Export and ingest via FHIR, CSV or API. You do not rip out a system that works to get the parts you don&rsquo;t have.</p></div>
+<div class="gi"><h4>Each practice&rsquo;s data is isolated</h4><p>Multi-tenant by design. What happens at one practice never crosses to another.</p></div></div>
+</div></div>
+
+<!-- PAGE 4 — RECOMMENDED CONFIG -->
+<div class="page"><div class="pad">
+  <div class="sec-head"><span class="sec-num">05</span><span class="eyebrow">What we&rsquo;d put in your practice</span></div>
+  <p class="config-intro">You do not need the practice platform and we are not going to sell it to you. Your gap is precisely two things: a back room that is not structured data, and no analytical view of the data you already hold. We address exactly those and nothing else.</p>
+  <div class="config-item"><h4>Digitisation of the back room</h4><p>Your legacy archive becomes structured patient data, exported into the EHR you already run via FHIR, CSV or JSON. Your system of record does not move.</p></div>
+<div class="config-item"><h4>The analytics view</h4><p>Chronic-disease cohorts, claims aging, no-show and productivity patterns, semantic search across the whole archive &mdash; ingested from your existing EHR via API or scheduled export. The layer your current system was never meant to be.</p></div>
+<div class="config-item"><h4>No platform change. Deliberately.</h4><p>We are not quoting you a platform tier. You did not ask for one and you do not need one. The recommendation is two modules, on top of what you already run.</p></div>
+  <div class="config-note">If anything in this document reads like a platform upsell, we have written it wrong &mdash; tell us. A Type&nbsp;C practice buys digitisation and analytics, or it buys nothing. We would rather sell you the right small thing than the wrong large one.</div>
+</div></div>
+
+<!-- PAGE 5 — LIMITS + PILOT -->
+<div class="page"><div class="pad">
+  <div class="sec-head"><span class="sec-num">06</span><span class="eyebrow">What we are deliberately not promising you</span></div>
+  <p class="config-intro">The same discipline we apply to the product, applied to this document. These are real and they are not in scope of what you would be buying.</p>
+  <div class="limit-row"><div class="lk">Final pricing</div><div class="lv">Set per practice on doctor count, page volume and integration scope. The pilot price is fixed and stated; the full quote is a conversation, not a number on a leave-behind.</div></div>
+<div class="limit-row"><div class="lk">Clinical decision support</div><div class="lv">Our clinical-AI work is an invite-only beta, not a commercial product, with no medical-device approval. It is a design-partner conversation if you raise it &mdash; it is deliberately not part of what this document offers you.</div></div>
+<div class="limit-row"><div class="lk">Roadmap items</div><div class="lv">Medical-aid claims auto-submission, multi-site management and native EHR integrations are planned, not promised here. If it is not in the configuration above, treat it as not yet real.</div></div>
+
+  <div class="offer">
+    <span class="eyebrow">The smallest first step</span>
+    <h2>One month. Your files. No lock-in.</h2>
+    <p>One month, 1,500 pages of your choosing, exported in the exact format your EHR ingests. The single thing you are testing is whether the extraction quality on <em>your</em> documents is good enough and whether the export lands cleanly in the system you already run. If both are true, we talk about the rest of the archive. If either is not, you have lost a month&rsquo;s subscription and nothing else. No setup fee, no lock-in.</p>
+    <div class="contact">
+      <strong>Progno Labs</strong><br>
+      luzuko@medicdata.co.za&nbsp;&nbsp;&middot;&nbsp;&nbsp;+27 (0) 76 969 5462<br>
+      medicdata.co.za&nbsp;&nbsp;&middot;&nbsp;&nbsp;book a follow-up &mdash; medicdata.co.za/demo
+    </div>
+  </div>
+
+  <div class="footer-line">
+    <div class="wordmark">Progno<span style="color:var(--accent);">&nbsp;</span>Labs</div>
+    <span class="tiny">Prepared for a Type C practice &middot; after the demo</span>
+  </div>
+</div></div>
+
+</body></html>
