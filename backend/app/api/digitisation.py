@@ -157,6 +157,11 @@ async def dashboard_summary(
     ]
 
     total_digitised = validated
+    # this-month = documents uploaded since the 1st of the current month
+    # (was a placeholder that echoed the all-time total — DS-INSIGHTS-2).
+    # Bounded by the 200-row window above; fine at current scale.
+    _month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+    this_month = sum(1 for d in docs if (d.get("created_at") or "") >= _month_start)
     avg_conf = None  # placeholder — wire to real confidence scores in Phase B+
 
     # Page credits: placeholder until page_credit_grants migration runs
@@ -177,7 +182,7 @@ async def dashboard_summary(
         "recent_activity":     recent,
         "quick_stats": {
             "total_digitised":     total_digitised,
-            "this_month":          total_digitised,  # placeholder until we filter on month
+            "this_month":          this_month,
             "validation_accuracy": avg_conf,
         },
     }
