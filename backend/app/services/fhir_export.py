@@ -27,22 +27,22 @@ NOT mapped in v1 (deliberate):
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fhir.resources.allergyintolerance import AllergyIntolerance
-from fhir.resources.bundle import Bundle, BundleEntry
-from fhir.resources.codeableconcept import CodeableConcept
-from fhir.resources.coding import Coding
-from fhir.resources.address import Address
-from fhir.resources.condition import Condition
-from fhir.resources.contactpoint import ContactPoint
-from fhir.resources.coverage import Coverage
-from fhir.resources.encounter import Encounter
-from fhir.resources.humanname import HumanName
-from fhir.resources.identifier import Identifier
-from fhir.resources.medicationstatement import MedicationStatement
-from fhir.resources.observation import Observation
-from fhir.resources.patient import Patient
-from fhir.resources.quantity import Quantity
-from fhir.resources.reference import Reference
+from fhir.resources.R4B.allergyintolerance import AllergyIntolerance
+from fhir.resources.R4B.bundle import Bundle, BundleEntry
+from fhir.resources.R4B.codeableconcept import CodeableConcept
+from fhir.resources.R4B.coding import Coding
+from fhir.resources.R4B.address import Address
+from fhir.resources.R4B.condition import Condition
+from fhir.resources.R4B.contactpoint import ContactPoint
+from fhir.resources.R4B.coverage import Coverage
+from fhir.resources.R4B.encounter import Encounter
+from fhir.resources.R4B.humanname import HumanName
+from fhir.resources.R4B.identifier import Identifier
+from fhir.resources.R4B.medicationstatement import MedicationStatement
+from fhir.resources.R4B.observation import Observation
+from fhir.resources.R4B.patient import Patient
+from fhir.resources.R4B.quantity import Quantity
+from fhir.resources.R4B.reference import Reference
 
 # Coding system URLs
 SYS_ICD10 = "http://hl7.org/fhir/sid/icd-10"
@@ -59,18 +59,21 @@ SEVERITY_TO_CRITICALITY = {
 }
 
 # Common LOINC codes for vital signs
+# Keys MUST match the vitals_history / vitals-table field names the export
+# adapter emits (DS-EXPORT-5: they previously used systolic_bp/temperature/
+# weight, so almost no vital was ever exported).
 LOINC_VITALS = {
-    "systolic_bp":       ("8480-6",  "Systolic blood pressure",       "mm[Hg]"),
-    "diastolic_bp":      ("8462-4",  "Diastolic blood pressure",      "mm[Hg]"),
-    "heart_rate":        ("8867-4",  "Heart rate",                    "/min"),
-    "pulse":             ("8867-4",  "Heart rate",                    "/min"),
-    "temperature":       ("8310-5",  "Body temperature",              "Cel"),
-    "respiratory_rate":  ("9279-1",  "Respiratory rate",              "/min"),
-    "oxygen_saturation": ("59408-5", "Oxygen saturation in arterial blood by pulse oximetry", "%"),
-    "weight":            ("29463-7", "Body weight",                   "kg"),
-    "height":            ("8302-2",  "Body height",                   "cm"),
-    "bmi":               ("39156-5", "Body mass index (BMI)",         "kg/m2"),
-    "blood_glucose":     ("2339-0",  "Glucose [Mass/volume] in Blood","mg/dL"),
+    "bp_systolic":           ("8480-6",  "Systolic blood pressure",       "mm[Hg]"),
+    "bp_diastolic":          ("8462-4",  "Diastolic blood pressure",      "mm[Hg]"),
+    "heart_rate":            ("8867-4",  "Heart rate",                    "/min"),
+    "temperature_c":         ("8310-5",  "Body temperature",              "Cel"),
+    "respiratory_rate":      ("9279-1",  "Respiratory rate",              "/min"),
+    "oxygen_saturation":     ("59408-5", "Oxygen saturation in arterial blood by pulse oximetry", "%"),
+    "weight_kg":             ("29463-7", "Body weight",                   "kg"),
+    "height_cm":             ("8302-2",  "Body height",                   "cm"),
+    "bmi":                   ("39156-5", "Body mass index (BMI)",         "kg/m2"),
+    "hba1c":                 ("4548-4",  "Hemoglobin A1c/Hemoglobin.total in Blood", "%"),
+    "blood_glucose_fasting": ("1558-6",  "Fasting glucose [Mass/volume] in Serum or Plasma", "mg/dL"),
 }
 
 
@@ -175,15 +178,16 @@ def map_diagnosis(row: Dict[str, Any], patient_id: str) -> Condition:
 def map_coverage(row: Dict[str, Any], patient_id: str) -> Coverage:
     """Map a medical-aid record to a FHIR Coverage resource (DS-EXPORT-3).
     row keys: scheme_name / name, member_number, plan."""
+    # FHIR R4(B) Coverage: status + beneficiary + payor are the load-bearing
+    # fields (payor is required in R4; it became `insurer` in R5).
     scheme = row.get("scheme_name") or row.get("name") or row.get("medical_aid")
     cov = Coverage(
         status="active",
-        kind="insurance",
         beneficiary=_patient_reference(patient_id),
-        insurer=Reference(display=scheme or "Unknown scheme"),
+        payor=[Reference(display=scheme or "Unknown scheme")],
     )
     if row.get("member_number"):
-        cov.identifier = [Identifier(system=SYS_SURGISCAN_PATIENT, value=str(row["member_number"]))]
+        cov.subscriberId = str(row["member_number"])
     return cov
 
 
@@ -208,12 +212,12 @@ def map_medication(row: Dict[str, Any], patient_id: str) -> MedicationStatement:
     return MedicationStatement(
         id=row["id"],
         status=row.get("status") or "active",
-        medication={
-            "concept": CodeableConcept(
-                coding=med_codings or None,
-                text=row.get("medication_name") or row.get("generic_name"),
-            ).model_dump(by_alias=True, exclude_none=True),
-        },
+        # FHIR R4 uses medicationCodeableConcept (the choice element); R5
+        # replaced it with `medication` (CodeableReference).
+        medicationCodeableConcept=CodeableConcept(
+            coding=med_codings or None,
+            text=row.get("medication_name") or row.get("generic_name"),
+        ),
         subject=_patient_reference(patient_id),
         dosage=[{"text": _build_dosage_text(row)}] if _build_dosage_text(row) else None,
     )
@@ -240,12 +244,14 @@ def map_vitals_observations(row: Dict[str, Any], patient_id: str) -> List[Observ
         if v is None or v == "":
             continue
         try:
-            value = float(v)
+            value = float(str(v).replace(",", "."))  # SA decimal comma (e.g. 36,7)
         except (ValueError, TypeError):
             continue
 
         obs = Observation(
-            id=f"{row['id']}-{field}",
+            # FHIR resource ids allow only [A-Za-z0-9-.] — field names have
+            # underscores (bp_systolic), so map them to hyphens.
+            id=f"{row['id']}-{field.replace('_', '-')}",
             status="final",
             code=CodeableConcept(coding=[Coding(system=SYS_LOINC, code=loinc_code, display=display)]),
             subject=_patient_reference(patient_id),
@@ -261,32 +267,34 @@ def map_encounter(row: Dict[str, Any], patient_id: str) -> Encounter:
     return Encounter(
         id=row["id"],
         status=_normalise_encounter_status(row.get("status")),
-        # FHIR R5 uses `class_fhir` vs `class` (Python keyword). v8 of fhir.resources targets R5.
-        # `class_fhir` is a list of CodeableConcept in R5.
-        class_fhir=[CodeableConcept(coding=[Coding(
+        # FHIR R4(B) Encounter.class is a SINGLE Coding (`class_fhir` is the
+        # fhir.resources alias for the `class` keyword). R5 made it a list of
+        # CodeableConcept; R4 uses one Coding, and the period is `period`.
+        class_fhir=Coding(
             system="http://terminology.hl7.org/CodeSystem/v3-ActCode",
             code="AMB",
             display="ambulatory",
-        )])],
+        ),
         subject=_patient_reference(patient_id),
-        actualPeriod={"start": row.get("encounter_date") or row.get("created_at")},
+        period={"start": row.get("encounter_date") or row.get("consultation_date") or row.get("created_at")},
     )
 
 
 def _normalise_encounter_status(raw: Optional[str]) -> str:
-    """FHIR R5 encounter status: planned | in-progress | on-hold | discharged | completed | cancelled | discontinued | entered-in-error | unknown."""
+    """FHIR R4 encounter status: planned | arrived | triaged | in-progress | onleave | finished | cancelled | entered-in-error | unknown."""
     if not raw:
-        return "completed"
+        return "finished"
     r = raw.strip().lower()
     mapping = {
         "in-progress": "in-progress",
         "in_progress": "in-progress",
-        "completed":   "completed",
-        "billed":      "completed",
+        "completed":   "finished",
+        "finished":    "finished",
+        "billed":      "finished",
         "cancelled":   "cancelled",
         "no_show":     "cancelled",
     }
-    return mapping.get(r, "completed")
+    return mapping.get(r, "finished")
 
 
 def build_patient_bundle(
