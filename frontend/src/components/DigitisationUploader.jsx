@@ -59,6 +59,7 @@ const DigitisationUploader = ({ onComplete, onClose }) => {
   const [files, setFiles] = useState([]); // [{localId, file, status, doc_id, error}]
   const [busy, setBusy]   = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [rejected, setRejected] = useState([]); // [{name, reason}] — files we couldn't accept
   const fileInputRef   = useRef(null);
   const folderInputRef = useRef(null);
   const pollersRef     = useRef({}); // localId → interval handle
@@ -70,20 +71,29 @@ const DigitisationUploader = ({ onComplete, onClose }) => {
   }, []);
 
   const addFiles = useCallback((rawList) => {
-    const next = Array.from(rawList || [])
-      .filter(acceptFile)
-      .filter(f => f.size <= MAX_BYTES)
-      .map(f => ({
-        localId: `${f.name}-${f.size}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        file: f,
-        name: f.name,
-        size: f.size,
-        status: 'pending',
-        doc_id: null,
-        error: null,
-      }));
-    if (next.length === 0) return;
-    setFiles(prev => [...prev, ...next]);
+    const accepted = [];
+    const rejects = [];
+    // Tell the user WHY a file was skipped instead of silently dropping it. (L4)
+    Array.from(rawList || []).forEach(f => {
+      if (!acceptFile(f)) {
+        rejects.push({ name: f.name, reason: 'unsupported type' });
+      } else if (f.size > MAX_BYTES) {
+        rejects.push({ name: f.name, reason: `too large (max ${Math.round(MAX_BYTES / 1024 / 1024)}MB)` });
+      } else {
+        accepted.push({
+          localId: `${f.name}-${f.size}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          file: f,
+          name: f.name,
+          size: f.size,
+          status: 'pending',
+          doc_id: null,
+          error: null,
+        });
+      }
+    });
+    setRejected(rejects);
+    if (accepted.length === 0) return;
+    setFiles(prev => [...prev, ...accepted]);
   }, []);
 
   const onFileInput = (e) => addFiles(e.target.files);
@@ -236,6 +246,20 @@ const DigitisationUploader = ({ onComplete, onClose }) => {
           onClick={(e) => { e.target.value = null; }}
         />
       </div>
+
+      {/* Rejected files — surfaced so the user knows why they were skipped (L4) */}
+      {rejected.length > 0 && (
+        <div className="px-md py-sm bg-error-container/40 border-t border-error/40">
+          <p className="font-body-sm text-body-sm text-error font-semibold mb-1">
+            {rejected.length} file{rejected.length === 1 ? '' : 's'} skipped
+          </p>
+          <ul className="font-body-sm text-body-sm text-on-surface-variant space-y-0.5">
+            {rejected.map((r, i) => (
+              <li key={`${r.name}-${i}`} className="truncate">{r.name} — {r.reason}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* File list */}
       {files.length > 0 && (

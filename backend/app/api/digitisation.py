@@ -13,6 +13,7 @@ gating and an industry-aware schema registry on top.
 
 import logging
 import os
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -278,13 +279,23 @@ async def validation_detail(
     parsed_doc_id = doc.get("parsed_doc_id") or doc.get("gp_parsed_doc_id")
     if parsed_doc_id:
         try:
+            # Two clean eq lookups instead of interpolating ids into a PostgREST
+            # .or_() filter string (avoids any filter-injection surface). (L2)
             parsed_resp = (
                 supabase.table("gp_parsed_documents")
                 .select("parsed_data, document_id")
-                .or_(f"id.eq.{parsed_doc_id},document_id.eq.{document_id}")
+                .eq("id", parsed_doc_id)
                 .limit(1)
                 .execute()
             )
+            if not parsed_resp.data:
+                parsed_resp = (
+                    supabase.table("gp_parsed_documents")
+                    .select("parsed_data, document_id")
+                    .eq("document_id", document_id)
+                    .limit(1)
+                    .execute()
+                )
             if parsed_resp.data:
                 pd = parsed_resp.data[0].get("parsed_data") or {}
                 chunks = pd.get("chunks") or []
@@ -1615,7 +1626,12 @@ async def upload_document(
         )
 
     document_id = str(uuid.uuid4())
-    storage_path = f"{workspace_id}/{document_id}/{filename}"
+    # Sanitize the filename before it becomes part of the storage key: take the
+    # basename (drops any ../ traversal) and whitelist safe chars. The original
+    # filename is still stored verbatim in digitised_documents.filename for
+    # display — only the storage path segment is sanitized. (M3)
+    safe_name = re.sub(r'[^A-Za-z0-9._-]', '_', os.path.basename(filename)).lstrip('.') or 'document'
+    storage_path = f"{workspace_id}/{document_id}/{safe_name}"
 
     # 1. Upload to Supabase Storage
     try:
