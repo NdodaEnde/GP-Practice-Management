@@ -39,7 +39,7 @@ from fhir.resources.R4B.encounter import Encounter
 from fhir.resources.R4B.humanname import HumanName
 from fhir.resources.R4B.identifier import Identifier
 from fhir.resources.R4B.medicationstatement import MedicationStatement
-from fhir.resources.R4B.observation import Observation
+from fhir.resources.R4B.observation import Observation, ObservationComponent
 from fhir.resources.R4B.patient import Patient
 from fhir.resources.R4B.quantity import Quantity
 from fhir.resources.R4B.reference import Reference
@@ -154,10 +154,12 @@ def map_diagnosis(row: Dict[str, Any], patient_id: str) -> Condition:
     """Map a SurgiScan `diagnoses` row to a FHIR Condition resource."""
     code_codings: List[Coding] = []
     if row.get("icd10_code"):
+        # No `display` on the coding: the validator checks it against the
+        # ICD-10 code system's official display and rejects our free-text
+        # description. The human text lives in code.text below instead.
         code_codings.append(Coding(
             system=SYS_ICD10,
             code=row["icd10_code"],
-            display=row.get("description") or row.get("name"),
         ))
 
     return Condition(
@@ -182,6 +184,7 @@ def map_coverage(row: Dict[str, Any], patient_id: str) -> Coverage:
     # fields (payor is required in R4; it became `insurer` in R5).
     scheme = row.get("scheme_name") or row.get("name") or row.get("medical_aid")
     cov = Coverage(
+        id=f"{patient_id}-coverage",
         status="active",
         beneficiary=_patient_reference(patient_id),
         payor=[Reference(display=scheme or "Unknown scheme")],
@@ -237,9 +240,54 @@ def map_vitals_observations(row: Dict[str, Any], patient_id: str) -> List[Observ
     """A single vitals row produces multiple FHIR Observations — one per measurement.
     LOINC codes per the LOINC_VITALS table at module top."""
     out: List[Observation] = []
-    effective = row.get("recorded_at") or row.get("created_at")
+    effective = (
+        row.get("measured_datetime") or row.get("consultation_date")
+        or row.get("recorded_at") or row.get("created_at")
+    )
+    # The FHIR vital-signs profiles (auto-applied by LOINC code) REQUIRE a
+    # category of vital-signs and an effective[x]. Without them the resource
+    # fails R4 conformance.
+    vital_signs_category = CodeableConcept(coding=[Coding(
+        system="http://terminology.hl7.org/CodeSystem/observation-category",
+        code="vital-signs",
+        display="Vital Signs",
+    )])
+
+    def _num(x):
+        try:
+            return float(str(x).replace(",", ".")) if x not in (None, "") else None
+        except (ValueError, TypeError):
+            return None
+
+    # Blood pressure must be ONE panel Observation (LOINC 85354-9) carrying
+    # systolic + diastolic COMPONENTS — the FHIR bp profile forbids separate
+    # systolic/diastolic Observations and forbids a top-level value here.
+    sys_v, dia_v = _num(row.get("bp_systolic")), _num(row.get("bp_diastolic"))
+    if sys_v is not None or dia_v is not None:
+        comps = []
+        if sys_v is not None:
+            comps.append(ObservationComponent(
+                code=CodeableConcept(coding=[Coding(system=SYS_LOINC, code="8480-6", display="Systolic blood pressure")]),
+                valueQuantity=Quantity(value=sys_v, unit="mm[Hg]", system="http://unitsofmeasure.org", code="mm[Hg]"),
+            ))
+        if dia_v is not None:
+            comps.append(ObservationComponent(
+                code=CodeableConcept(coding=[Coding(system=SYS_LOINC, code="8462-4", display="Diastolic blood pressure")]),
+                valueQuantity=Quantity(value=dia_v, unit="mm[Hg]", system="http://unitsofmeasure.org", code="mm[Hg]"),
+            ))
+        out.append(Observation(
+            id=f"{row['id']}-bp",
+            status="final",
+            category=[vital_signs_category],
+            code=CodeableConcept(coding=[Coding(system=SYS_LOINC, code="85354-9", display="Blood pressure panel with all children optional")]),
+            subject=_patient_reference(patient_id),
+            effectiveDateTime=effective,
+            component=comps,
+        ))
 
     for field, (loinc_code, display, unit) in LOINC_VITALS.items():
+        if field in ("bp_systolic", "bp_diastolic"):
+            continue  # handled as the BP panel above
         v = row.get(field)
         if v is None or v == "":
             continue
@@ -253,6 +301,7 @@ def map_vitals_observations(row: Dict[str, Any], patient_id: str) -> List[Observ
             # underscores (bp_systolic), so map them to hyphens.
             id=f"{row['id']}-{field.replace('_', '-')}",
             status="final",
+            category=[vital_signs_category],
             code=CodeableConcept(coding=[Coding(system=SYS_LOINC, code=loinc_code, display=display)]),
             subject=_patient_reference(patient_id),
             effectiveDateTime=effective,
@@ -297,6 +346,20 @@ def _normalise_encounter_status(raw: Optional[str]) -> str:
     return mapping.get(r, "finished")
 
 
+FHIR_BASE = "https://surgiscan.health/fhir"
+
+
+def _entry(resource) -> BundleEntry:
+    """Wrap a resource as a Bundle entry WITH a fullUrl. FHIR requires every
+    entry in a (non transaction/batch) Bundle to carry a fullUrl, and relative
+    references (Patient/{id}) only resolve inside the bundle when entries have
+    one. Absolute base + type/id keeps relative refs resolvable."""
+    rid = getattr(resource, "id", None)
+    rtype = type(resource).__name__
+    full = f"{FHIR_BASE}/{rtype}/{rid}" if rid else f"{FHIR_BASE}/{rtype}"
+    return BundleEntry(fullUrl=full, resource=resource)
+
+
 def build_patient_bundle(
     patient_row: Dict[str, Any],
     allergies: List[Dict[str, Any]],
@@ -316,50 +379,52 @@ def build_patient_bundle(
     entries: List[BundleEntry] = []
 
     # Patient first
-    entries.append(BundleEntry(resource=map_patient(patient_row)))
+    entries.append(_entry(map_patient(patient_row)))
 
     for a in allergies or []:
         try:
-            entries.append(BundleEntry(resource=map_allergy(a, patient_id)))
+            entries.append(_entry(map_allergy(a, patient_id)))
         except Exception:
             continue  # Drop unmappable rows rather than fail the whole export
 
     for d in diagnoses or []:
         try:
-            entries.append(BundleEntry(resource=map_diagnosis(d, patient_id)))
+            entries.append(_entry(map_diagnosis(d, patient_id)))
         except Exception:
             continue
 
     for m in medications or []:
         try:
-            entries.append(BundleEntry(resource=map_medication(m, patient_id)))
+            entries.append(_entry(map_medication(m, patient_id)))
         except Exception:
             continue
 
     for v in vitals or []:
         try:
             for obs in map_vitals_observations(v, patient_id):
-                entries.append(BundleEntry(resource=obs))
+                entries.append(_entry(obs))
         except Exception:
             continue
 
     for e in encounters or []:
         try:
-            entries.append(BundleEntry(resource=map_encounter(e, patient_id)))
+            entries.append(_entry(map_encounter(e, patient_id)))
         except Exception:
             continue
 
     # Coverage (medical aid) — DS-EXPORT-3. Only when a scheme/member is present.
     if coverage and (coverage.get("scheme_name") or coverage.get("name") or coverage.get("member_number")):
         try:
-            entries.append(BundleEntry(resource=map_coverage(coverage, patient_id)))
+            entries.append(_entry(map_coverage(coverage, patient_id)))
         except Exception:
             pass
 
+    # 'collection' is the right type for an export/distribution set: entries
+    # carry fullUrl, no search/self-link semantics required (searchset added
+    # those constraints and `total` is only valid for search/history).
     bundle = Bundle(
-        type="searchset",
+        type="collection",
         timestamp=datetime.utcnow().isoformat() + "Z",
-        total=len(entries),
         entry=entries,
     )
     return bundle
