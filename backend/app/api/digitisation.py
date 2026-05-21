@@ -1292,6 +1292,26 @@ async def approve_validation(
     if not existing.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
+    # DS-APPROVE-1: refuse to validate a document that has no extraction yet.
+    # Without this, approving before the watcher finishes (or after a failed
+    # extract) flipped the doc to 'validated' with no session — a misleading
+    # "zombie validated" state (the promote guard then blocked the empty
+    # promote, but the status already lied). Require a non-empty extraction.
+    _sess_ready = (
+        supabase.table("gp_validation_sessions")
+        .select("extractions")
+        .eq("document_id", document_id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    _ext = (_sess_ready.data[0].get("extractions") if _sess_ready.data else None) or {}
+    if not isinstance(_ext, dict) or not _ext:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Document has no extracted data yet — it is still processing or extraction failed. Wait for processing to complete (or reprocess) before validating.",
+        )
+
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc).isoformat()
     payload = payload or {}

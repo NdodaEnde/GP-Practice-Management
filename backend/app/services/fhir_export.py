@@ -34,6 +34,7 @@ from fhir.resources.coding import Coding
 from fhir.resources.address import Address
 from fhir.resources.condition import Condition
 from fhir.resources.contactpoint import ContactPoint
+from fhir.resources.coverage import Coverage
 from fhir.resources.encounter import Encounter
 from fhir.resources.humanname import HumanName
 from fhir.resources.identifier import Identifier
@@ -171,6 +172,21 @@ def map_diagnosis(row: Dict[str, Any], patient_id: str) -> Condition:
     )
 
 
+def map_coverage(row: Dict[str, Any], patient_id: str) -> Coverage:
+    """Map a medical-aid record to a FHIR Coverage resource (DS-EXPORT-3).
+    row keys: scheme_name / name, member_number, plan."""
+    scheme = row.get("scheme_name") or row.get("name") or row.get("medical_aid")
+    cov = Coverage(
+        status="active",
+        kind="insurance",
+        beneficiary=_patient_reference(patient_id),
+        insurer=Reference(display=scheme or "Unknown scheme"),
+    )
+    if row.get("member_number"):
+        cov.identifier = [Identifier(system=SYS_SURGISCAN_PATIENT, value=str(row["member_number"]))]
+    return cov
+
+
 def _normalise_condition_status(raw: Optional[str]) -> str:
     """FHIR condition-clinical: active | recurrence | relapse | inactive | remission | resolved."""
     if not raw:
@@ -280,6 +296,7 @@ def build_patient_bundle(
     medications: List[Dict[str, Any]],
     vitals: List[Dict[str, Any]],
     encounters: List[Dict[str, Any]],
+    coverage: Optional[Dict[str, Any]] = None,
 ) -> Bundle:
     """Assemble all of a patient's resources into a FHIR Bundle of type 'searchset'.
 
@@ -323,6 +340,13 @@ def build_patient_bundle(
             entries.append(BundleEntry(resource=map_encounter(e, patient_id)))
         except Exception:
             continue
+
+    # Coverage (medical aid) — DS-EXPORT-3. Only when a scheme/member is present.
+    if coverage and (coverage.get("scheme_name") or coverage.get("name") or coverage.get("member_number")):
+        try:
+            entries.append(BundleEntry(resource=map_coverage(coverage, patient_id)))
+        except Exception:
+            pass
 
     bundle = Bundle(
         type="searchset",

@@ -219,25 +219,25 @@ def _key(item: Tuple[str, int, str]) -> str:
 #   pytest -q tests/test_tenant_query_isolation.py -s   (prints the set)
 # ---------------------------------------------------------------------------
 BASELINE: Set[str] = {
-    # Regenerated 2026-05-21 after the digitisation sweep. The +4
-    # document_watcher digitised_documents entries vs the prior baseline
-    # are the H2 atomic-claim / M2 stale-requeue / L5 retry queries — the
-    # watcher is a system worker that processes ALL workspaces by design
-    # (per-doc workspace_id), so cross-workspace reads are intended. All
-    # other deltas were line-number drift of the same queries.
+    # Regenerated 2026-05-21 (downstream export sweep). Watcher
+    # digitised_documents entries are the cross-workspace system worker; the
+    # +1 digitisation gp_validation_sessions entry is the DS-APPROVE-1 guard
+    # (runs AFTER the doc tenancy check). The export worker session fetch is
+    # now workspace-scoped (dropped from this list). Other deltas = line drift.
     "app/api/clinical_actions.py::121::prescriptions",
     "app/api/digitisation.py::1105::gp_validation_sessions",
     "app/api/digitisation.py::1131::gp_validation_sessions",
     "app/api/digitisation.py::1180::gp_validation_sessions",
     "app/api/digitisation.py::1185::digitised_documents",
     "app/api/digitisation.py::1230::gp_validation_sessions",
-    "app/api/digitisation.py::1308::gp_validation_sessions",
-    "app/api/digitisation.py::1359::digitised_documents",
-    "app/api/digitisation.py::1363::gp_validation_sessions",
-    "app/api/digitisation.py::1444::digitised_documents",
-    "app/api/digitisation.py::1469::digitised_documents",
-    "app/api/digitisation.py::1546::digitised_documents",
-    "app/api/digitisation.py::1691::digitised_documents",
+    "app/api/digitisation.py::1301::gp_validation_sessions",
+    "app/api/digitisation.py::1328::gp_validation_sessions",
+    "app/api/digitisation.py::1379::digitised_documents",
+    "app/api/digitisation.py::1383::gp_validation_sessions",
+    "app/api/digitisation.py::1464::digitised_documents",
+    "app/api/digitisation.py::1489::digitised_documents",
+    "app/api/digitisation.py::1566::digitised_documents",
+    "app/api/digitisation.py::1711::digitised_documents",
     "app/api/digitisation.py::311::gp_validation_sessions",
     "app/api/digitisation.py::334::gp_validation_sessions",
     "app/api/digitisation.py::900::gp_validation_sessions",
@@ -255,7 +255,6 @@ BASELINE: Set[str] = {
     "app/api/gp_endpoints.py::595::patients",
     "app/api/gp_endpoints.py::664::gp_validation_sessions",
     "app/api/gp_endpoints.py::736::digitised_documents",
-    "app/services/digitisation_export_worker.py::425::gp_validation_sessions",
     "app/services/document_watcher.py::218::digitised_documents",
     "app/services/document_watcher.py::232::digitised_documents",
     "app/services/document_watcher.py::253::digitised_documents",

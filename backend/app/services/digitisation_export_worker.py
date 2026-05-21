@@ -348,6 +348,7 @@ def _bundle_for_document(
     medications = _adapt_medications(extractions, doc_id) if flags["medications"] else []
     vitals      = _adapt_vitals(extractions,      doc_id) if flags["vitals"]      else []
     encounters  = _adapt_encounters(extractions,  doc_id) if flags["encounters"]  else []
+    coverage    = (extractions or {}).get("medical_aid") or None  # DS-EXPORT-3
 
     bundle = build_patient_bundle(
         patient_row=patient_row,
@@ -356,6 +357,7 @@ def _bundle_for_document(
         medications=medications,
         vitals=vitals,
         encounters=encounters,
+        coverage=coverage,
     )
     return bundle.model_dump(by_alias=True, exclude_none=True, mode="json")
 
