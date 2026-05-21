@@ -194,7 +194,6 @@ ROUTE_CAPABILITIES: dict = {
     ("POST", "/api/gp/documents/{document_id}/reprocess"): "digitisation_upload",
     ("POST", "/api/gp/documents/{document_id}/queue-processing"): "digitisation_upload",
     ("POST", "/api/gp/documents/queue-all-uploaded"): "digitisation_upload",
-    ("POST", "/api/gp/batch-upload"): "digitisation_upload",
     ("PUT", "/api/gp/documents/{document_id}/status"): "digitisation_upload",
     ("DELETE", "/api/gp/documents/{document_id}"): "digitisation_validation",
     ("POST", "/api/validation/{document_id}/approve"): "digitisation_auto_populate",
@@ -240,8 +239,6 @@ ROUTE_CAPABILITIES: dict = {
     ("GET", "/api/queue/stats"): "queue_display",
     ("GET", "/api/gp/statistics"): "digitisation_operational_analytics",
     ("GET", "/api/gp/watcher/status"): "digitisation_operational_analytics",
-    ("GET", "/api/gp/batch-status/{batch_id}"): "digitisation_operational_analytics",
-    ("GET", "/api/gp/batch-history"): "digitisation_operational_analytics",
 }
 
 # §E — explicitly NOT gated; floor-only; capability UNDECIDED (product

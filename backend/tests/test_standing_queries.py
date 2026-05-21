@@ -168,6 +168,12 @@ def test_materialise_reaches_data_only_through_run_template_and_resolve(
     seen = {"run_template": 0, "resolve": 0, "rewrite": []}
 
     monkeypatch.setattr(standing, "_entitled_workspaces", lambda sb: ["ws-1"])
+    # Pin the registry to ONE query so the 1:1:1 no-new-path assertion stays
+    # deterministic as more standing-query kinds get registered (e.g.
+    # immunisation_overdue). The invariant under test is the data PATH
+    # (run_template -> resolve -> rewrite, once per query), not the count.
+    monkeypatch.setattr(standing, "all_standing",
+                        lambda: [standing.get_standing("morning_briefing")])
 
     def fake_run(sb, tid, params, *, workspace_id):
         seen["run_template"] += 1
