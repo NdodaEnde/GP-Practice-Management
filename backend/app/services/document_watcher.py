@@ -48,6 +48,11 @@ class DocumentWatcher:
         self._scan_interval = int(os.environ.get('WATCHER_SCAN_INTERVAL', '60'))  # 60s default (was 30)
         self._process_interval = int(os.environ.get('WATCHER_PROCESS_INTERVAL', '15'))  # 15s default (was 10)
         self._max_concurrent = int(os.environ.get('WATCHER_MAX_CONCURRENT', '2'))
+        # A doc stuck in 'parsing' longer than this is treated as abandoned
+        # (the worker crashed mid-parse) and re-queued. Must exceed the worst
+        # realistic parse+extract time so an actively-processing doc is never
+        # yanked out from under a live worker.
+        self._stale_parsing_minutes = int(os.environ.get('WATCHER_STALE_PARSING_MIN', '15'))
         self._processing_semaphore = asyncio.Semaphore(self._max_concurrent)
         self._bucket = 'medical-records'
         # Track known file paths to avoid repeated DB lookups
@@ -270,8 +275,43 @@ class DocumentWatcher:
 
             await asyncio.sleep(self._process_interval)
 
+    async def _requeue_stale_parsing(self):
+        """Re-queue documents stuck in 'parsing' past the stale timeout.
+
+        If a worker crashes mid-parse the row stays 'parsing' forever — the
+        pickup query only selects 'queued_for_processing', so it would never
+        recover. Reset such rows to 'queued_for_processing' so they get
+        re-claimed. Skips ids this instance is actively processing; the
+        timeout is generous enough that a live parse is never requeued.
+        """
+        from datetime import timedelta
+        cutoff = (datetime.now(timezone.utc) - timedelta(minutes=self._stale_parsing_minutes)).isoformat()
+        try:
+            stale = self.supabase.table('digitised_documents') \
+                .select('id') \
+                .eq('status', 'parsing') \
+                .lt('updated_at', cutoff) \
+                .execute()
+            for d in (stale.data or []):
+                if d['id'] in self._processing_ids:
+                    continue
+                # Conditional reset — only if still 'parsing' (don't clobber a
+                # row another worker just advanced).
+                self.supabase.table('digitised_documents') \
+                    .update({'status': 'queued_for_processing',
+                             'updated_at': datetime.now(timezone.utc).isoformat()}) \
+                    .eq('id', d['id']) \
+                    .eq('status', 'parsing') \
+                    .execute()
+                logger.warning(f"Re-queued stale 'parsing' document {d['id']} (stuck > {self._stale_parsing_minutes}min)")
+        except Exception as e:
+            logger.error(f"stale-parsing requeue failed: {e}")
+
     async def _process_queued_documents(self):
         """Find documents with status 'queued_for_processing' and process them"""
+
+        # Recover any abandoned 'parsing' rows first (crashed-worker recovery).
+        await self._requeue_stale_parsing()
 
         # Multi-tenant: process queued docs across ALL workspaces, not just the
         # demo workspace the watcher was originally booted with. Per-doc
@@ -286,11 +326,24 @@ class DocumentWatcher:
         if not result.data:
             return
 
+        now = datetime.now(timezone.utc).isoformat()
         tasks = []
         for doc in result.data:
             doc_id = doc['id']
-            # Skip if already being processed (prevent double-processing)
+            # Skip if THIS instance is already processing it.
             if doc_id in self._processing_ids:
+                continue
+            # Atomic claim: flip queued_for_processing -> parsing only if the
+            # row is still queued. An empty result means another worker /
+            # process already claimed it — the in-memory _processing_ids set
+            # alone can't guard across multiple uvicorn workers, this DB
+            # claim can. (H2)
+            claim = self.supabase.table('digitised_documents') \
+                .update({'status': 'parsing', 'updated_at': now}) \
+                .eq('id', doc_id) \
+                .eq('status', 'queued_for_processing') \
+                .execute()
+            if not claim.data:
                 continue
             self._processing_ids.add(doc_id)
             tasks.append(self._process_single_document(doc))
