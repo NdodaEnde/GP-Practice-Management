@@ -1,4 +1,4 @@
-# Onboarding a new practice (Essential / digitisation tier)
+# Onboarding a new practice (Essential or Professional)
 
 Concierge model: we provision each practice; there is no public self-serve
 signup yet. Takes ~1 minute per practice.
@@ -12,15 +12,24 @@ From `backend/`, with the env pointed at the **intended** project (check
 PYTHONPATH=. ./.venv/bin/python scripts/onboard_practice.py \
   --practice "Wellness Medical Centre" \
   --email dr@wellness.co.za \
-  --name "Thandi Khumalo"
+  --name "Thandi Khumalo" \
+  --plan essential            # or: professional
+# --plan defaults to essential.
 # password auto-generates and prints; pass --password to set your own.
 # add --dry-run first to preview.
 ```
 
-This creates: tenant → workspace → `module_digitisation` entitlement
-(`status=active`, `payment_status=manual`) → first **admin** user (bcrypt
-password). It then verifies the entitlement actually grants the
-`digitisation_*` capabilities and prints the login email + password.
+This creates: tenant → workspace → the tier entitlement (`status=active`,
+`payment_status=manual`) → first **admin** user (bcrypt password):
+
+| `--plan`        | entitlement              | grants                        |
+|-----------------|--------------------------|-------------------------------|
+| `essential`     | `module_digitisation`    | digitisation only (no EHR)    |
+| `professional`  | `platform_professional`  | digitisation + full EHR       |
+
+It then verifies the entitlement grants the right capabilities **and** that it
+does not leak forbidden ones (an Essential practice must not come out with
+`patient_ehr_basic`), then prints the login email + password.
 
 ## Hand-off to the customer
 
@@ -40,7 +49,12 @@ To suspend access for non-payment, set the entitlement `status` to `paused`
 
 - **Email is the global login identity** and must be unique; the script
   refuses a duplicate email or a taken workspace id.
-- Provisions **Essential only** — `module_digitisation`. Do not grant
-  `patient_ehr_basic` (Professional EHR) here; that tier hasn't been swept.
-- If "Capabilities: WARNING" prints, the products/capabilities catalog seed
-  is missing on that project — apply the entitlement seed migrations first.
+- **Never** entitle a real practice to `legacy_full_access_grant` — that's the
+  internal/sunset "everything" bundle the demo workspace rides on; it gives away
+  unpaid Clinical-AI/analytics modules. Use the tier products above.
+- If the capability check **FAILS** (missing required, or a tier leak), the
+  products/capabilities catalog seed is wrong on that project — apply the
+  entitlement seed migrations (incl. **037**, which aligns the tier products)
+  before onboarding.
+- Default landing differs by plan: Essential → digitisation Dashboard;
+  Professional → also has the EHR/clinical nav.
