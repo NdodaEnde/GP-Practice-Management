@@ -133,7 +133,17 @@ const Layout = () => {
 
   const subtitle = isTypeCWorkspace ? 'Digitisation Workspace' : (user?.workspace_name || 'Healthcare');
 
-  const isActive = (path) => location.pathname.startsWith(path);
+  // Active nav = the LONGEST nav path that prefixes the current route. A plain
+  // startsWith lit every item whose path is a prefix of another — e.g. the
+  // Dashboard ("/digitisation") stayed highlighted on "/digitisation/documents".
+  // Longest-match means exactly one item is active, and detail routes like
+  // "/digitisation/validation/{id}" still light their parent ("Validation Queue").
+  const _activeNavPath = navigation.reduce((best, item) => {
+    const p = item.path;
+    const matches = location.pathname === p || location.pathname.startsWith(p + '/');
+    return matches && p.length > best.length ? p : best;
+  }, '');
+  const isActive = (path) => path !== '' && path === _activeNavPath;
 
   return (
     <div className="min-h-screen bg-surface">
