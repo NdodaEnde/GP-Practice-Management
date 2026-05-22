@@ -219,7 +219,7 @@ def _key(item: Tuple[str, int, str]) -> str:
 #   pytest -q tests/test_tenant_query_isolation.py -s   (prints the set)
 # ---------------------------------------------------------------------------
 BASELINE: Set[str] = {
-    # Regenerated 2026-05-22 (Professional rebuild: patient/encounter spine scoped to token workspace — worklist shrinks; zero net-new).
+    # Regenerated 2026-05-22 (removed dead /api/vitals router; line drift; zero net-new).
     "app/api/clinical_actions.py::121::prescriptions",
     "app/api/digitisation.py::1166::gp_validation_sessions",
     "app/api/digitisation.py::1192::gp_validation_sessions",
@@ -291,10 +291,10 @@ BASELINE: Set[str] = {
     "server.py::2407::sick_notes",
     "server.py::2475::referrals",
     "server.py::2492::referrals",
-    "server.py::2602::patients",
-    "server.py::2632::prescriptions",
-    "server.py::2642::prescription_items",
-    "server.py::2730::prescription_items",
+    "server.py::2600::patients",
+    "server.py::2630::prescriptions",
+    "server.py::2640::prescription_items",
+    "server.py::2728::prescription_items",
     "server.py::428::encounters",
     "server.py::466::encounters",
     "server.py::518::allergies",

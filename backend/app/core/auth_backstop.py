@@ -204,14 +204,8 @@ ROUTE_CAPABILITIES: dict = {
     # gating closes the cross-TIER hole; the per-router tenancy fixes
     # (workspace_id from token vs DEMO_WORKSPACE_ID / patient-derived) are
     # tracked separately (Pass A step 2) and required before Professional ships.
-    # vitals
-    ("POST", "/api/vitals"): "patient_ehr_basic",
-    ("GET", "/api/vitals/patient/{patient_id}"): "patient_ehr_basic",
-    ("GET", "/api/vitals/{vital_id}"): "patient_ehr_basic",
-    ("PATCH", "/api/vitals/{vital_id}"): "patient_ehr_basic",
-    ("DELETE", "/api/vitals/{vital_id}"): "patient_ehr_basic",
-    ("GET", "/api/vitals/encounter/{encounter_id}"): "patient_ehr_basic",
-    ("GET", "/api/vitals/patient/{patient_id}/latest"): "patient_ehr_basic",
+    # (vitals: the standalone /api/vitals router was removed — dead, drifted,
+    #  no consumer. Vitals are captured via the encounter, which is scoped.)
     # allergies
     ("POST", "/api/allergies"): "patient_ehr_basic",
     ("GET", "/api/allergies/patient/{patient_id}"): "patient_ehr_basic",
