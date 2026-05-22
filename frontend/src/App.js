@@ -14,10 +14,6 @@ import WorkstationDashboard from './pages/WorkstationDashboard';
 import VitalsStation from './pages/VitalsStation';
 import Billing from './pages/Billing';
 import Analytics from './pages/Analytics';
-import ICD10TestPage from './pages/ICD10TestPage';
-import NAPPITestPage from './pages/NAPPITestPage';
-import LabTestPage from './pages/LabTestPage';
-import BillingTestPage from './pages/BillingTestPage';
 import FinancialDashboard from './pages/FinancialDashboard';
 import ClaimsManagement from './pages/ClaimsManagement';
 import PaymentSuccess from './pages/PaymentSuccess';
@@ -136,10 +132,6 @@ function App() {
             <Route path="queue/workstation" element={<WorkstationDashboard />} />
             <Route path="billing" element={<Billing />} />
             <Route path="analytics" element={<Analytics />} />
-            <Route path="icd10-test" element={<ICD10TestPage />} />
-            <Route path="nappi-test" element={<NAPPITestPage />} />
-            <Route path="lab-test" element={<LabTestPage />} />
-            <Route path="billing-test" element={<BillingTestPage />} />
             <Route path="financial-dashboard" element={<FinancialDashboard />} />
             <Route path="claims-management" element={<ClaimsManagement />} />
             <Route path="extraction-config" element={<ExtractionConfiguration />} />

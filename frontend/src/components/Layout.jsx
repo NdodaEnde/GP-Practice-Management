@@ -108,17 +108,6 @@ const Layout = () => {
     { name: 'Workspace Management', path: '/workspace-management', icon: 'corporate_fare' },
   ] : [];
 
-  // Dev/test pages — admin-only QA fixtures for the Healthcare app. Hidden in
-  // Type C workspaces since they exercise EHR-side endpoints the practice
-  // didn't buy and are confusing in a Digitisation-only context.
-  const devNav = user?.role === 'admin' && !isTypeCWorkspace ? [
-    { name: 'ICD-10 Test',     path: '/icd10-test',         icon: 'biotech' },
-    { name: 'NAPPI Test',      path: '/nappi-test',         icon: 'medication' },
-    { name: 'Lab Test',        path: '/lab-test',           icon: 'experiment' },
-    { name: 'Immunizations',   path: '/immunizations-test', icon: 'vaccines' },
-    { name: 'Billing Test',    path: '/billing-test',       icon: 'receipt_long' },
-  ] : [];
-
   // Digitisation-only tier: just the engine. Full GP-Practice tier: the
   // SAME engine nav + the EHR-only screens. One digitisation experience
   // everywhere; per-item hasCapability filter (below) still applies.
@@ -128,7 +117,6 @@ const Layout = () => {
   const navigation = [
     ...baseNav.filter(item => !item.capability || hasCapability(item.capability)),
     ...adminNav,
-    ...devNav,
   ];
 
   const subtitle = isTypeCWorkspace ? 'Digitisation Workspace' : (user?.workspace_name || 'Healthcare');
