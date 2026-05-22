@@ -1306,18 +1306,19 @@ async def get_dispense_events(encounter_id: str):
 # ==================== Analytics ====================
 
 @api_router.get("/analytics/summary")
-async def get_analytics_summary():
-    """Get comprehensive summary analytics for the workspace"""
+async def get_analytics_summary(current_user: dict = Depends(get_current_user)):
+    """Get comprehensive summary analytics for the caller's workspace"""
     try:
+        workspace_id = current_user["workspace_id"]
         # Get counts from Supabase
-        patients_result = supabase.table('patients').select('id', count='exact').eq('workspace_id', DEMO_WORKSPACE_ID).execute()
-        encounters_result = supabase.table('encounters').select('id', count='exact').eq('workspace_id', DEMO_WORKSPACE_ID).execute()
-        invoices_result = supabase.table('gp_invoices').select('total_amount').execute()
-        
+        patients_result = supabase.table('patients').select('id', count='exact').eq('workspace_id', workspace_id).execute()
+        encounters_result = supabase.table('encounters').select('id', count='exact').eq('workspace_id', workspace_id).execute()
+        invoices_result = supabase.table('gp_invoices').select('total_amount').eq('workspace_id', workspace_id).execute()
+
         total_revenue = sum(float(inv['total_amount']) for inv in invoices_result.data)
-        
+
         # Get recent encounters
-        recent_encounters = supabase.table('encounters').select('*').eq('workspace_id', DEMO_WORKSPACE_ID).order('encounter_date', desc=True).limit(5).execute()
+        recent_encounters = supabase.table('encounters').select('*').eq('workspace_id', workspace_id).order('encounter_date', desc=True).limit(5).execute()
         
         return {
             'total_patients': patients_result.count or 0,
@@ -1331,14 +1332,15 @@ async def get_analytics_summary():
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/analytics/operational")
-async def get_operational_analytics():
-    """Get operational metrics: patient volume, peak hours, throughput"""
+async def get_operational_analytics(current_user: dict = Depends(get_current_user)):
+    """Get operational metrics: patient volume, peak hours, throughput (caller's workspace)"""
     try:
+        workspace_id = current_user["workspace_id"]
         # Patient volume trends (last 6 months)
         six_months_ago = (datetime.now(timezone.utc) - timedelta(days=180)).isoformat()
-        
-        patients_over_time = supabase.table('patients').select('created_at').eq('workspace_id', DEMO_WORKSPACE_ID).gte('created_at', six_months_ago).execute()
-        encounters_over_time = supabase.table('encounters').select('encounter_date', count='exact').eq('workspace_id', DEMO_WORKSPACE_ID).gte('encounter_date', six_months_ago).execute()
+
+        patients_over_time = supabase.table('patients').select('created_at').eq('workspace_id', workspace_id).gte('created_at', six_months_ago).execute()
+        encounters_over_time = supabase.table('encounters').select('encounter_date', count='exact').eq('workspace_id', workspace_id).gte('encounter_date', six_months_ago).execute()
         
         # Group by month
         patient_monthly = {}
@@ -1352,7 +1354,7 @@ async def get_operational_analytics():
             encounter_monthly[month] = encounter_monthly.get(month, 0) + 1
         
         # Peak hours analysis (encounters by hour)
-        all_encounters = supabase.table('encounters').select('encounter_date').eq('workspace_id', DEMO_WORKSPACE_ID).execute()
+        all_encounters = supabase.table('encounters').select('encounter_date').eq('workspace_id', workspace_id).execute()
         hour_distribution = {}
         for e in all_encounters.data:
             hour = datetime.fromisoformat(e['encounter_date'].replace('Z', '+00:00')).hour
@@ -1390,11 +1392,12 @@ async def get_clinical_analytics(
     # which the frontend renders as a CapabilityUpsell card.
     current_user: dict = Depends(require_capability("analytics_cohorts")),
 ):
-    """Get clinical metrics: diagnoses, prescriptions, referrals"""
+    """Get clinical metrics: diagnoses, prescriptions, referrals (caller's workspace)"""
     try:
+        workspace_id = current_user["workspace_id"]
         # Get all parsed documents to analyze medical data
         parsed_docs = await db.parsed_documents.find({
-            'workspace_id': DEMO_WORKSPACE_ID,
+            'workspace_id': workspace_id,
             'status': {'$in': ['approved', 'linked']}
         }).to_list(1000)
         
@@ -1426,10 +1429,10 @@ async def get_clinical_analytics(
         top_allergies = sorted(allergy_counts.items(), key=lambda x: x[1], reverse=True)[:10]
         
         # Get encounter statistics
-        all_encounters = supabase.table('encounters').select('*').eq('workspace_id', DEMO_WORKSPACE_ID).execute()
-        
+        all_encounters = supabase.table('encounters').select('*').eq('workspace_id', workspace_id).execute()
+
         # Patient age distribution
-        all_patients = supabase.table('patients').select('dob').eq('workspace_id', DEMO_WORKSPACE_ID).execute()
+        all_patients = supabase.table('patients').select('dob').eq('workspace_id', workspace_id).execute()
         age_distribution = {'0-18': 0, '19-35': 0, '36-50': 0, '51-65': 0, '65+': 0}
         
         for p in all_patients.data:
@@ -1463,15 +1466,16 @@ async def get_clinical_analytics(
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/analytics/financial")
-async def get_financial_analytics():
-    """Get financial metrics: revenue, payment methods, outstanding"""
+async def get_financial_analytics(current_user: dict = Depends(get_current_user)):
+    """Get financial metrics: revenue, payment methods, outstanding (caller's workspace)"""
     try:
+        workspace_id = current_user["workspace_id"]
         # Get all invoices
-        invoices = supabase.table('gp_invoices').select('*').eq('workspace_id', DEMO_WORKSPACE_ID).execute()
-        
+        invoices = supabase.table('gp_invoices').select('*').eq('workspace_id', workspace_id).execute()
+
         # Revenue over time (last 6 months)
         six_months_ago = (datetime.now(timezone.utc) - timedelta(days=180)).isoformat()
-        recent_invoices = supabase.table('gp_invoices').select('*').gte('created_at', six_months_ago).execute()
+        recent_invoices = supabase.table('gp_invoices').select('*').eq('workspace_id', workspace_id).gte('created_at', six_months_ago).execute()
         
         revenue_monthly = {}
         for inv in recent_invoices.data:
@@ -2047,19 +2051,24 @@ def parse_soap_notes(soap_text: str) -> dict:
     return result
 
 @api_router.post("/ai-scribe/save-consultation")
-async def save_consultation_to_ehr(request: dict):
-    """Save AI Scribe consultation to EHR - creates encounter, extracts diagnosis, links documents"""
+async def save_consultation_to_ehr(request: dict, current_user: dict = Depends(get_current_user)):
+    """Save AI Scribe consultation to EHR - creates encounter, extracts diagnosis, links documents.
+    Workspace from the token; the patient must belong to it."""
     try:
         import openai
         import json
-        
+
+        workspace_id = current_user["workspace_id"]
+        tenant_id = current_user.get("tenant_id") or DEMO_TENANT_ID
         patient_id = request.get('patient_id')
         soap_notes = request.get('soap_notes', '')
         transcription = request.get('transcription', '')
         doctor_name = request.get('doctor_name', 'Dr. Unknown')
-        
+
         if not patient_id or not soap_notes:
             raise HTTPException(status_code=400, detail="patient_id and soap_notes required")
+        if not supabase.table('patients').select('id').eq('id', patient_id).eq('workspace_id', workspace_id).execute().data:
+            raise HTTPException(status_code=404, detail="Patient not found")
         
         # Get OpenAI API key for diagnosis extraction
         api_key = os.environ.get('OPENAI_API_KEY')
@@ -2094,7 +2103,7 @@ async def save_consultation_to_ehr(request: dict):
         encounter_data = {
             'id': encounter_id,
             'patient_id': patient_id,
-            'workspace_id': DEMO_WORKSPACE_ID,
+            'workspace_id': workspace_id,
             'encounter_date': datetime.now(timezone.utc).isoformat(),
             'status': 'completed',
             'chief_complaint': extracted_info.get('chief_complaint', 'Consultation'),
@@ -2110,8 +2119,8 @@ async def save_consultation_to_ehr(request: dict):
         # Create structured clinical note
         clinical_note_data = {
             'id': str(uuid.uuid4()),
-            'tenant_id': DEMO_TENANT_ID,
-            'workspace_id': DEMO_WORKSPACE_ID,
+            'tenant_id': tenant_id,
+            'workspace_id': workspace_id,
             'encounter_id': encounter_id,
             'patient_id': patient_id,
             'format': 'soap',
@@ -2136,14 +2145,17 @@ async def save_consultation_to_ehr(request: dict):
             # Check if condition exists
             existing = supabase.table('patient_conditions')\
                 .select('*')\
+                .eq('workspace_id', workspace_id)\
                 .eq('patient_id', patient_id)\
                 .ilike('condition_name', f'%{diagnosis}%')\
                 .execute()
-            
+
             if not existing.data:
                 # Add new condition
                 condition_data = {
                     'id': str(uuid.uuid4()),
+                    'tenant_id': tenant_id,
+                    'workspace_id': workspace_id,
                     'patient_id': patient_id,
                     'condition_name': diagnosis,
                     'icd10_code': extracted_info.get('icd10_code', ''),
@@ -2195,11 +2207,15 @@ async def save_consultation_to_ehr(request: dict):
 # ==================== Phase 4.2: Prescription Module Endpoints ====================
 
 @api_router.post("/prescriptions")
-async def create_prescription(prescription: PrescriptionCreate):
+async def create_prescription(prescription: PrescriptionCreate, current_user: dict = Depends(get_current_user)):
     """Create a new prescription. Server-side allergy interaction check enforced
     (Phase 2.5 patient safety). Returns 409 on conflict unless `allergy_override`
     is supplied with a clinical reason — overrides are logged for audit."""
     try:
+        workspace_id = current_user["workspace_id"]
+        # The patient must belong to the caller's workspace.
+        if not supabase.table('patients').select('id').eq('id', prescription.patient_id).eq('workspace_id', workspace_id).execute().data:
+            raise HTTPException(status_code=404, detail="Patient not found")
         # ---- Server-side allergy interaction check ----
         # Defence in depth: even if the client UI is bypassed or buggy, the server
         # blocks prescriptions that conflict with the patient's known allergies
@@ -2207,6 +2223,7 @@ async def create_prescription(prescription: PrescriptionCreate):
         allergies_result = (
             supabase.table('allergies')
             .select('substance, reaction, severity')
+            .eq('workspace_id', workspace_id)
             .eq('patient_id', prescription.patient_id)
             .eq('status', 'active')
             .execute()
@@ -2263,8 +2280,8 @@ async def create_prescription(prescription: PrescriptionCreate):
         # Create prescription record in Supabase
         prescription_data = {
             'id': prescription_id,
-            'tenant_id': DEMO_TENANT_ID,
-            'workspace_id': DEMO_WORKSPACE_ID,
+            'tenant_id': current_user.get("tenant_id") or DEMO_TENANT_ID,
+            'workspace_id': workspace_id,
             'patient_id': prescription.patient_id,
             'encounter_id': prescription.encounter_id,
             'doctor_name': prescription.doctor_name,
@@ -2313,12 +2330,13 @@ async def create_prescription(prescription: PrescriptionCreate):
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/prescriptions/patient/{patient_id}")
-async def get_patient_prescriptions(patient_id: str):
-    """Get all prescriptions for a patient"""
+async def get_patient_prescriptions(patient_id: str, current_user: dict = Depends(get_current_user)):
+    """Get all prescriptions for a patient (caller's workspace only)"""
     try:
         # Get prescriptions
         prescriptions = supabase.table('prescriptions')\
             .select('*')\
+            .eq('workspace_id', current_user["workspace_id"])\
             .eq('patient_id', patient_id)\
             .order('prescription_date', desc=True)\
             .execute()
@@ -2343,12 +2361,13 @@ async def get_patient_prescriptions(patient_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/prescriptions/{prescription_id}")
-async def get_prescription(prescription_id: str):
-    """Get a specific prescription with items"""
+async def get_prescription(prescription_id: str, current_user: dict = Depends(get_current_user)):
+    """Get a specific prescription with items (caller's workspace only)"""
     try:
         prescription = supabase.table('prescriptions')\
             .select('*')\
             .eq('id', prescription_id)\
+            .eq('workspace_id', current_user["workspace_id"])\
             .single()\
             .execute()
         
@@ -2447,15 +2466,18 @@ async def get_patient_sick_notes(
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.post("/referrals")
-async def create_referral(referral: ReferralCreate):
-    """Create a new referral letter"""
+async def create_referral(referral: ReferralCreate, current_user: dict = Depends(get_current_user)):
+    """Create a new referral letter (caller's workspace; patient must belong to it)."""
     try:
+        workspace_id = current_user["workspace_id"]
+        if not supabase.table('patients').select('id').eq('id', referral.patient_id).eq('workspace_id', workspace_id).execute().data:
+            raise HTTPException(status_code=404, detail="Patient not found")
         referral_id = str(uuid.uuid4())
-        
+
         referral_data = {
             'id': referral_id,
-            'tenant_id': DEMO_TENANT_ID,
-            'workspace_id': DEMO_WORKSPACE_ID,
+            'tenant_id': current_user.get("tenant_id") or DEMO_TENANT_ID,
+            'workspace_id': workspace_id,
             'patient_id': referral.patient_id,
             'encounter_id': referral.encounter_id,
             'referring_doctor_name': referral.referring_doctor_name,
@@ -2481,16 +2503,19 @@ async def create_referral(referral: ReferralCreate):
             'referral_id': referral_id,
             'message': 'Referral created successfully'
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error creating referral: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/referrals/patient/{patient_id}")
-async def get_patient_referrals(patient_id: str):
-    """Get all referrals for a patient"""
+async def get_patient_referrals(patient_id: str, current_user: dict = Depends(get_current_user)):
+    """Get all referrals for a patient (caller's workspace only)"""
     try:
         referrals = supabase.table('referrals')\
             .select('*')\
+            .eq('workspace_id', current_user["workspace_id"])\
             .eq('patient_id', patient_id)\
             .order('referral_date', desc=True)\
             .execute()
