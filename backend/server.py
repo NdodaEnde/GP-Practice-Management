@@ -932,39 +932,6 @@ async def get_next_queue_number() -> int:
         logger.error(f"Error getting next queue number: {e}")
         return 1
 
-def mock_ade_parser(filename: str, file_content: bytes) -> Dict[str, Any]:
-    """Mock ADE parser - returns realistic parsed medical data"""
-    return {
-        'patient_demographics': {
-            'name': 'Extracted from Document',
-            'age': 45,
-            'gender': 'Unknown'
-        },
-        'medical_history': [
-            {'condition': 'Hypertension', 'diagnosed_date': '2020-03-15'},
-            {'condition': 'Type 2 Diabetes', 'diagnosed_date': '2019-08-22'}
-        ],
-        'current_medications': [
-            {'name': 'Metformin', 'dosage': '500mg', 'frequency': 'Twice daily'},
-            {'name': 'Lisinopril', 'dosage': '10mg', 'frequency': 'Once daily'}
-        ],
-        'allergies': ['Penicillin', 'Latex'],
-        'lab_results': [
-            {'test': 'HbA1c', 'value': '6.8%', 'date': '2024-01-15'},
-            {'test': 'Blood Pressure', 'value': '135/85', 'date': '2024-01-15'}
-        ],
-        'clinical_notes': 'Patient presents with controlled diabetes and hypertension. Continue current medication regimen. Follow up in 3 months.',
-        'diagnoses': [
-            {'code': 'E11', 'description': 'Type 2 diabetes mellitus'},
-            {'code': 'I10', 'description': 'Essential hypertension'}
-        ],
-        'extraction_metadata': {
-            'confidence': 0.92,
-            'extracted_at': datetime.now(timezone.utc).isoformat(),
-            'source_filename': filename
-        }
-    }
-
 # ==================== API Routes ====================
 
 @api_router.get("/")
