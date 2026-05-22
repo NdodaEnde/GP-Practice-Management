@@ -2184,28 +2184,21 @@ async def save_consultation_to_ehr(request: dict, current_user: dict = Depends(g
                 }
                 supabase.table('patient_conditions').insert(condition_data).execute()
         
-        # Store transcription in MongoDB for reference
-        await db.consultation_transcripts.insert_one({
+        # Store the verbatim transcript on the foundation (Supabase, migration 036),
+        # scoped to the caller's workspace. The structured SOAP note is already in
+        # clinical_notes; this keeps the raw transcript linked to the encounter.
+        supabase.table('consultation_transcripts').insert({
             'id': str(uuid.uuid4()),
+            'workspace_id': workspace_id,
+            'tenant_id': tenant_id,
             'encounter_id': encounter_id,
             'patient_id': patient_id,
             'transcription': transcription,
             'soap_notes': soap_notes,
             'doctor_name': doctor_name,
             'created_at': datetime.now(timezone.utc).isoformat()
-        })
-        
-        # Log audit event
-        await db.audit_events.insert_one({
-            'id': str(uuid.uuid4()),
-            'tenant_id': DEMO_TENANT_ID,
-            'workspace_id': DEMO_WORKSPACE_ID,
-            'event_type': 'ai_scribe_consultation_saved',
-            'patient_id': patient_id,
-            'encounter_id': encounter_id,
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        })
-        
+        }).execute()
+
         logger.info(f"AI Scribe consultation saved to EHR: encounter_id={encounter_id}")
         
         return {
