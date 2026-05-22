@@ -3,7 +3,7 @@ Billing API endpoints
 Invoice generation, payments, and medical aid claims
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from datetime import datetime, date, timedelta
@@ -12,7 +12,13 @@ import os
 from supabase import create_client
 import uuid
 
+from app.api.auth import get_current_user
+
 router = APIRouter()
+
+# Rebuilt onto the unified foundation: workspace_id from the authenticated TOKEN
+# (current_user), not DEMO_WORKSPACE_ID, and every read/write scoped to it.
+# Gating lives in the central ROUTE_CAPABILITIES map (billing_invoicing).
 
 # Supabase connection
 SUPABASE_URL = os.getenv('SUPABASE_URL')
@@ -77,16 +83,20 @@ class ClaimCreate(BaseModel):
 # =============================================
 
 @router.post("/invoices")
-async def create_invoice(invoice: InvoiceCreate):
+async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(get_current_user)):
     """Create a new invoice from encounter or manual entry"""
     try:
-        workspace_id = os.getenv('DEMO_WORKSPACE_ID')
-        tenant_id = os.getenv('DEMO_TENANT_ID')
-        
-        # Generate invoice number (format: INV-YYYYMMDD-XXXX)
+        workspace_id = current_user["workspace_id"]
+        tenant_id = current_user.get("tenant_id") or os.getenv('DEMO_TENANT_ID')
+        # The patient must belong to the caller's workspace.
+        if not supabase.table('patients').select('id').eq('id', invoice.patient_id).eq('workspace_id', workspace_id).execute().data:
+            raise HTTPException(status_code=404, detail="Patient not found")
+
+        # Generate invoice number (format: INV-YYYYMMDD-XXXX) — per workspace.
         today = datetime.now().strftime('%Y%m%d')
         count_result = supabase.table('invoices')\
             .select('id', count='exact')\
+            .eq('workspace_id', workspace_id)\
             .execute()
         invoice_number = f"INV-{today}-{(count_result.count + 1):04d}"
         
@@ -171,6 +181,8 @@ async def create_invoice(invoice: InvoiceCreate):
             'message': 'Invoice created successfully'
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error creating invoice: {str(e)}")
 
@@ -180,12 +192,14 @@ async def get_patient_invoices(
     patient_id: str,
     status: Optional[str] = None,
     payment_status: Optional[str] = None,
-    limit: int = Query(50, le=200)
+    limit: int = Query(50, le=200),
+    current_user: dict = Depends(get_current_user),
 ):
     """Get all invoices for a patient"""
     try:
         query = supabase.table('invoices')\
             .select('*')\
+            .eq('workspace_id', current_user["workspace_id"])\
             .eq('patient_id', patient_id)
         
         if status:
@@ -203,20 +217,23 @@ async def get_patient_invoices(
             'invoices': result.data or []
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching invoices: {str(e)}")
 
 
 @router.get("/invoices/{invoice_id}")
-async def get_invoice(invoice_id: str):
+async def get_invoice(invoice_id: str, current_user: dict = Depends(get_current_user)):
     """Get invoice details with items"""
     try:
-        # Get invoice
+        # Get invoice — scoped to the caller's workspace (404 if it belongs to another tenant).
         invoice_result = supabase.table('invoices')\
             .select('*')\
             .eq('id', invoice_id)\
+            .eq('workspace_id', current_user["workspace_id"])\
             .execute()
-        
+
         if not invoice_result.data:
             raise HTTPException(status_code=404, detail="Invoice not found")
         
@@ -251,11 +268,12 @@ async def get_all_invoices(
     payment_status: Optional[str] = None,
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
-    limit: int = Query(100, le=500)
+    limit: int = Query(100, le=500),
+    current_user: dict = Depends(get_current_user),
 ):
     """Get all invoices with filters"""
     try:
-        workspace_id = os.getenv('DEMO_WORKSPACE_ID')
+        workspace_id = current_user["workspace_id"]
         
         query = supabase.table('invoices')\
             .select('*')\
@@ -277,6 +295,8 @@ async def get_all_invoices(
             'invoices': result.data or []
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching invoices: {str(e)}")
 
@@ -286,18 +306,19 @@ async def get_all_invoices(
 # =============================================
 
 @router.post("/payments")
-async def record_payment(payment: PaymentCreate):
+async def record_payment(payment: PaymentCreate, current_user: dict = Depends(get_current_user)):
     """Record a payment for an invoice"""
     try:
-        workspace_id = os.getenv('DEMO_WORKSPACE_ID')
-        tenant_id = os.getenv('DEMO_TENANT_ID')
+        workspace_id = current_user["workspace_id"]
+        tenant_id = current_user.get("tenant_id") or os.getenv('DEMO_TENANT_ID')
         
-        # Get invoice
+        # Get invoice — must belong to the caller's workspace.
         invoice_result = supabase.table('invoices')\
             .select('*')\
             .eq('id', payment.invoice_id)\
+            .eq('workspace_id', workspace_id)\
             .execute()
-        
+
         if not invoice_result.data:
             raise HTTPException(status_code=404, detail="Invoice not found")
         
@@ -346,6 +367,7 @@ async def record_payment(payment: PaymentCreate):
                 'updated_at': datetime.utcnow().isoformat()
             })\
             .eq('id', payment.invoice_id)\
+            .eq('workspace_id', workspace_id)\
             .execute()
         
         return {
@@ -363,11 +385,12 @@ async def record_payment(payment: PaymentCreate):
 
 
 @router.get("/payments/invoice/{invoice_id}")
-async def get_invoice_payments(invoice_id: str):
+async def get_invoice_payments(invoice_id: str, current_user: dict = Depends(get_current_user)):
     """Get all payments for an invoice"""
     try:
         result = supabase.table('payments')\
             .select('*')\
+            .eq('workspace_id', current_user["workspace_id"])\
             .eq('invoice_id', invoice_id)\
             .order('payment_date', desc=True)\
             .execute()
@@ -378,6 +401,8 @@ async def get_invoice_payments(invoice_id: str):
             'payments': result.data or []
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching payments: {str(e)}")
 
@@ -387,27 +412,29 @@ async def get_invoice_payments(invoice_id: str):
 # =============================================
 
 @router.post("/claims")
-async def create_claim(claim: ClaimCreate):
+async def create_claim(claim: ClaimCreate, current_user: dict = Depends(get_current_user)):
     """Create a medical aid claim from an invoice"""
     try:
-        workspace_id = os.getenv('DEMO_WORKSPACE_ID')
-        tenant_id = os.getenv('DEMO_TENANT_ID')
+        workspace_id = current_user["workspace_id"]
+        tenant_id = current_user.get("tenant_id") or os.getenv('DEMO_TENANT_ID')
         
-        # Get invoice
+        # Get invoice — must belong to the caller's workspace.
         invoice_result = supabase.table('invoices')\
             .select('*')\
             .eq('id', claim.invoice_id)\
+            .eq('workspace_id', workspace_id)\
             .execute()
-        
+
         if not invoice_result.data:
             raise HTTPException(status_code=404, detail="Invoice not found")
-        
+
         invoice = invoice_result.data[0]
-        
-        # Generate claim number
+
+        # Generate claim number — per workspace.
         today = datetime.now().strftime('%Y%m%d')
         count_result = supabase.table('medical_aid_claims')\
             .select('id', count='exact')\
+            .eq('workspace_id', workspace_id)\
             .execute()
         claim_number = f"CLM-{today}-{(count_result.count + 1):04d}"
         
@@ -452,14 +479,15 @@ async def create_claim(claim: ClaimCreate):
 
 
 @router.get("/claims/{claim_id}")
-async def get_claim(claim_id: str):
+async def get_claim(claim_id: str, current_user: dict = Depends(get_current_user)):
     """Get claim details"""
     try:
         result = supabase.table('medical_aid_claims')\
             .select('*')\
             .eq('id', claim_id)\
+            .eq('workspace_id', current_user["workspace_id"])\
             .execute()
-        
+
         if not result.data:
             raise HTTPException(status_code=404, detail="Claim not found")
         
@@ -478,7 +506,8 @@ async def update_claim_status(
     approved_amount: Optional[float] = None,
     paid_amount: Optional[float] = None,
     rejection_reason: Optional[str] = None,
-    rejection_code: Optional[str] = None
+    rejection_code: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
 ):
     """Update claim status"""
     try:
@@ -504,8 +533,9 @@ async def update_claim_status(
         result = supabase.table('medical_aid_claims')\
             .update(update_data)\
             .eq('id', claim_id)\
+            .eq('workspace_id', current_user["workspace_id"])\
             .execute()
-        
+
         if not result.data:
             raise HTTPException(status_code=404, detail="Claim not found")
         
@@ -526,11 +556,12 @@ async def get_all_claims(
     medical_aid: Optional[str] = None,
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
-    limit: int = Query(100, le=500)
+    limit: int = Query(100, le=500),
+    current_user: dict = Depends(get_current_user),
 ):
     """Get all claims with filters"""
     try:
-        workspace_id = os.getenv('DEMO_WORKSPACE_ID')
+        workspace_id = current_user["workspace_id"]
         
         query = supabase.table('medical_aid_claims')\
             .select('*')\
@@ -554,6 +585,8 @@ async def get_all_claims(
             'claims': result.data or []
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching claims: {str(e)}")
 
@@ -565,11 +598,12 @@ async def get_all_claims(
 @router.get("/reports/revenue")
 async def get_revenue_report(
     from_date: str,
-    to_date: str
+    to_date: str,
+    current_user: dict = Depends(get_current_user),
 ):
     """Get revenue report for a date range"""
     try:
-        workspace_id = os.getenv('DEMO_WORKSPACE_ID')
+        workspace_id = current_user["workspace_id"]
         
         # Get all invoices in date range
         invoices_result = supabase.table('invoices')\
@@ -613,15 +647,17 @@ async def get_revenue_report(
             'payment_methods': payment_methods
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating report: {str(e)}")
 
 
 @router.get("/reports/outstanding")
-async def get_outstanding_report():
+async def get_outstanding_report(current_user: dict = Depends(get_current_user)):
     """Get all outstanding invoices"""
     try:
-        workspace_id = os.getenv('DEMO_WORKSPACE_ID')
+        workspace_id = current_user["workspace_id"]
         
         result = supabase.table('invoices')\
             .select('*')\
@@ -639,5 +675,7 @@ async def get_outstanding_report():
             'invoices': invoices
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating report: {str(e)}")
