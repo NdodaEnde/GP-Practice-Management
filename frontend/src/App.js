@@ -18,7 +18,6 @@ import Analytics from './pages/Analytics';
 import ICD10TestPage from './pages/ICD10TestPage';
 import NAPPITestPage from './pages/NAPPITestPage';
 import LabTestPage from './pages/LabTestPage';
-import ImmunizationsTestPage from './pages/ImmunizationsTestPage';
 import BillingTestPage from './pages/BillingTestPage';
 import FinancialDashboard from './pages/FinancialDashboard';
 import ClaimsManagement from './pages/ClaimsManagement';
@@ -132,7 +131,6 @@ function App() {
             <Route path="icd10-test" element={<ICD10TestPage />} />
             <Route path="nappi-test" element={<NAPPITestPage />} />
             <Route path="lab-test" element={<LabTestPage />} />
-            <Route path="immunizations-test" element={<ImmunizationsTestPage />} />
             <Route path="billing-test" element={<BillingTestPage />} />
             <Route path="financial-dashboard" element={<FinancialDashboard />} />
             <Route path="claims-management" element={<ClaimsManagement />} />

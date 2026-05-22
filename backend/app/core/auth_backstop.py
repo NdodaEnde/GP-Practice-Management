@@ -220,15 +220,6 @@ ROUTE_CAPABILITIES: dict = {
     ("PATCH", "/api/diagnoses/{diagnosis_id}"): "patient_ehr_basic",
     ("DELETE", "/api/diagnoses/{diagnosis_id}"): "patient_ehr_basic",
     ("GET", "/api/diagnoses/encounter/{encounter_id}"): "patient_ehr_basic",
-    # clinical notes
-    ("POST", "/api/clinical-notes"): "patient_ehr_basic",
-    ("GET", "/api/clinical-notes/encounter/{encounter_id}"): "patient_ehr_basic",
-    ("GET", "/api/clinical-notes/patient/{patient_id}"): "patient_ehr_basic",
-    ("GET", "/api/clinical-notes/{note_id}"): "patient_ehr_basic",
-    ("PUT", "/api/clinical-notes/{note_id}"): "patient_ehr_basic",
-    ("POST", "/api/clinical-notes/{note_id}/sign"): "patient_ehr_basic",
-    ("POST", "/api/clinical-notes/{note_id}/amend"): "patient_ehr_basic",
-    ("DELETE", "/api/clinical-notes/{note_id}"): "patient_ehr_basic",
     # lab orders / results
     ("POST", "/api/lab-orders"): "patient_ehr_basic",
     ("GET", "/api/lab-orders/patient/{patient_id}"): "patient_ehr_basic",
@@ -239,31 +230,6 @@ ROUTE_CAPABILITIES: dict = {
     ("GET", "/api/lab-results/order/{order_id}"): "patient_ehr_basic",
     ("GET", "/api/lab-results/patient/{patient_id}/test/{test_name}"): "patient_ehr_basic",
     ("GET", "/api/lab-results/patient/{patient_id}/abnormal"): "patient_ehr_basic",
-    # procedures
-    ("POST", "/api/procedures"): "patient_ehr_basic",
-    ("GET", "/api/procedures/patient/{patient_id}"): "patient_ehr_basic",
-    ("GET", "/api/procedures/encounter/{encounter_id}"): "patient_ehr_basic",
-    ("GET", "/api/procedures/{procedure_id}"): "patient_ehr_basic",
-    ("PUT", "/api/procedures/{procedure_id}"): "patient_ehr_basic",
-    ("GET", "/api/procedures/patient/{patient_id}/category/{category}"): "patient_ehr_basic",
-    ("GET", "/api/procedures/patient/{patient_id}/surgical-history"): "patient_ehr_basic",
-    ("GET", "/api/procedures/patient/{patient_id}/billable"): "patient_ehr_basic",
-    ("GET", "/api/procedures/follow-up/due"): "patient_ehr_basic",
-    ("DELETE", "/api/procedures/{procedure_id}"): "patient_ehr_basic",
-    # immunizations
-    ("POST", "/api/immunizations"): "patient_ehr_basic",
-    ("GET", "/api/immunizations/patient/{patient_id}"): "patient_ehr_basic",
-    ("GET", "/api/immunizations/{immunization_id}"): "patient_ehr_basic",
-    ("PUT", "/api/immunizations/{immunization_id}"): "patient_ehr_basic",
-    ("GET", "/api/immunizations/patient/{patient_id}/summary"): "patient_ehr_basic",
-    ("GET", "/api/immunizations/patient/{patient_id}/occupational"): "patient_ehr_basic",
-    # NOTE: GET /api/immunizations/overdue is SHADOWED by /{immunization_id}
-    # (declared earlier) — a pre-existing router-ordering bug, so it can't be a
-    # distinct map key. The path still resolves to /{immunization_id}, which IS
-    # gated above. Fix the ordering in the per-router tenancy pass.
-    ("GET", "/api/immunizations/patient/{patient_id}/series/{series_name}"): "patient_ehr_basic",
-    ("GET", "/api/immunizations/patient/{patient_id}/certificate"): "patient_ehr_basic",
-    ("DELETE", "/api/immunizations/{immunization_id}"): "patient_ehr_basic",
     # billing / invoices / payments / claims / reports
     ("POST", "/api/invoices"): "billing_invoicing",
     ("GET", "/api/invoices"): "billing_invoicing",

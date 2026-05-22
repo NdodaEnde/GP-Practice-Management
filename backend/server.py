@@ -2548,10 +2548,7 @@ from api.allergies import router as allergies_router
 from api.icd10 import router as icd10_router
 from api.diagnoses import router as diagnoses_router
 from api.nappi import router as nappi_router
-from api.clinical_notes import router as clinical_notes_router
 from api.lab import router as lab_router
-from api.procedures import router as procedures_router
-from api.immunizations import router as immunizations_router
 from api.billing import router as billing_router
 from api.payfast import router as payfast_router
 from api.extraction_mappings import router as extraction_mappings_router
@@ -2560,10 +2557,7 @@ api_router.include_router(allergies_router, tags=["Allergies"])
 api_router.include_router(icd10_router, tags=["ICD-10"])
 api_router.include_router(diagnoses_router, tags=["Diagnoses"])
 api_router.include_router(nappi_router, tags=["NAPPI Codes"])
-api_router.include_router(clinical_notes_router, tags=["Clinical Notes"])
 api_router.include_router(lab_router, tags=["Lab Orders & Results"])
-api_router.include_router(procedures_router, tags=["Procedures"])
-api_router.include_router(immunizations_router, tags=["Immunizations"])
 api_router.include_router(billing_router, tags=["Billing & Payments"])
 api_router.include_router(payfast_router, prefix="/payfast", tags=["PayFast Payment Gateway"])
 api_router.include_router(extraction_mappings_router, tags=["Extraction Mappings"])
