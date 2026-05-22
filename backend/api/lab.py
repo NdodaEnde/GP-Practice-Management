@@ -1,19 +1,26 @@
 """
 Lab Orders & Results API endpoints
-Track laboratory tests, orders, and results
+Track laboratory tests, orders, and results.
+
+Rebuilt onto the unified foundation: lab_orders carry workspace_id from the
+authenticated TOKEN (not DEMO_WORKSPACE_ID) and are scoped on every read/write;
+lab_results have no workspace_id column, so they are scoped via their parent
+order's ownership. Gating lives in the central ROUTE_CAPABILITIES map
+(patient_ehr_basic).
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import os
-from supabase import create_client
 import uuid
+from supabase import create_client
+
+from app.api.auth import get_current_user
 
 router = APIRouter()
 
-# Supabase connection
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_KEY = os.getenv('SUPABASE_SERVICE_KEY')
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -28,7 +35,7 @@ class LabOrderCreate(BaseModel):
     encounter_id: Optional[str] = None
     order_number: Optional[str] = None
     ordering_provider: Optional[str] = None
-    priority: str = 'routine'  # routine, urgent, stat
+    priority: str = 'routine'
     lab_name: Optional[str] = None
     indication: Optional[str] = None
     clinical_notes: Optional[str] = None
@@ -44,7 +51,7 @@ class LabResultCreate(BaseModel):
     reference_range: Optional[str] = None
     reference_low: Optional[float] = None
     reference_high: Optional[float] = None
-    abnormal_flag: str = 'unknown'  # normal, low, high, critical_low, critical_high
+    abnormal_flag: str = 'unknown'
     test_category: Optional[str] = None
     specimen_type: Optional[str] = None
     interpretation: Optional[str] = None
@@ -80,81 +87,77 @@ class LabResult(BaseModel):
     created_at: str
 
 
+def _require_patient(patient_id: str, workspace_id: str):
+    if not supabase.table('patients').select('id').eq('id', patient_id).eq('workspace_id', workspace_id).execute().data:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+
+def _require_order(order_id: str, workspace_id: str):
+    """The lab order must belong to the caller's workspace, else 404."""
+    res = supabase.table('lab_orders').select('id').eq('id', order_id).eq('workspace_id', workspace_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Lab order not found")
+
+
 # =============================================
-# LAB ORDERS ENDPOINTS
+# LAB ORDERS
 # =============================================
 
 @router.post("/lab-orders", response_model=LabOrder)
-async def create_lab_order(order: LabOrderCreate):
-    """Create a new lab order"""
+async def create_lab_order(order: LabOrderCreate, current_user: dict = Depends(get_current_user)):
+    """Create a lab order for a patient in the caller's workspace."""
     try:
-        workspace_id = os.getenv('DEMO_WORKSPACE_ID')
-        tenant_id = os.getenv('DEMO_TENANT_ID')
-        
+        workspace_id = current_user["workspace_id"]
+        _require_patient(order.patient_id, workspace_id)
         order_data = {
             'id': str(uuid.uuid4()),
-            'tenant_id': tenant_id,
+            'tenant_id': current_user.get("tenant_id") or workspace_id,
             'workspace_id': workspace_id,
             'patient_id': order.patient_id,
             'encounter_id': order.encounter_id,
             'order_number': order.order_number,
-            'ordering_provider': order.ordering_provider,
+            'ordering_provider': order.ordering_provider or current_user.get("email"),
             'priority': order.priority,
             'lab_name': order.lab_name,
             'indication': order.indication,
             'clinical_notes': order.clinical_notes,
             'icd10_code': order.icd10_code,
             'status': 'ordered',
-            'order_datetime': datetime.utcnow().isoformat(),
-            'created_at': datetime.utcnow().isoformat()
+            'order_datetime': datetime.now(timezone.utc).isoformat(),
+            'created_at': datetime.now(timezone.utc).isoformat(),
         }
-        
         result = supabase.table('lab_orders').insert(order_data).execute()
-        
         if not result.data:
             raise HTTPException(status_code=500, detail="Failed to create lab order")
-        
         return result.data[0]
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error creating lab order: {str(e)}")
 
 
 @router.get("/lab-orders/patient/{patient_id}", response_model=List[LabOrder])
-async def get_patient_lab_orders(
-    patient_id: str,
-    limit: int = Query(50, le=200),
-    status: Optional[str] = None
-):
-    """Get all lab orders for a patient"""
+async def get_patient_lab_orders(patient_id: str, limit: int = Query(50, le=200),
+                                 status: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+    """Get a patient's lab orders (caller's workspace only)."""
     try:
-        query = supabase.table('lab_orders')\
-            .select('*')\
-            .eq('patient_id', patient_id)
-        
+        query = supabase.table('lab_orders').select('*')\
+            .eq('workspace_id', current_user["workspace_id"]).eq('patient_id', patient_id)
         if status:
             query = query.eq('status', status)
-        
-        result = query.order('order_datetime', desc=True)\
-            .limit(limit)\
-            .execute()
-        
-        return result.data or []
+        return query.order('order_datetime', desc=True).limit(limit).execute().data or []
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching lab orders: {str(e)}")
 
 
 @router.get("/lab-orders/{order_id}", response_model=LabOrder)
-async def get_lab_order(order_id: str):
-    """Get specific lab order"""
+async def get_lab_order(order_id: str, current_user: dict = Depends(get_current_user)):
+    """Get a lab order in the caller's workspace."""
     try:
-        result = supabase.table('lab_orders')\
-            .select('*')\
-            .eq('id', order_id)\
-            .execute()
-        
+        result = supabase.table('lab_orders').select('*')\
+            .eq('id', order_id).eq('workspace_id', current_user["workspace_id"]).execute()
         if not result.data:
             raise HTTPException(status_code=404, detail="Lab order not found")
-        
         return result.data[0]
     except HTTPException:
         raise
@@ -163,59 +166,59 @@ async def get_lab_order(order_id: str):
 
 
 @router.put("/lab-orders/{order_id}/status")
-async def update_order_status(order_id: str, status: str):
-    """Update lab order status"""
+async def update_order_status(order_id: str, status: str, current_user: dict = Depends(get_current_user)):
+    """Update a lab order's status (caller's workspace only)."""
     try:
-        valid_statuses = ['ordered', 'collected', 'received', 'in_progress', 'completed', 'cancelled']
-        if status not in valid_statuses:
-            raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}")
-        
-        update_data = {
-            'status': status,
-            'updated_at': datetime.utcnow().isoformat()
-        }
-        
-        # If completing, set results received datetime
+        valid = ['ordered', 'collected', 'received', 'in_progress', 'completed', 'cancelled']
+        if status not in valid:
+            raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid}")
+        update_data = {'status': status, 'updated_at': datetime.now(timezone.utc).isoformat()}
         if status == 'completed':
-            update_data['results_received_datetime'] = datetime.utcnow().isoformat()
-        
-        result = supabase.table('lab_orders')\
-            .update(update_data)\
-            .eq('id', order_id)\
-            .execute()
-        
+            update_data['results_received_datetime'] = datetime.now(timezone.utc).isoformat()
+        result = supabase.table('lab_orders').update(update_data)\
+            .eq('id', order_id).eq('workspace_id', current_user["workspace_id"]).execute()
         if not result.data:
             raise HTTPException(status_code=404, detail="Lab order not found")
-        
-        return {
-            'status': 'success',
-            'message': f'Order status updated to {status}',
-            'order': result.data[0]
-        }
+        return {'status': 'success', 'message': f'Order status updated to {status}', 'order': result.data[0]}
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error updating order status: {str(e)}")
 
 
+@router.delete("/lab-orders/{order_id}")
+async def cancel_lab_order(order_id: str, current_user: dict = Depends(get_current_user)):
+    """Cancel a lab order in the caller's workspace."""
+    try:
+        result = supabase.table('lab_orders')\
+            .update({'status': 'cancelled', 'updated_at': datetime.now(timezone.utc).isoformat()})\
+            .eq('id', order_id).eq('workspace_id', current_user["workspace_id"]).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Lab order not found")
+        return {'status': 'success', 'message': 'Lab order cancelled'}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error cancelling order: {str(e)}")
+
+
 # =============================================
-# LAB RESULTS ENDPOINTS
+# LAB RESULTS (scoped via their parent order's ownership)
 # =============================================
 
 @router.post("/lab-results", response_model=LabResult)
-async def create_lab_result(result_data: LabResultCreate):
-    """Create a new lab result (manual entry)"""
+async def create_lab_result(result_data: LabResultCreate, current_user: dict = Depends(get_current_user)):
+    """Add a result to a lab order in the caller's workspace."""
     try:
-        # Auto-determine abnormal flag if numeric values provided
+        _require_order(result_data.lab_order_id, current_user["workspace_id"])
         abnormal_flag = result_data.abnormal_flag
-        if result_data.result_numeric and result_data.reference_low and result_data.reference_high:
+        if result_data.result_numeric is not None and result_data.reference_low is not None and result_data.reference_high is not None:
             if result_data.result_numeric < result_data.reference_low:
                 abnormal_flag = 'low'
             elif result_data.result_numeric > result_data.reference_high:
                 abnormal_flag = 'high'
             else:
                 abnormal_flag = 'normal'
-        
         result_entry = {
             'id': str(uuid.uuid4()),
             'lab_order_id': result_data.lab_order_id,
@@ -232,130 +235,69 @@ async def create_lab_result(result_data: LabResultCreate):
             'interpretation': result_data.interpretation,
             'comments': result_data.comments,
             'source': 'manual_entry',
-            'result_datetime': datetime.utcnow().isoformat(),
-            'created_at': datetime.utcnow().isoformat()
+            'result_datetime': datetime.now(timezone.utc).isoformat(),
+            'created_at': datetime.now(timezone.utc).isoformat(),
         }
-        
         result = supabase.table('lab_results').insert(result_entry).execute()
-        
         if not result.data:
             raise HTTPException(status_code=500, detail="Failed to create lab result")
-        
-        # Update order status if not already completed
-        order = supabase.table('lab_orders').select('status').eq('id', result_data.lab_order_id).execute()
+        # Advance the order to completed (scoped).
+        order = supabase.table('lab_orders').select('status')\
+            .eq('id', result_data.lab_order_id).eq('workspace_id', current_user["workspace_id"]).execute()
         if order.data and order.data[0]['status'] not in ['completed', 'cancelled']:
-            supabase.table('lab_orders')\
-                .update({'status': 'completed', 'results_received_datetime': datetime.utcnow().isoformat()})\
-                .eq('id', result_data.lab_order_id)\
-                .execute()
-        
+            supabase.table('lab_orders').update(
+                {'status': 'completed', 'results_received_datetime': datetime.now(timezone.utc).isoformat()}
+            ).eq('id', result_data.lab_order_id).eq('workspace_id', current_user["workspace_id"]).execute()
         return result.data[0]
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error creating lab result: {str(e)}")
 
 
 @router.get("/lab-results/order/{order_id}", response_model=List[LabResult])
-async def get_results_by_order(order_id: str):
-    """Get all results for a specific lab order"""
+async def get_results_by_order(order_id: str, current_user: dict = Depends(get_current_user)):
+    """Get results for a lab order in the caller's workspace."""
     try:
-        result = supabase.table('lab_results')\
-            .select('*')\
-            .eq('lab_order_id', order_id)\
-            .order('test_name')\
-            .execute()
-        
-        return result.data or []
+        _require_order(order_id, current_user["workspace_id"])
+        return supabase.table('lab_results').select('*').eq('lab_order_id', order_id)\
+            .order('test_name').execute().data or []
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching lab results: {str(e)}")
 
 
 @router.get("/lab-results/patient/{patient_id}/test/{test_name}")
-async def get_patient_test_history(
-    patient_id: str,
-    test_name: str,
-    limit: int = Query(20, le=100)
-):
-    """Get historical results for a specific test (for trending)"""
+async def get_patient_test_history(patient_id: str, test_name: str, limit: int = Query(20, le=100),
+                                   current_user: dict = Depends(get_current_user)):
+    """Historical results for a test (trending) — caller's workspace only."""
     try:
-        # Get all orders for patient
-        orders = supabase.table('lab_orders')\
-            .select('id')\
-            .eq('patient_id', patient_id)\
-            .execute()
-        
+        orders = supabase.table('lab_orders').select('id')\
+            .eq('workspace_id', current_user["workspace_id"]).eq('patient_id', patient_id).execute()
         if not orders.data:
-            return []
-        
-        order_ids = [order['id'] for order in orders.data]
-        
-        # Get results matching test name
-        results = supabase.table('lab_results')\
-            .select('*')\
-            .in_('lab_order_id', order_ids)\
-            .ilike('test_name', f'%{test_name}%')\
-            .order('result_datetime', desc=True)\
-            .limit(limit)\
-            .execute()
-        
-        return {
-            'test_name': test_name,
-            'patient_id': patient_id,
-            'results_count': len(results.data or []),
-            'results': results.data or []
-        }
+            return {'test_name': test_name, 'patient_id': patient_id, 'results_count': 0, 'results': []}
+        order_ids = [o['id'] for o in orders.data]
+        results = supabase.table('lab_results').select('*').in_('lab_order_id', order_ids)\
+            .ilike('test_name', f'%{test_name}%').order('result_datetime', desc=True).limit(limit).execute()
+        return {'test_name': test_name, 'patient_id': patient_id,
+                'results_count': len(results.data or []), 'results': results.data or []}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching test history: {str(e)}")
 
 
 @router.get("/lab-results/patient/{patient_id}/abnormal")
-async def get_patient_abnormal_results(patient_id: str):
-    """Get all abnormal/critical results for a patient"""
+async def get_patient_abnormal_results(patient_id: str, current_user: dict = Depends(get_current_user)):
+    """All abnormal/critical results for a patient — caller's workspace only."""
     try:
-        # Get all orders for patient
-        orders = supabase.table('lab_orders')\
-            .select('id, order_datetime, lab_name')\
-            .eq('patient_id', patient_id)\
-            .execute()
-        
+        orders = supabase.table('lab_orders').select('id')\
+            .eq('workspace_id', current_user["workspace_id"]).eq('patient_id', patient_id).execute()
         if not orders.data:
-            return []
-        
-        order_ids = [order['id'] for order in orders.data]
-        
-        # Get abnormal results
-        results = supabase.table('lab_results')\
-            .select('*')\
-            .in_('lab_order_id', order_ids)\
+            return {'patient_id': patient_id, 'abnormal_count': 0, 'results': []}
+        order_ids = [o['id'] for o in orders.data]
+        results = supabase.table('lab_results').select('*').in_('lab_order_id', order_ids)\
             .in_('abnormal_flag', ['low', 'high', 'critical_low', 'critical_high', 'abnormal'])\
-            .order('result_datetime', desc=True)\
-            .execute()
-        
-        return {
-            'patient_id': patient_id,
-            'abnormal_count': len(results.data or []),
-            'results': results.data or []
-        }
+            .order('result_datetime', desc=True).execute()
+        return {'patient_id': patient_id, 'abnormal_count': len(results.data or []), 'results': results.data or []}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching abnormal results: {str(e)}")
-
-
-@router.delete("/lab-orders/{order_id}")
-async def cancel_lab_order(order_id: str):
-    """Cancel a lab order"""
-    try:
-        result = supabase.table('lab_orders')\
-            .update({'status': 'cancelled', 'updated_at': datetime.utcnow().isoformat()})\
-            .eq('id', order_id)\
-            .execute()
-        
-        if not result.data:
-            raise HTTPException(status_code=404, detail="Lab order not found")
-        
-        return {
-            'status': 'success',
-            'message': 'Lab order cancelled'
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error cancelling order: {str(e)}")
