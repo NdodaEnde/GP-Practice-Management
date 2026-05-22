@@ -1,69 +1,52 @@
-# Multi-stage build for production optimization
-FROM python:3.11-slim as builder
+# Multi-stage build for the SurgiScan FastAPI backend (Supabase-backed).
+FROM python:3.11-slim AS builder
 
-# Set build arguments
-ARG BUILDPLATFORM
-ARG TARGETPLATFORM
-
-# Install system dependencies for building
 RUN apt-get update && apt-get install -y \
-    gcc \
-    g++ \
-    libmagic1 \
-    libmagic-dev \
+    gcc g++ libmagic1 libmagic-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Create virtual environment
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy requirements and install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 
-# Production stage
-FROM python:3.11-slim as production
+# ---------------------------------------------------------------------------
+FROM python:3.11-slim AS production
 
-# Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app \
     PATH="/opt/venv/bin:$PATH" \
     PORT=8000
 
-# Install runtime system dependencies
+# libmagic1 (python-magic file sniffing), curl (healthcheck).
 RUN apt-get update && apt-get install -y \
-    libmagic1 \
-    curl \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+    libmagic1 curl \
+    && rm -rf /var/lib/apt/lists/* && apt-get clean
 
-# Copy virtual environment from builder
 COPY --from=builder /opt/venv /opt/venv
 
-# Create non-root user for security
 RUN groupadd -r appuser && useradd -r -g appuser appuser
-
-# Create application directory
 WORKDIR /app
 
-# Copy application code
+# The app is `server:app` and imports the api/, app/ and ontology/ packages.
+# All three must be in the image (the previous Dockerfile copied only app/
+# and targeted a non-existent app.main:app).
 COPY app/ ./app/
+COPY api/ ./api/
+COPY ontology/ ./ontology/
 COPY *.py ./
 
-# Create necessary directories
-RUN mkdir -p /app/storage/documents /app/logs \
-    && chown -R appuser:appuser /app
-
-# Switch to non-root user
+RUN mkdir -p /app/storage /app/logs && chown -R appuser:appuser /app
 USER appuser
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=30s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:${PORT}/health || exit 1
+# Health endpoint is /api/health (api_router is mounted under /api).
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+    CMD curl -fsS "http://localhost:${PORT}/api/health" || exit 1
 
-# Expose port
 EXPOSE $PORT
 
-# Start application
-CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Bind to Render's injected $PORT (shell form so it expands at runtime).
+CMD ["sh", "-c", "python -m uvicorn server:app --host 0.0.0.0 --port ${PORT}"]
