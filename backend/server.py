@@ -2523,6 +2523,7 @@ from api.icd10 import router as icd10_router
 from api.diagnoses import router as diagnoses_router
 from api.nappi import router as nappi_router
 from api.lab import router as lab_router
+from api.vitals import router as vitals_router
 from api.billing import router as billing_router
 from api.payfast import router as payfast_router
 from api.extraction_mappings import router as extraction_mappings_router
@@ -2532,6 +2533,7 @@ api_router.include_router(icd10_router, tags=["ICD-10"])
 api_router.include_router(diagnoses_router, tags=["Diagnoses"])
 api_router.include_router(nappi_router, tags=["NAPPI Codes"])
 api_router.include_router(lab_router, tags=["Lab Orders & Results"])
+api_router.include_router(vitals_router, tags=["Vitals"])
 api_router.include_router(billing_router, tags=["Billing & Payments"])
 api_router.include_router(payfast_router, prefix="/payfast", tags=["PayFast Payment Gateway"])
 api_router.include_router(extraction_mappings_router, tags=["Extraction Mappings"])
