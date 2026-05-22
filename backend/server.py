@@ -1172,31 +1172,71 @@ async def update_encounter(encounter_id: str, gp_notes: Optional[str] = None, st
 
 
 @api_router.get("/patients/{patient_id}/conditions")
-async def get_patient_conditions(patient_id: str):
-    """Get all conditions for a patient"""
+async def get_patient_conditions(patient_id: str, current_user: dict = Depends(get_current_user)):
+    """Get all conditions for a patient in the caller's workspace."""
     try:
+        workspace_id = current_user["workspace_id"]
+        # patient_conditions has no workspace_id column, so isolation rides on
+        # patient ownership: the patient must belong to the caller's workspace.
+        if not supabase.table('patients').select('id').eq('id', patient_id).eq('workspace_id', workspace_id).execute().data:
+            raise HTTPException(status_code=404, detail="Patient not found")
         result = supabase.table('patient_conditions')\
             .select('*')\
             .eq('patient_id', patient_id)\
             .order('diagnosed_date', desc=True)\
             .execute()
         return {'status': 'success', 'conditions': result.data}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting patient conditions: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/patients/{patient_id}/medications")
-async def get_patient_medications(patient_id: str):
-    """Get all medications for a patient"""
+async def get_patient_medications(patient_id: str, current_user: dict = Depends(get_current_user)):
+    """Get a patient's medications (caller's workspace), from their prescriptions.
+
+    Rebuilt off the foundation: the old endpoint read MongoDB (db.patient_medications,
+    which has no Supabase equivalent). Real medications are prescription_items under
+    workspace-scoped prescriptions. Each item is flattened to a medication entry with
+    the parent prescription's status / prescriber / date.
+    """
     try:
-        # Fetch from MongoDB
-        medications_cursor = db.patient_medications.find(
-            {'patient_id': patient_id},
-            {'_id': 0}
-        ).sort('created_at', -1)
-        
-        medications = await medications_cursor.to_list(length=100)
+        workspace_id = current_user["workspace_id"]
+        if not supabase.table('patients').select('id').eq('id', patient_id).eq('workspace_id', workspace_id).execute().data:
+            raise HTTPException(status_code=404, detail="Patient not found")
+
+        scripts = supabase.table('prescriptions').select('*')\
+            .eq('workspace_id', workspace_id).eq('patient_id', patient_id)\
+            .order('prescription_date', desc=True).execute().data or []
+        if not scripts:
+            return {'status': 'success', 'medications': []}
+
+        items_by_script = {}
+        items = supabase.table('prescription_items').select('*')\
+            .in_('prescription_id', [s['id'] for s in scripts]).execute().data or []
+        for it in items:
+            items_by_script.setdefault(it['prescription_id'], []).append(it)
+
+        # 'voided' prescriptions surface as discontinued; otherwise the parent status.
+        medications = []
+        for s in scripts:
+            status = 'discontinued' if s.get('status') == 'voided' else (s.get('status') or 'active')
+            for it in items_by_script.get(s['id'], []):
+                medications.append({
+                    'medication_name': it.get('medication_name') or it.get('generic_name'),
+                    'dosage': it.get('dosage'),
+                    'frequency': it.get('frequency'),
+                    'duration': it.get('duration'),
+                    'status': status,
+                    'prescriber': s.get('doctor_name'),
+                    'start_date': s.get('prescription_date'),
+                    'end_date': None,
+                    'notes': it.get('instructions'),
+                })
         return {'status': 'success', 'medications': medications}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting patient medications: {e}")
         raise HTTPException(status_code=500, detail=str(e))
