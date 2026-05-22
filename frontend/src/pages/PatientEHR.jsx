@@ -183,12 +183,10 @@ const PatientEHR = () => {
                 <span className="text-blue-700">Prescriptions</span>
               </Button>
             </Link>
-            <Link to={`/patients/${patientId}/documents`}>
-              <Button variant="outline" className="shadow-md gap-2">
-                <FolderOpen className="w-4 h-4" />
-                View Documents
-              </Button>
-            </Link>
+            <Button variant="outline" className="shadow-md gap-2" onClick={() => setActiveTab('documents')}>
+              <FolderOpen className="w-4 h-4" />
+              View Documents
+            </Button>
             <Link to={`/encounters/new/${patientId}`}>
               <Button className="bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-600 hover:to-cyan-700 text-white shadow-md">
                 <Plus className="w-4 h-4 mr-2" />
@@ -338,9 +336,9 @@ const PatientEHR = () => {
                           </div>
                         </div>
                       ))}
-                      <Link to={`/patient/${patientId}`} onClick={() => setActiveTab('vitals')} className="block text-center text-sm text-blue-600 hover:text-blue-700 mt-2">
+                      <button onClick={() => setActiveTab('vitals')} className="block w-full text-center text-sm text-blue-600 hover:text-blue-700 mt-2">
                         View all lab results →
-                      </Link>
+                      </button>
                     </div>
                   </CardContent>
                 </Card>
@@ -925,7 +923,7 @@ const PatientEHR = () => {
           <Card className="border-0 shadow-lg">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-lg font-bold text-slate-800">Documents & Attachments</CardTitle>
-              <Link to="/digitize">
+              <Link to="/digitisation/documents">
                 <Button className="bg-gradient-to-r from-teal-500 to-cyan-600 text-white">
                   <Upload className="w-4 h-4 mr-2" />
                   Upload Document
@@ -961,7 +959,7 @@ const PatientEHR = () => {
                 <div className="text-center py-12">
                   <FolderOpen className="w-16 h-16 text-slate-300 mx-auto mb-4" />
                   <p className="text-slate-500 text-lg">No documents uploaded</p>
-                  <Link to="/digitize">
+                  <Link to="/digitisation/documents">
                     <Button className="mt-4 bg-gradient-to-r from-teal-500 to-cyan-600 text-white">
                       Upload First Document
                     </Button>
