@@ -26,10 +26,44 @@ load_dotenv(ROOT_DIR / '.env')
 # file per the existing pattern.)
 from app.api.auth import require_capability
 
-# MongoDB connection
-mongo_url = os.environ['MONGO_URL']
-mongo_client = AsyncIOMotorClient(mongo_url)
-db = mongo_client[os.environ['DB_NAME']]
+# MongoDB connection — OPTIONAL legacy dependency.
+#
+# The Essential digitisation tier runs entirely on Supabase; Mongo only backs
+# some older Professional/practice features (reception queue, AI-scribe
+# transcript storage, marketing leads, legacy audit). Production does NOT
+# require Mongo. When MONGO_URL is unset, `db` is a null-safe stub: legacy
+# Mongo-backed endpoints degrade to empty/no-op instead of crashing the app.
+class _NoMongoCursor:
+    def sort(self, *a, **k):  return self
+    def limit(self, *a, **k): return self
+    def skip(self, *a, **k):  return self
+    async def to_list(self, *a, **k): return []
+    def __aiter__(self): return self
+    async def __anext__(self): raise StopAsyncIteration
+
+
+class _NoMongoCollection:
+    async def insert_one(self, *a, **k):       return None
+    async def find_one(self, *a, **k):         return None
+    async def update_one(self, *a, **k):       return None
+    async def delete_one(self, *a, **k):       return None
+    async def count_documents(self, *a, **k):  return 0
+    async def create_index(self, *a, **k):     return None
+    def find(self, *a, **k):                   return _NoMongoCursor()
+    def aggregate(self, *a, **k):              return _NoMongoCursor()
+
+
+class _NoMongoDB:
+    def __getattr__(self, _name):              return _NoMongoCollection()
+
+
+_mongo_url = os.environ.get('MONGO_URL')
+if _mongo_url:
+    mongo_client = AsyncIOMotorClient(_mongo_url)
+    db = mongo_client[os.environ.get('DB_NAME', 'surgiscan')]
+else:
+    mongo_client = None
+    db = _NoMongoDB()
 
 # Supabase connection
 supabase_url = os.environ['SUPABASE_URL']
@@ -39,9 +73,6 @@ supabase: Client = create_client(supabase_url, supabase_key)
 # Demo tenant configuration
 DEMO_TENANT_ID = os.environ.get('DEMO_TENANT_ID', 'demo-tenant-001')
 DEMO_WORKSPACE_ID = os.environ.get('DEMO_WORKSPACE_ID', 'demo-gp-workspace-001')
-
-# Microservice configuration
-MICROSERVICE_URL = os.environ.get('MICROSERVICE_URL', 'http://localhost:5001')
 
 # Create the main app
 # Disable interactive API docs + the OpenAPI schema in production (DEBUG off):
@@ -900,62 +931,6 @@ async def get_next_queue_number() -> int:
     except Exception as e:
         logger.error(f"Error getting next queue number: {e}")
         return 1
-
-async def call_microservice_parser(filename: str, file_content: bytes) -> Dict[str, Any]:
-    """Call the microservice to parse document using LandingAI"""
-    try:
-        # Prepare the file for upload
-        files = {'file': (filename, file_content, 'application/pdf')}
-        data = {
-            'processing_mode': 'smart',
-            'save_to_database': 'false'
-        }
-        
-        # Call the microservice
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                f"{MICROSERVICE_URL}/api/v1/historic-documents/upload",
-                files=files,
-                data=data
-            )
-            response.raise_for_status()
-            result = response.json()
-        
-        # Extract the parsed data from microservice response
-        extracted_data = result.get('extracted_data', {})
-        
-        # Transform to our expected format
-        return {
-            'patient_demographics': {
-                'name': extracted_data.get('patient_name', 'Unknown'),
-                'age': extracted_data.get('age', 0),
-                'gender': extracted_data.get('gender', 'Unknown')
-            },
-            'medical_history': extracted_data.get('medical_history', []),
-            'current_medications': extracted_data.get('medications', []),
-            'allergies': extracted_data.get('allergies', []),
-            'lab_results': extracted_data.get('lab_results', []),
-            'clinical_notes': extracted_data.get('clinical_notes', ''),
-            'diagnoses': extracted_data.get('diagnoses', []),
-            'extraction_metadata': {
-                'confidence': result.get('confidence_score', 0.0),
-                'extracted_at': datetime.now(timezone.utc).isoformat(),
-                'source_filename': filename,
-                'microservice_document_id': result.get('document_id'),
-                'processing_summary': result.get('processing_summary', {}),
-                'needs_validation': result.get('needs_validation', True)
-            },
-            'raw_microservice_response': result  # Keep for debugging
-        }
-    except httpx.HTTPError as e:
-        logger.error(f"Microservice call failed: {e}")
-        # Fallback to mock parser if microservice fails
-        logger.warning("Falling back to mock parser")
-        return mock_ade_parser(filename, file_content)
-    except Exception as e:
-        logger.error(f"Error calling microservice: {e}")
-        # Fallback to mock parser
-        return mock_ade_parser(filename, file_content)
 
 def mock_ade_parser(filename: str, file_content: bytes) -> Dict[str, Any]:
     """Mock ADE parser - returns realistic parsed medical data"""
@@ -3010,5 +2985,6 @@ async def shutdown_event():
     except Exception:
         pass
 
-    mongo_client.close()
+    if mongo_client is not None:
+        mongo_client.close()
     logger.info("Connections closed")
