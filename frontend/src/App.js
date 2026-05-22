@@ -37,6 +37,10 @@ import DigitisationSearch from './pages/DigitisationSearch';
 import __PreviewDigitisation from './pages/__PreviewDigitisation';
 
 // TEMPORARY: auto-login helper for the demo admin (workspace with real docs).
+// DEV-ONLY auto-login/preview components. Registered as routes ONLY when
+// process.env.REACT_APP_ENABLE_DEV_LOGIN === 'true' (set locally for the
+// headless verification harness); the check is inlined at the route block so
+// the production build (flag unset) dead-code-eliminates them from the bundle.
 const AdminAutoLogin = () => {
   React.useEffect(() => {
     const url = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8002';
@@ -105,12 +109,18 @@ function App() {
             <Route path="/pricing" element={<Pricing />} />
             <Route path="/login" element={<Login />} />
 
-            {/* TEMPORARY: visual preview of Type C dashboard. Delete once Type C provisioning is live. */}
-            <Route path="/__preview/digitisation" element={<__PreviewDigitisation />} />
-
-            {/* TEMPORARY: auto-login as Type C demo user for headless verification. Delete after Phase B. */}
-            <Route path="/__typec-autologin" element={<TypeCAutoLogin />} />
-            <Route path="/__admin-autologin" element={<AdminAutoLogin />} />
+            {/* DEV-ONLY auto-login / preview routes. These POST hardcoded creds and
+                store real tokens, so they are an auth-bypass surface and must NEVER
+                ship in a production bundle. Gated behind a build-time flag that is
+                unset in production (set REACT_APP_ENABLE_DEV_LOGIN=true locally for
+                the headless verification harness). */}
+            {process.env.REACT_APP_ENABLE_DEV_LOGIN === 'true' && (
+              <>
+                <Route path="/__preview/digitisation" element={<__PreviewDigitisation />} />
+                <Route path="/__typec-autologin" element={<TypeCAutoLogin />} />
+                <Route path="/__admin-autologin" element={<AdminAutoLogin />} />
+              </>
+            )}
 
             {/* Authenticated app routes (wrapped in Layout, gated by ProtectedRoute) */}
             <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>

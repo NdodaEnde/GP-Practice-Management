@@ -25,6 +25,16 @@ gate — I do not run these for you. Steps are ordered; don't skip ahead.
       `DATABASE_URL`, `OPENAI_API_KEY`, `LANDING_AI_API_KEY`, `VISION_AGENT_API_KEY`.
       (`JWT_SECRET_KEY` auto-gens; `DEBUG=false` already set.)
 - [ ] 3. Set frontend `REACT_APP_BACKEND_URL` → the backend's Render URL.
+      **DO NOT set `REACT_APP_ENABLE_DEV_LOGIN`** (leave unset/false) — it gates the
+      dev `/__admin-autologin` · `/__typec-autologin` · `/__preview/digitisation`
+      routes, which POST hardcoded creds. Unset = those routes are inert in prod.
+- [ ] ⚠ 3b. **No default-credential accounts in prod.** The dev auto-login routes
+      target `admin@surgiscan.com` / `typec@surgiscan.com` with password `password123`
+      (they exist in DEV). The frontend route gating is cosmetic — anyone can POST
+      those creds to `/api/auth/login` directly. So the REAL control is: prod must
+      have **no** account using a default/shared password. Verify none of these demo
+      accounts exist in prod, or that their passwords are rotated to strong unique ones,
+      before go-live.
 - [ ] 4. Wire backend `CORS_ORIGINS` → the frontend's Render URL; redeploy backend.
 - [ ] 5. Smoke: `/api/health` green; `/docs` + `/openapi.json` → 404 (DEBUG off); login works.
 - [ ] ⚠ 6. **Cross-tenant probe against the LIVE prod backend** — verified on DEV +
