@@ -51,56 +51,29 @@ const Analytics = () => {
     }
   };
 
-  // Use real data if available, otherwise use mock data
-  // Check if we have meaningful data (not empty arrays)
-  const patientGrowthData = (operationalData?.patient_growth && operationalData.patient_growth.length > 1)
-    ? operationalData.patient_growth.map(item => ({
-        month: item.month.substring(5), // Get MM from YYYY-MM
-        patients: item.count
-      }))
-    : [
-        { month: 'Jul', patients: 45 },
-        { month: 'Aug', patients: 58 },
-        { month: 'Sep', patients: 72 },
-        { month: 'Oct', patients: 89 },
-        { month: 'Nov', patients: 105 },
-        { month: 'Dec', patients: 128 },
-        { month: 'Jan', patients: 156 },
-      ];
+  // Real data only — no fabricated fallbacks. When a series is empty, the
+  // chart card renders an honest empty state instead of demo numbers.
+  const patientGrowthData = (operationalData?.patient_growth || []).map(item => ({
+    month: item.month.substring(5), // MM from YYYY-MM
+    patients: item.count
+  }));
 
-  const revenueData = (financialData?.revenue_by_month && financialData.revenue_by_month.length > 0)
-    ? financialData.revenue_by_month.map(item => ({
-        month: item.month.substring(5),
-        revenue: item.revenue
-      }))
-    : [
-        { month: 'Jul', revenue: 45000 },
-        { month: 'Aug', revenue: 52000 },
-        { month: 'Sep', revenue: 48000 },
-        { month: 'Oct', revenue: 61000 },
-        { month: 'Nov', revenue: 58000 },
-        { month: 'Dec', revenue: 67000 },
-        { month: 'Jan', revenue: 73000 },
-      ];
+  const revenueData = (financialData?.revenue_by_month || []).map(item => ({
+    month: item.month.substring(5),
+    revenue: item.revenue
+  }));
 
-  const topDiagnosesData = (clinicalData?.top_diagnoses && clinicalData.top_diagnoses.length > 0)
-    ? clinicalData.top_diagnoses
-    : [
-        { diagnosis: 'Hypertension', count: 89 },
-        { diagnosis: 'Type 2 Diabetes', count: 76 },
-        { diagnosis: 'Upper Respiratory Infection', count: 64 },
-        { diagnosis: 'Asthma', count: 52 },
-        { diagnosis: 'Anxiety Disorder', count: 41 },
-      ];
+  const topDiagnosesData = clinicalData?.top_diagnoses || [];
 
-  const payerTypeData = financialData?.revenue_by_payer?.map((item, idx) => ({
+  const payerTypeData = (financialData?.revenue_by_payer || []).map(item => ({
     type: item.payer_type.replace('_', ' ').toUpperCase(),
     value: item.revenue
-  })) || [
-    { type: 'Cash', value: 45000 },
-    { type: 'Medical Aid', value: 89000 },
-    { type: 'Corporate', value: 23000 },
-  ];
+  }));
+
+  // Small helper so each chart card can show an honest "no data yet" state.
+  const EmptyChart = ({ label }) => (
+    <p className="text-slate-500 italic py-16 text-center">{label}</p>
+  );
 
   // Chart Options
   const patientGrowthChart = {
@@ -368,13 +341,17 @@ const Analytics = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="border-0 shadow-lg">
           <CardContent className="pt-6">
-            <ReactECharts option={patientGrowthChart} style={{ height: '350px' }} />
+            {patientGrowthData.length > 0
+              ? <ReactECharts option={patientGrowthChart} style={{ height: '350px' }} />
+              : <EmptyChart label="Patient Growth Trend — no data yet" />}
           </CardContent>
         </Card>
 
         <Card className="border-0 shadow-lg">
           <CardContent className="pt-6">
-            <ReactECharts option={payerTypeChart} style={{ height: '350px' }} />
+            {payerTypeData.length > 0
+              ? <ReactECharts option={payerTypeChart} style={{ height: '350px' }} />
+              : <EmptyChart label="Revenue by Payer Type — no data yet" />}
           </CardContent>
         </Card>
       </div>
@@ -383,13 +360,17 @@ const Analytics = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="border-0 shadow-lg">
           <CardContent className="pt-6">
-            <ReactECharts option={revenueChart} style={{ height: '350px' }} />
+            {revenueData.length > 0
+              ? <ReactECharts option={revenueChart} style={{ height: '350px' }} />
+              : <EmptyChart label="Revenue Trend — no data yet" />}
           </CardContent>
         </Card>
 
         <Card className="border-0 shadow-lg">
           <CardContent className="pt-6">
-            <ReactECharts option={topDiagnosesChart} style={{ height: '350px' }} />
+            {topDiagnosesData.length > 0
+              ? <ReactECharts option={topDiagnosesChart} style={{ height: '350px' }} />
+              : <EmptyChart label="Top Diagnoses — no data yet" />}
           </CardContent>
         </Card>
       </div>

@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import ReactECharts from 'echarts-for-react';
-import { patientAPI, encounterAPI, documentAPI } from '@/services/api';
+import api, { patientAPI, encounterAPI, documentAPI } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import AllergyManagement from '@/components/AllergyManagement';
 import DiagnosesManagement from '@/components/DiagnosesManagement';
@@ -22,6 +22,7 @@ const PatientEHR = () => {
   const [medications, setMedications] = useState([]);
   const [labOrders, setLabOrders] = useState([]);
   const [labResults, setLabResults] = useState([]);
+  const [vitals, setVitals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [expandedEncounters, setExpandedEncounters] = useState({});
@@ -33,28 +34,35 @@ const PatientEHR = () => {
   const loadPatientData = async () => {
     try {
       setLoading(true);
-      const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
-      
+
       const [patientRes, encountersRes, conditionsRes, medicationsRes, labOrdersRes] = await Promise.all([
         patientAPI.get(patientId),
         encounterAPI.listByPatient(patientId),
-        fetch(`${backendUrl}/api/patients/${patientId}/conditions`).then(r => r.json()),
-        fetch(`${backendUrl}/api/patients/${patientId}/medications`).then(r => r.json()),
-        fetch(`${backendUrl}/api/lab-orders/patient/${patientId}`).then(r => r.json()).catch(() => [])
+        api.get(`/patients/${patientId}/conditions`).then(r => r.data),
+        api.get(`/patients/${patientId}/medications`).then(r => r.data),
+        api.get(`/lab-orders/patient/${patientId}`).then(r => r.data).catch(() => [])
       ]);
-      
+
       setPatient(patientRes.data);
       setEncounters(encountersRes.data);
       setConditions(conditionsRes.conditions || []);
       setMedications(medicationsRes.medications || []);
       setLabOrders(labOrdersRes || []);
-      
+
+      // Real vitals (for the trends chart) — newest-first from the API.
+      try {
+        const vitalsRes = await api.get(`/vitals/patient/${patientId}`, { params: { limit: 50 } });
+        setVitals(vitalsRes.data || []);
+      } catch (err) {
+        console.log('No vitals for patient', patientId);
+      }
+
       // Load lab results for all orders
       if (labOrdersRes && labOrdersRes.length > 0) {
         const allResults = [];
         for (const order of labOrdersRes) {
           try {
-            const resultsRes = await fetch(`${backendUrl}/api/lab-results/order/${order.id}`).then(r => r.json());
+            const resultsRes = await api.get(`/lab-results/order/${order.id}`).then(r => r.data);
             allResults.push(...(resultsRes || []));
           } catch (err) {
             console.log('No results for order', order.id);
@@ -93,107 +101,27 @@ const PatientEHR = () => {
     }
   };
 
-  // Mock data for demonstrations (replace with real data from API)
-  const mockVitalsData = [
-    { date: '2024-09', systolic: 128, diastolic: 82 },
-    { date: '2024-10', systolic: 135, diastolic: 85 },
-    { date: '2024-11', systolic: 132, diastolic: 84 },
-    { date: '2024-12', systolic: 130, diastolic: 83 },
-    { date: '2025-01', systolic: 133, diastolic: 85 },
-  ];
-
-  const mockMedications = [
-    {
-      name: 'Metformin',
-      dosage: '500mg',
-      frequency: 'Twice daily',
-      startDate: '2024-01-15',
-      prescriber: 'Dr. Sarah Johnson',
-      status: 'active'
-    },
-    {
-      name: 'Lisinopril',
-      dosage: '10mg',
-      frequency: 'Once daily',
-      startDate: '2024-01-15',
-      prescriber: 'Dr. Sarah Johnson',
-      status: 'active'
-    },
-    {
-      name: 'Aspirin',
-      dosage: '81mg',
-      frequency: 'Once daily',
-      startDate: '2023-06-20',
-      endDate: '2024-01-10',
-      prescriber: 'Dr. Michael Chen',
-      status: 'discontinued'
-    }
-  ];
-
-  const mockInvestigations = [
-    {
-      name: 'Complete Blood Count',
-      type: 'Laboratory',
-      date: '2025-01-15',
-      status: 'Completed',
-      result: 'All values within normal range'
-    },
-    {
-      name: 'Chest X-ray',
-      type: 'Imaging',
-      date: '2024-12-20',
-      status: 'Completed',
-      result: 'Clear lung fields, no acute findings'
-    },
-    {
-      name: 'Echocardiogram',
-      type: 'Procedure',
-      date: '2024-11-10',
-      status: 'Completed',
-      result: 'Normal cardiac function, EF 60%'
-    }
-  ];
-
-  const mockLabResults = [
-    { test: 'HbA1c', value: '6.8', unit: '%', date: '2025-01-15', range: '4.0-6.0', status: 'high' },
-    { test: 'Fasting Glucose', value: '110', unit: 'mg/dL', date: '2025-01-15', range: '70-100', status: 'high' },
-    { test: 'Total Cholesterol', value: '195', unit: 'mg/dL', date: '2025-01-15', range: '<200', status: 'normal' },
-    { test: 'HDL Cholesterol', value: '55', unit: 'mg/dL', date: '2025-01-15', range: '>40', status: 'normal' },
-    { test: 'LDL Cholesterol', value: '120', unit: 'mg/dL', date: '2025-01-15', range: '<100', status: 'high' },
-    { test: 'Triglycerides', value: '145', unit: 'mg/dL', date: '2025-01-15', range: '<150', status: 'normal' },
-  ];
+  // Blood-pressure trend from the patient's REAL vitals (oldest -> newest),
+  // including only readings that actually carry a BP measurement.
+  const bpSeries = [...vitals]
+    .filter(v => v.blood_pressure_systolic != null || v.blood_pressure_diastolic != null)
+    .sort((a, b) => new Date(a.measurement_date) - new Date(b.measurement_date));
 
   const vitalsChartOption = {
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: { type: 'cross' }
-    },
-    legend: {
-      data: ['Systolic', 'Diastolic'],
-      bottom: 0
-    },
-    grid: {
-      left: '3%',
-      right: '4%',
-      bottom: '15%',
-      containLabel: true
-    },
+    tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
+    legend: { data: ['Systolic', 'Diastolic'], bottom: 0 },
+    grid: { left: '3%', right: '4%', bottom: '15%', containLabel: true },
     xAxis: {
       type: 'category',
       boundaryGap: false,
-      data: mockVitalsData.map(d => d.date)
+      data: bpSeries.map(v => v.measurement_date ? new Date(v.measurement_date).toLocaleDateString() : '')
     },
-    yAxis: {
-      type: 'value',
-      name: 'mmHg',
-      min: 60,
-      max: 160
-    },
+    yAxis: { type: 'value', name: 'mmHg' },
     series: [
       {
         name: 'Systolic',
         type: 'line',
-        data: mockVitalsData.map(d => d.systolic),
+        data: bpSeries.map(v => v.blood_pressure_systolic),
         smooth: true,
         itemStyle: { color: '#0891b2' },
         areaStyle: { opacity: 0.1 }
@@ -201,7 +129,7 @@ const PatientEHR = () => {
       {
         name: 'Diastolic',
         type: 'line',
-        data: mockVitalsData.map(d => d.diastolic),
+        data: bpSeries.map(v => v.blood_pressure_diastolic),
         smooth: true,
         itemStyle: { color: '#14b8a6' },
         areaStyle: { opacity: 0.1 }
@@ -759,7 +687,13 @@ const PatientEHR = () => {
                 <CardTitle className="text-lg font-bold text-slate-800">Vital Signs Trends</CardTitle>
               </CardHeader>
               <CardContent>
-                <ReactECharts option={vitalsChartOption} style={{ height: '400px' }} />
+                {bpSeries.length > 0 ? (
+                  <ReactECharts option={vitalsChartOption} style={{ height: '400px' }} />
+                ) : (
+                  <p className="text-slate-500 italic py-12 text-center">
+                    No blood-pressure readings recorded yet. Add vitals above to see trends.
+                  </p>
+                )}
               </CardContent>
             </Card>
 
@@ -940,46 +874,54 @@ const PatientEHR = () => {
           </Card>
         </TabsContent>
 
-        {/* Tab 5: Investigations */}
+        {/* Tab 5: Investigations (real lab orders + their results) */}
         <TabsContent value="investigations" className="mt-6">
           <Card className="border-0 shadow-lg">
             <CardHeader>
-              <CardTitle className="text-lg font-bold text-slate-800">Investigations & Procedures</CardTitle>
+              <CardTitle className="text-lg font-bold text-slate-800">Investigations &amp; Procedures</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                {mockInvestigations.map((inv, idx) => (
-                  <div key={idx} className="p-5 bg-gradient-to-r from-slate-50 to-blue-50 rounded-lg border border-slate-200">
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <div className="flex items-center gap-2 mb-2">
-                          <Badge className={
-                            inv.type === 'Laboratory' ? 'bg-purple-100 text-purple-700' :
-                            inv.type === 'Imaging' ? 'bg-blue-100 text-blue-700' :
-                            'bg-cyan-100 text-cyan-700'
-                          }>
-                            {inv.type}
-                          </Badge>
-                          <Badge className="bg-emerald-100 text-emerald-700">{inv.status}</Badge>
+              {labOrders.length > 0 ? (
+                <div className="space-y-3">
+                  {labOrders.map((order, idx) => {
+                    const orderResults = labResults.filter(r => r.lab_order_id === order.id || r.order_id === order.id);
+                    return (
+                      <div key={order.id || idx} className="p-5 bg-gradient-to-r from-slate-50 to-blue-50 rounded-lg border border-slate-200">
+                        <div className="flex items-start justify-between mb-3">
+                          <div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <Badge className="bg-purple-100 text-purple-700">Laboratory</Badge>
+                              <Badge className="bg-emerald-100 text-emerald-700">{order.status}</Badge>
+                            </div>
+                            <h4 className="text-lg font-bold text-slate-800 mb-1">{order.test_name}</h4>
+                            {order.order_datetime && (
+                              <p className="text-sm text-slate-600">
+                                Ordered: {new Date(order.order_datetime).toLocaleDateString()}
+                              </p>
+                            )}
+                          </div>
+                          <FlaskConical className="w-8 h-8 text-slate-400" />
                         </div>
-                        <h4 className="text-lg font-bold text-slate-800 mb-1">{inv.name}</h4>
-                        <p className="text-sm text-slate-600">
-                          Date: {new Date(inv.date).toLocaleDateString('en-US', {
-                            year: 'numeric',
-                            month: 'long',
-                            day: 'numeric'
-                          })}
-                        </p>
+                        {orderResults.length > 0 && (
+                          <div className="p-3 bg-white rounded border border-slate-200 space-y-1">
+                            <p className="text-sm font-semibold text-slate-700 mb-1">Results:</p>
+                            {orderResults.map((res, ri) => (
+                              <p key={ri} className="text-sm text-slate-600">
+                                {res.test_name}: {res.result_value ?? res.value ?? '—'} {res.unit || ''}
+                                {res.reference_range ? ` (ref: ${res.reference_range})` : ''}
+                              </p>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                      <FlaskConical className="w-8 h-8 text-slate-400" />
-                    </div>
-                    <div className="p-3 bg-white rounded border border-slate-200">
-                      <p className="text-sm font-semibold text-slate-700 mb-1">Result:</p>
-                      <p className="text-sm text-slate-600">{inv.result}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-slate-500 italic py-12 text-center">
+                  No investigations on record for this patient.
+                </p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

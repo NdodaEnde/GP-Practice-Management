@@ -10,6 +10,16 @@ const api = axios.create({
   },
 });
 
+// Attach the bearer token to every request. This instance is separate from
+// the global axios default that AuthContext patches, so it needs its own
+// interceptor — without it the Professional pages, whose endpoints are now
+// capability-gated, would all 401.
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('access_token');
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
 export const patientAPI = {
   create: (data) => api.post('/patients', data),
   list: (search = '') => api.get('/patients', { params: { search } }),
