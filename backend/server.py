@@ -1433,34 +1433,32 @@ async def get_clinical_analytics(
     """Get clinical metrics: diagnoses, prescriptions, referrals (caller's workspace)"""
     try:
         workspace_id = current_user["workspace_id"]
-        # Get all parsed documents to analyze medical data
-        parsed_docs = await db.parsed_documents.find({
-            'workspace_id': workspace_id,
-            'status': {'$in': ['approved', 'linked']}
-        }).to_list(1000)
-        
-        # Aggregate diagnoses
+        # Aggregate from the UNIFIED Supabase schema (the old endpoint read the
+        # dead Mongo parsed_documents store). All sources are workspace-scoped;
+        # prescription_items carries no workspace_id, so it's scoped via the
+        # patient's prescriptions in this workspace.
         diagnosis_counts = {}
         medication_counts = {}
         allergy_counts = {}
-        
-        for doc in parsed_docs:
-            parsed_data = doc.get('parsed_data', {})
-            
-            # Count diagnoses
-            for diagnosis in parsed_data.get('diagnoses', []):
-                diag_desc = diagnosis.get('description', 'Unknown')
-                diagnosis_counts[diag_desc] = diagnosis_counts.get(diag_desc, 0) + 1
-            
-            # Count medications
-            for med in parsed_data.get('current_medications', []):
-                med_name = med.get('name', 'Unknown')
-                medication_counts[med_name] = medication_counts.get(med_name, 0) + 1
-            
-            # Count allergies
-            for allergy in parsed_data.get('allergies', []):
-                allergy_counts[allergy] = allergy_counts.get(allergy, 0) + 1
-        
+
+        for d in (supabase.table('diagnoses').select('display')
+                  .eq('workspace_id', workspace_id).execute().data or []):
+            name = d.get('display') or 'Unknown'
+            diagnosis_counts[name] = diagnosis_counts.get(name, 0) + 1
+
+        for a in (supabase.table('allergies').select('substance')
+                  .eq('workspace_id', workspace_id).execute().data or []):
+            name = a.get('substance') or 'Unknown'
+            allergy_counts[name] = allergy_counts.get(name, 0) + 1
+
+        script_ids = [s['id'] for s in (supabase.table('prescriptions').select('id')
+                      .eq('workspace_id', workspace_id).execute().data or [])]
+        if script_ids:
+            for it in (supabase.table('prescription_items').select('medication_name')
+                       .in_('prescription_id', script_ids).execute().data or []):
+                name = it.get('medication_name') or 'Unknown'
+                medication_counts[name] = medication_counts.get(name, 0) + 1
+
         # Get top 10 diagnoses
         top_diagnoses = sorted(diagnosis_counts.items(), key=lambda x: x[1], reverse=True)[:10]
         top_medications = sorted(medication_counts.items(), key=lambda x: x[1], reverse=True)[:10]
