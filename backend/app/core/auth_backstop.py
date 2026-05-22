@@ -198,6 +198,91 @@ ROUTE_CAPABILITIES: dict = {
     ("PUT", "/api/queue/{queue_id}/update-status"): "queue_display",
     ("GET", "/api/queue/current"): "queue_display",
     ("GET", "/api/queue/stats"): "queue_display",
+    # --- D. Professional clinical data + billing (gated 2026-05-22, Pass A) ---
+    # Previously floor-only: any authenticated user (incl. Essential-tier
+    # digitisation users) could reach these. Now capability-fenced. NOTE:
+    # gating closes the cross-TIER hole; the per-router tenancy fixes
+    # (workspace_id from token vs DEMO_WORKSPACE_ID / patient-derived) are
+    # tracked separately (Pass A step 2) and required before Professional ships.
+    # vitals
+    ("POST", "/api/vitals"): "patient_ehr_basic",
+    ("GET", "/api/vitals/patient/{patient_id}"): "patient_ehr_basic",
+    ("GET", "/api/vitals/{vital_id}"): "patient_ehr_basic",
+    ("PATCH", "/api/vitals/{vital_id}"): "patient_ehr_basic",
+    ("DELETE", "/api/vitals/{vital_id}"): "patient_ehr_basic",
+    ("GET", "/api/vitals/encounter/{encounter_id}"): "patient_ehr_basic",
+    ("GET", "/api/vitals/patient/{patient_id}/latest"): "patient_ehr_basic",
+    # allergies
+    ("POST", "/api/allergies"): "patient_ehr_basic",
+    ("GET", "/api/allergies/patient/{patient_id}"): "patient_ehr_basic",
+    ("GET", "/api/allergies/{allergy_id}"): "patient_ehr_basic",
+    ("PUT", "/api/allergies/{allergy_id}"): "patient_ehr_basic",
+    ("DELETE", "/api/allergies/{allergy_id}"): "patient_ehr_basic",
+    ("POST", "/api/allergies/check-prescription"): "patient_ehr_basic",
+    # diagnoses
+    ("POST", "/api/diagnoses"): "patient_ehr_basic",
+    ("GET", "/api/diagnoses/patient/{patient_id}"): "patient_ehr_basic",
+    ("GET", "/api/diagnoses/{diagnosis_id}"): "patient_ehr_basic",
+    ("PATCH", "/api/diagnoses/{diagnosis_id}"): "patient_ehr_basic",
+    ("DELETE", "/api/diagnoses/{diagnosis_id}"): "patient_ehr_basic",
+    ("GET", "/api/diagnoses/encounter/{encounter_id}"): "patient_ehr_basic",
+    # clinical notes
+    ("POST", "/api/clinical-notes"): "patient_ehr_basic",
+    ("GET", "/api/clinical-notes/encounter/{encounter_id}"): "patient_ehr_basic",
+    ("GET", "/api/clinical-notes/patient/{patient_id}"): "patient_ehr_basic",
+    ("GET", "/api/clinical-notes/{note_id}"): "patient_ehr_basic",
+    ("PUT", "/api/clinical-notes/{note_id}"): "patient_ehr_basic",
+    ("POST", "/api/clinical-notes/{note_id}/sign"): "patient_ehr_basic",
+    ("POST", "/api/clinical-notes/{note_id}/amend"): "patient_ehr_basic",
+    ("DELETE", "/api/clinical-notes/{note_id}"): "patient_ehr_basic",
+    # lab orders / results
+    ("POST", "/api/lab-orders"): "patient_ehr_basic",
+    ("GET", "/api/lab-orders/patient/{patient_id}"): "patient_ehr_basic",
+    ("GET", "/api/lab-orders/{order_id}"): "patient_ehr_basic",
+    ("PUT", "/api/lab-orders/{order_id}/status"): "patient_ehr_basic",
+    ("DELETE", "/api/lab-orders/{order_id}"): "patient_ehr_basic",
+    ("POST", "/api/lab-results"): "patient_ehr_basic",
+    ("GET", "/api/lab-results/order/{order_id}"): "patient_ehr_basic",
+    ("GET", "/api/lab-results/patient/{patient_id}/test/{test_name}"): "patient_ehr_basic",
+    ("GET", "/api/lab-results/patient/{patient_id}/abnormal"): "patient_ehr_basic",
+    # procedures
+    ("POST", "/api/procedures"): "patient_ehr_basic",
+    ("GET", "/api/procedures/patient/{patient_id}"): "patient_ehr_basic",
+    ("GET", "/api/procedures/encounter/{encounter_id}"): "patient_ehr_basic",
+    ("GET", "/api/procedures/{procedure_id}"): "patient_ehr_basic",
+    ("PUT", "/api/procedures/{procedure_id}"): "patient_ehr_basic",
+    ("GET", "/api/procedures/patient/{patient_id}/category/{category}"): "patient_ehr_basic",
+    ("GET", "/api/procedures/patient/{patient_id}/surgical-history"): "patient_ehr_basic",
+    ("GET", "/api/procedures/patient/{patient_id}/billable"): "patient_ehr_basic",
+    ("GET", "/api/procedures/follow-up/due"): "patient_ehr_basic",
+    ("DELETE", "/api/procedures/{procedure_id}"): "patient_ehr_basic",
+    # immunizations
+    ("POST", "/api/immunizations"): "patient_ehr_basic",
+    ("GET", "/api/immunizations/patient/{patient_id}"): "patient_ehr_basic",
+    ("GET", "/api/immunizations/{immunization_id}"): "patient_ehr_basic",
+    ("PUT", "/api/immunizations/{immunization_id}"): "patient_ehr_basic",
+    ("GET", "/api/immunizations/patient/{patient_id}/summary"): "patient_ehr_basic",
+    ("GET", "/api/immunizations/patient/{patient_id}/occupational"): "patient_ehr_basic",
+    # NOTE: GET /api/immunizations/overdue is SHADOWED by /{immunization_id}
+    # (declared earlier) — a pre-existing router-ordering bug, so it can't be a
+    # distinct map key. The path still resolves to /{immunization_id}, which IS
+    # gated above. Fix the ordering in the per-router tenancy pass.
+    ("GET", "/api/immunizations/patient/{patient_id}/series/{series_name}"): "patient_ehr_basic",
+    ("GET", "/api/immunizations/patient/{patient_id}/certificate"): "patient_ehr_basic",
+    ("DELETE", "/api/immunizations/{immunization_id}"): "patient_ehr_basic",
+    # billing / invoices / payments / claims / reports
+    ("POST", "/api/invoices"): "billing_invoicing",
+    ("GET", "/api/invoices"): "billing_invoicing",
+    ("GET", "/api/invoices/patient/{patient_id}"): "billing_invoicing",
+    ("GET", "/api/invoices/{invoice_id}"): "billing_invoicing",
+    ("POST", "/api/payments"): "billing_invoicing",
+    ("GET", "/api/payments/invoice/{invoice_id}"): "billing_invoicing",
+    ("POST", "/api/claims"): "billing_invoicing",
+    ("GET", "/api/claims"): "billing_invoicing",
+    ("GET", "/api/claims/{claim_id}"): "billing_invoicing",
+    ("PATCH", "/api/claims/{claim_id}/status"): "billing_invoicing",
+    ("GET", "/api/reports/revenue"): "billing_invoicing",
+    ("GET", "/api/reports/outstanding"): "billing_invoicing",
 }
 
 # §E — explicitly NOT gated; floor-only; capability UNDECIDED (product
