@@ -132,6 +132,22 @@ const DigitisationOperationalInsights = () => {
     [docs]
   );
 
+  // Real processing breakdown — every document is validated, failed, or still
+  // in the pipeline. All three are computed from the loaded documents (no
+  // fabricated "OCR confidence" / "uptime").
+  const pct = (n) => (totalProcessed ? Math.round((n / totalProcessed) * 1000) / 10 : 0);
+  const inProgressCount = Math.max(0, totalProcessed - validatedCount - failureCount);
+  const avgPages = useMemo(() => {
+    const withPages = docs.filter(d => d.pages_count != null);
+    if (!withPages.length) return null;
+    return Math.round((withPages.reduce((s, d) => s + (d.pages_count || 0), 0) / withPages.length) * 10) / 10;
+  }, [docs]);
+  const breakdown = [
+    { label: 'Validated',   value: pct(validatedCount),  hint: 'reviewed & confirmed',                 bar: 'bg-secondary' },
+    { label: 'In progress', value: pct(inProgressCount), hint: 'uploaded, parsing, or awaiting review', bar: 'bg-primary' },
+    { label: 'Failed',      value: pct(failureCount),    hint: 'parse error or rejected',               bar: 'bg-error' },
+  ];
+
   return (
     <div className="max-w-[1280px] mx-auto space-y-xl">
       {/* Header */}
@@ -139,19 +155,13 @@ const DigitisationOperationalInsights = () => {
         <div>
           <h1 className="font-h1 text-h1 text-on-surface">Operational Insights</h1>
           <p className="font-body-lg text-body-lg text-on-surface-variant mt-xs">
-            High-fidelity metrics tracking throughput and digitisation quality. Updated in real time.
+            Throughput and quality metrics for your digitisation pipeline.
           </p>
         </div>
-        <div className="flex gap-sm">
-          <button className="inline-flex items-center gap-base px-md py-sm bg-surface-container-lowest border border-outline text-primary rounded-lg font-body-sm font-bold hover:bg-primary hover:text-on-primary transition-colors">
-            <MIcon name="calendar_month" className="!text-[20px]" />
-            Last 14 Days
-          </button>
-          <button className="inline-flex items-center gap-base px-md py-sm bg-primary text-on-primary rounded-lg font-body-sm font-bold hover:opacity-90 transition-opacity">
-            <MIcon name="ios_share" className="!text-[20px]" />
-            Export Report
-          </button>
-        </div>
+        <span className="inline-flex items-center gap-base px-md py-sm bg-surface-container-high text-on-surface-variant rounded-lg font-label-caps text-label-caps uppercase">
+          <MIcon name="calendar_month" className="!text-[18px]" />
+          Last 14 days
+        </span>
       </section>
 
       {/* KPI tiles */}
@@ -167,13 +177,13 @@ const DigitisationOperationalInsights = () => {
 
         <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-md">
           <div className="flex items-center justify-between mb-sm">
-            <span className="font-label-caps text-label-caps uppercase text-on-surface-variant">Validation Accuracy</span>
+            <span className="font-label-caps text-label-caps uppercase text-on-surface-variant">Validated</span>
             <MIcon name="verified" className="text-primary !text-[22px]" />
           </div>
           <p className="font-h1 text-h1 text-on-surface">
             {loading ? '…' : (successRate ?? '—')}{successRate != null && '%'}
           </p>
-          <p className="font-body-sm text-body-sm text-on-surface-variant">validated / processed</p>
+          <p className="font-body-sm text-body-sm text-on-surface-variant">of all documents</p>
         </div>
 
         <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-md">
@@ -227,37 +237,31 @@ const DigitisationOperationalInsights = () => {
             <span className="font-bold">{credits.used?.toLocaleString() ?? 0}</span>
             <span className="text-on-surface-variant"> / {credits.total?.toLocaleString() ?? 0} pages</span>
           </p>
-          <p className="font-body-sm text-body-sm text-on-surface-variant">
-            Resets at end of month (Africa/Johannesburg).
+          <p className="font-body-sm text-body-sm text-on-surface-variant mt-auto">
+            Flat monthly fair-use allowance — resets at month-end (Africa/Johannesburg).
+            Uploads are never blocked.
           </p>
-          <button className="mt-auto w-full px-md py-sm bg-primary text-on-primary rounded-lg font-body-sm font-bold hover:opacity-90 transition-opacity">
-            Top-Up Credits
-          </button>
         </div>
       </div>
 
-      {/* Engine health */}
+      {/* Processing breakdown — real distribution of every document's state */}
       <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-lg">
         <div className="flex items-center justify-between mb-md">
-          <h3 className="font-h3 text-h3 text-on-surface">Engine Health</h3>
-          <span className="inline-flex items-center gap-base font-label-caps text-label-caps uppercase text-secondary">
-            <MIcon name="check_circle" className="!text-[18px]" filled />
-            All systems normal
+          <h3 className="font-h3 text-h3 text-on-surface">Processing Breakdown</h3>
+          <span className="font-label-caps text-label-caps uppercase text-on-surface-variant">
+            {totalProcessed} document{totalProcessed === 1 ? '' : 's'}
+            {avgPages != null && <span className="ml-md">· {avgPages} pages/doc avg</span>}
           </span>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-lg">
-          {[
-            { label: 'OCR Confidence',     value: 98.2, hint: 'rolling 7-day avg' },
-            { label: 'Contextual Parsing', value: 96.7, hint: 'extractor agreement' },
-            { label: 'API Availability',   value: 100,  hint: 'extraction service uptime' },
-          ].map((m) => (
+          {breakdown.map((m) => (
             <div key={m.label} className="bg-surface-container-low border border-outline-variant rounded-lg p-md">
               <div className="flex items-center justify-between mb-sm">
                 <span className="font-label-caps text-label-caps uppercase text-on-surface-variant">{m.label}</span>
-                <span className="font-data-tabular font-body-md text-body-md font-bold text-on-surface">{m.value}%</span>
+                <span className="font-data-tabular font-body-md text-body-md font-bold text-on-surface">{loading ? '…' : `${m.value}%`}</span>
               </div>
               <div className="h-2 w-full bg-surface-container-high rounded-full overflow-hidden">
-                <div className="bg-secondary h-full" style={{ width: `${m.value}%` }} />
+                <div className={`${m.bar} h-full`} style={{ width: `${m.value}%` }} />
               </div>
               <p className="font-body-sm text-body-sm text-on-surface-variant mt-base">{m.hint}</p>
             </div>
