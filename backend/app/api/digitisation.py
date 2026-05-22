@@ -15,7 +15,7 @@ import logging
 import os
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, File, HTTPException, Query, UploadFile, status
@@ -121,7 +121,7 @@ async def dashboard_summary(
 
     docs_resp = (
         supabase.table("digitised_documents")
-        .select("id, filename, status, created_at")
+        .select("id, filename, status, created_at, error_message")
         .eq("workspace_id", workspace_id)
         .order("created_at", desc=True)
         .limit(200)
@@ -136,6 +136,9 @@ async def dashboard_summary(
     awaiting_total = 0
     validated = 0
     rejected = 0
+    uploaded_count = 0
+    processing_count = 0
+    needs_attention: List[Dict[str, Any]] = []
     for d in docs:
         s = (d.get("status") or "").lower()
         if s in ("extracted", "parsed", "pending_validation"):
@@ -144,6 +147,18 @@ async def dashboard_summary(
             validated += 1
         elif s == "rejected":
             rejected += 1
+        elif s in ("uploaded", "uploading", "queued_for_processing"):
+            uploaded_count += 1
+        elif s in ("parsing", "split", "extracting"):
+            processing_count += 1
+        # Processing errors are the actionable "needs attention" items (a
+        # human-rejected doc is a terminal decision, not an alert).
+        if s in ("failed", "parsing_failed", "error"):
+            needs_attention.append({
+                "document_id": d["id"],
+                "name":        d.get("filename") or d["id"],
+                "reason":      d.get("error_message") or "Processing failed",
+            })
     awaiting_high_conf = 0
 
     # Recent activity: latest 4 individual documents (no batch grouping yet).
@@ -160,9 +175,25 @@ async def dashboard_summary(
     # this-month = documents uploaded since the 1st of the current month
     # (was a placeholder that echoed the all-time total — DS-INSIGHTS-2).
     # Bounded by the 200-row window above; fine at current scale.
-    _month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+    _now = datetime.now(timezone.utc)
+    _month_start = _now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
     this_month = sum(1 for d in docs if (d.get("created_at") or "") >= _month_start)
     avg_conf = None  # placeholder — wire to real confidence scores in Phase B+
+
+    # Throughput toggle (Today / 7d / 30d) — documents uploaded in each rolling
+    # window (by created_at, UTC). Counts only; bounded by the 200-row window
+    # above, fine at current scale. Kept separate from the calendar-month
+    # page-credits figure (which must match the billing period).
+    _today_start = _now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    _7d  = (_now - timedelta(days=7)).isoformat()
+    _30d = (_now - timedelta(days=30)).isoformat()
+    def _count_since(iso: str) -> int:
+        return sum(1 for d in docs if (d.get("created_at") or "") >= iso)
+    throughput = {
+        "today": _count_since(_today_start),
+        "week":  _count_since(_7d),
+        "month": _count_since(_30d),
+    }
 
     # Page usage (fair-use): REAL pages digitised this calendar month vs the
     # monthly fair-use allowance. Pricing is flat per practice, so we SHOW
@@ -194,7 +225,17 @@ async def dashboard_summary(
             "total":           awaiting_total,
             "high_confidence": awaiting_high_conf,
         },
+        # Live pipeline snapshot (current state, not a time window). Drives the
+        # dashboard funnel cards; each links to its filtered list.
+        "pipeline": {
+            "uploaded":     uploaded_count,
+            "processing":   processing_count,
+            "needs_review": awaiting_total,
+            "validated":    validated,
+        },
+        "needs_attention":     needs_attention[:5],
         "recent_activity":     recent,
+        "throughput":          throughput,
         "quick_stats": {
             "total_digitised":     total_digitised,
             "this_month":          this_month,
@@ -1772,6 +1813,46 @@ async def get_document_status(
     return {"document": res.data[0]}
 
 
+@router.get("/documents/{document_id}/view")
+async def get_document_view_url(
+    document_id: str,
+    current_user: dict = Depends(require_capability("digitisation_upload")),
+):
+    """Short-lived signed URL for read-only viewing of a document's source
+    scan. Workspace-scoped; capability-gated. Read-only by construction —
+    no extraction, no edits; just the stored file."""
+    workspace_id = current_user.get("workspace_id")
+    if not workspace_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No workspace context")
+
+    res = (
+        supabase.table("digitised_documents")
+        .select("id, filename, file_path")
+        .eq("id", document_id)
+        .eq("workspace_id", workspace_id)
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+    file_path = res.data[0].get("file_path")
+    if not file_path:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No file stored for this document")
+
+    try:
+        signed = supabase.storage.from_("medical-records").create_signed_url(
+            path=file_path,
+            expires_in=3600,  # 1h read-only view link
+        )
+        url = signed.get("signedURL") or signed.get("signed_url")
+    except Exception as e:
+        logger.error(f"Failed to sign view URL for {document_id}: {e}")
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Could not generate view link")
+    if not url:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Could not generate view link")
+
+    return {"document_id": document_id, "filename": res.data[0].get("filename"), "url": url, "expires_in": 3600}
+
+
 @router.get("/documents")
 async def list_documents(
     status_filter: Optional[str] = Query(None, alias="status", description="Filter by status (uploaded, parsing, parsed, pending_validation, validated, rejected)"),
@@ -1798,6 +1879,89 @@ async def list_documents(
 
     result = query.execute()
     return {"documents": result.data or []}
+
+
+@router.get("/lookup")
+async def document_lookup(
+    q:           str = Query(..., min_length=2, description="patient name, ID number, file/folder number, or filename"),
+    limit:       int = Query(20, ge=1, le=50),
+    current_user: dict = Depends(require_capability("digitisation_upload")),
+):
+    """Fast 'find this document' lookup — exact/partial match on the filename
+    and on the document's extracted patient name / ID number / file number.
+
+    Document-centric (Essential tier): returns matching DOCUMENTS, never a
+    consolidated patient record. No embeddings — an instant structured DB
+    lookup, distinct from the semantic /search. Workspace-scoped."""
+    workspace_id = current_user.get("workspace_id")
+    if not workspace_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No workspace context")
+
+    term = q.strip()
+    like = f"%{term}%"
+    cols = "id, filename, status, doc_type, created_at, pages_count, patient_id"
+
+    # 1) Filename matches — instant ilike (covers folder/file numbers and any
+    #    practice that names scans after the patient).
+    fn_rows = (
+        supabase.table("digitised_documents").select(cols)
+        .eq("workspace_id", workspace_id)
+        .ilike("filename", like)
+        .order("created_at", desc=True)
+        .limit(limit)
+        .execute().data or []
+    )
+
+    # 2) Extracted-demographics matches (patient name / ID number / file
+    #    number). Scanned in Python over a bounded recent window — stays
+    #    within digitisation data (the document's own extraction), NOT the
+    #    EHR patients table (tier boundary: Essential is document-centric).
+    sessions = (
+        supabase.table("gp_validation_sessions")
+        .select("document_id, extractions")
+        .eq("workspace_id", workspace_id)
+        .order("created_at", desc=True)
+        .limit(500)
+        .execute().data or []
+    )
+    term_l = term.lower()
+    demo_by_doc: Dict[str, Dict[str, Any]] = {}
+    demo_doc_ids: List[str] = []
+    for s in sessions:
+        doc_id = s.get("document_id")
+        if not doc_id:
+            continue
+        demo = ((s.get("extractions") or {}).get("patient_demographics")) or {}
+        demo_by_doc.setdefault(doc_id, demo)  # latest session wins (desc order)
+        hay = " ".join(
+            str(demo.get(k) or "")
+            for k in ("full_names", "first_names", "surname", "id_number", "file_number")
+        ).lower()
+        if term_l in hay and doc_id not in demo_doc_ids:
+            demo_doc_ids.append(doc_id)
+
+    have = {r["id"] for r in fn_rows}
+    extra_ids = [i for i in demo_doc_ids if i not in have][:limit]
+    extra_rows = []
+    if extra_ids:
+        extra_rows = (
+            supabase.table("digitised_documents").select(cols)
+            .eq("workspace_id", workspace_id)
+            .in_("id", extra_ids)
+            .execute().data or []
+        )
+
+    out = []
+    for d in (fn_rows + extra_rows)[:limit]:
+        demo = demo_by_doc.get(d["id"]) or {}
+        name = (
+            demo.get("full_names")
+            or " ".join(x for x in [demo.get("first_names"), demo.get("surname")] if x)
+            or None
+        )
+        out.append({**d, "patient_name": name, "id_number": demo.get("id_number")})
+
+    return {"query": term, "count": len(out), "documents": out}
 
 
 # ---------------------------------------------------------------------------
@@ -1991,12 +2155,14 @@ async def download_export_bundle(
     job_id: str,
     current_user: dict = Depends(require_capability("digitisation_export_basic")),
 ):
-    """Stream the generated FHIR bundle JSON. Only available once the
-    job has run (bundle_url is set). Returns 409 if the job exists but
-    isn't done yet, 404 if neither Supabase Storage nor local disk has
-    the bundle."""
+    """Stream the generated export artifact. Format-aware: FHIR jobs serve a
+    FHIR JSON bundle, CSV jobs serve text/csv. Only available once the job
+    has run (bundle_url is set). Returns 409 if the job exists but isn't done
+    yet, 404 if neither Supabase Storage nor local disk has the artifact."""
     from fastapi.responses import Response
-    from app.services.digitisation_export_worker import fetch_bundle
+    from app.services.digitisation_export_worker import (
+        fetch_bundle, _ext_for_format, _content_type_for_format,
+    )
 
     workspace_id = current_user.get("workspace_id")
     if not workspace_id:
@@ -2004,7 +2170,7 @@ async def download_export_bundle(
 
     res = (
         supabase.table("digitisation_export_jobs")
-        .select("id, batch_id, status, bundle_url, workspace_id")
+        .select("id, batch_id, status, bundle_url, workspace_id, format")
         .eq("id", job_id)
         .eq("workspace_id", workspace_id)
         .limit(1)
@@ -2018,14 +2184,17 @@ async def download_export_bundle(
     if job["status"] == "failed" or not job.get("bundle_url"):
         raise HTTPException(status_code=404, detail="No bundle was generated for this job")
 
-    content = fetch_bundle(supabase, workspace_id, job["batch_id"])
+    fmt = (job.get("format") or "fhir_r4").lower()
+    ext = _ext_for_format(fmt)
+    content = fetch_bundle(supabase, workspace_id, job["batch_id"], ext)
     if content is None:
         raise HTTPException(status_code=404, detail="Bundle missing from Storage and disk")
 
+    filename = f'{job["batch_id"]}{".fhir.json" if ext == ".json" else ext}'
     return Response(
         content=content,
-        media_type="application/fhir+json",
-        headers={"Content-Disposition": f'attachment; filename="{job["batch_id"]}.fhir.json"'},
+        media_type=_content_type_for_format(fmt),
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

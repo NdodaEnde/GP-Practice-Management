@@ -84,6 +84,37 @@ const DigitisationExportCentre = () => {
     return () => { cancelled = true; };
   }, []);
 
+  // The download endpoint is capability-gated, so a plain <a href> (which
+  // browser navigation can't attach the bearer token to) 401s. Fetch it as
+  // an authenticated blob (axios interceptor adds the token) and trigger the
+  // browser download from an object URL. Works for any format.
+  const downloadExport = async (row) => {
+    try {
+      const res = await axios.get(
+        `${BACKEND_URL}/api/digitisation/exports/${row.id}/download`,
+        { responseType: 'blob' },
+      );
+      // Prefer the server's Content-Disposition filename; fall back sensibly.
+      const cd = res.headers['content-disposition'] || '';
+      const m = cd.match(/filename="?([^"]+)"?/i);
+      const fallbackExt = (row.format === 'csv') ? 'csv' : 'fhir.json';
+      const filename = m ? m[1] : `${row.batch_id}.${fallbackExt}`;
+      const url = window.URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      const detail = err?.response?.status === 409
+        ? 'Export still generating — refresh in a few seconds.'
+        : (err?.response?.data?.detail || err.message || 'Download failed');
+      setSubmitMsg({ kind: 'error', text: detail });
+    }
+  };
+
   const queueExport = async (format) => {
     setSubmitting(true);
     setSubmitMsg(null);
@@ -110,17 +141,28 @@ const DigitisationExportCentre = () => {
         <div>
           <h1 className="font-h1 text-h1 text-on-surface">Export Centre</h1>
           <p className="font-body-lg text-body-lg text-on-surface-variant mt-xs">
-            Push validated records into your EHR via FHIR / CSV / JSON.
+            Export validated records as FHIR R4 (push to your EHR) or CSV (download for spreadsheets &amp; analysis).
           </p>
         </div>
-        <button
-          onClick={() => queueExport('fhir_r4')}
-          disabled={submitting || pendingCount === 0}
-          className="inline-flex items-center gap-base px-lg py-sm bg-primary text-on-primary rounded-lg font-body-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <MIcon name={submitting ? 'progress_activity' : 'send'} className={`!text-[20px] ${submitting ? 'animate-spin' : ''}`} />
-          {submitting ? 'Queuing…' : `Export New Records (FHIR)`}
-        </button>
+        <div className="flex gap-sm">
+          <button
+            onClick={() => queueExport('csv')}
+            disabled={submitting || pendingCount === 0}
+            title="Generate a CSV of validated records (one row per clinical record)"
+            className="inline-flex items-center gap-base px-lg py-sm bg-surface-container-lowest border border-outline text-primary rounded-lg font-body-sm font-bold hover:bg-primary hover:text-on-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <MIcon name="table_view" className="!text-[20px]" />
+            Export CSV
+          </button>
+          <button
+            onClick={() => queueExport('fhir_r4')}
+            disabled={submitting || pendingCount === 0}
+            className="inline-flex items-center gap-base px-lg py-sm bg-primary text-on-primary rounded-lg font-body-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <MIcon name={submitting ? 'progress_activity' : 'send'} className={`!text-[20px] ${submitting ? 'animate-spin' : ''}`} />
+            {submitting ? 'Queuing…' : `Export New Records (FHIR)`}
+          </button>
+        </div>
       </section>
 
       {submitMsg && (
@@ -238,13 +280,11 @@ const DigitisationExportCentre = () => {
                     </td>
                     <td className="px-lg py-md font-body-sm text-body-sm text-on-surface-variant">{formatRel(row.created_at)}</td>
                     <td className="px-lg py-md text-right">
-                      <a
-                        href={row.bundle_url ? `${BACKEND_URL}/api/digitisation/exports/${row.id}/download` : undefined}
-                        target="_blank"
-                        rel="noreferrer"
-                        title={row.bundle_url ? 'Download FHIR bundle' : `Bundle not available (status: ${row.status})`}
-                        aria-disabled={!row.bundle_url}
-                        onClick={(e) => { if (!row.bundle_url) e.preventDefault(); }}
+                      <button
+                        type="button"
+                        onClick={() => { if (row.bundle_url) downloadExport(row); }}
+                        disabled={!row.bundle_url}
+                        title={row.bundle_url ? `Download ${formatLabel(row.format)} export` : `Export not available (status: ${row.status})`}
                         className={`inline-flex items-center gap-base px-md py-sm rounded-lg font-body-sm font-bold transition-colors ${
                           row.bundle_url
                             ? 'bg-primary-fixed text-primary hover:bg-primary hover:text-on-primary'
@@ -253,7 +293,7 @@ const DigitisationExportCentre = () => {
                       >
                         <MIcon name={row.bundle_url ? 'download' : 'receipt_long'} className="!text-[18px]" />
                         {row.bundle_url ? 'Download' : 'Receipt'}
-                      </a>
+                      </button>
                     </td>
                   </tr>
                 );

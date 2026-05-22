@@ -310,6 +310,20 @@ const DigitisationValidationDetail = () => {
   const handleCreateNew = () =>
     submitApprove({ create_new_patient: true });
 
+  // Save the reviewer's edits WITHOUT approving — lets a reviewer step away
+  // and come back. The panel persists the edits and shows its own success
+  // banner; we just refresh the audit history.
+  const handleSaveDraft = async () => {
+    if (!panelRef.current?.save) return;
+    setBusy(true);
+    try {
+      const ok = await panelRef.current.save();
+      if (ok) refreshHistory();
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleReject = async () => {
     const reason = window.prompt('Reason for rejection (≥10 chars):');
     if (!reason || reason.trim().length < 10) {
@@ -394,6 +408,12 @@ const DigitisationValidationDetail = () => {
                 {history.length}
               </span>
             )}
+          </button>
+          <button onClick={handleSaveDraft} disabled={busy}
+            className="inline-flex items-center gap-base px-lg py-sm border border-outline-variant text-on-surface rounded-lg font-body-sm font-bold hover:bg-surface-container transition-colors disabled:opacity-50"
+            title="Save your edits without approving — you can come back later">
+            <MIcon name="save" className="!text-[18px]" />
+            Save draft
           </button>
           <button onClick={handleReject} disabled={busy}
             className="inline-flex items-center gap-base px-lg py-sm border border-error text-error rounded-lg font-body-sm font-bold hover:bg-error-container/40 transition-colors disabled:opacity-50">
@@ -587,6 +607,7 @@ const DigitisationValidationDetail = () => {
                 onFieldFocus={handleFieldFocus}
                 onSaveSuccess={() => { refreshHistory(); }}
                 isRecord={false}
+                showActions={false}
               />
             </FieldMetadataProvider>
           </div>

@@ -368,7 +368,7 @@ const DOC_TYPE_OPTIONS = [
   { value: 'medical_certificate', label: 'Medical Certificate' },
 ];
 
-const EHRValidationPanel = forwardRef(({ docId, docType: initialDocType, chunks, onFieldFocus, onSaveSuccess, isRecord }, ref) => {
+const EHRValidationPanel = forwardRef(({ docId, docType: initialDocType, chunks, onFieldFocus, onSaveSuccess, isRecord, showActions = true }, ref) => {
   const [activeTab,    setActiveTab]    = useState('demographics');
   const [editedData,   setEditedData]   = useState(null);
   // True only after a genuine user field edit. `editedData` alone can't
@@ -574,7 +574,7 @@ const EHRValidationPanel = forwardRef(({ docId, docType: initialDocType, chunks,
 
       <div className="ehr-content-area">{renderTab()}</div>
 
-      {!isRecord && (
+      {showActions && !isRecord && (
         <div className="ehr-save-bar">
           <div className="save-hint"><AlertTriangle size={12}/><span>Review flagged fields before saving</span></div>
           <div className="save-actions">

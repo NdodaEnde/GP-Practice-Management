@@ -48,6 +48,28 @@ const DocumentsPipeline = () => {
   const [activeDocType, setActiveDocType] = useState(null);
   const [loading, setLoading] = useState(true);
   const [uploaderOpen, setUploaderOpen] = useState(false);
+  const [viewer, setViewer] = useState(null); // { doc, url } | null
+  const [viewerLoading, setViewerLoading] = useState(false);
+  const [viewerError, setViewerError] = useState(null);
+  const [lookupQ, setLookupQ] = useState('');
+  const [lookupResults, setLookupResults] = useState(null); // null = not searching
+  const [lookupLoading, setLookupLoading] = useState(false);
+
+  const openViewer = async (doc) => {
+    setViewer({ doc, url: null });
+    setViewerLoading(true);
+    setViewerError(null);
+    try {
+      const res = await axios.get(`${BACKEND_URL}/api/digitisation/documents/${doc.id}/view`);
+      setViewer({ doc, url: res.data.url });
+    } catch (err) {
+      setViewerError(err.response?.data?.detail || 'Could not load document');
+    } finally {
+      setViewerLoading(false);
+    }
+  };
+
+  const closeViewer = () => { setViewer(null); setViewerError(null); };
 
   const reloadDocuments = async () => {
     try {
@@ -88,6 +110,26 @@ const DocumentsPipeline = () => {
     return () => clearInterval(interval);
   }, [documents, uploaderOpen]);
 
+  // Fast document lookup (structured, non-semantic). Debounced; clearing the
+  // box restores the normal pipeline list. Document-centric — returns matching
+  // documents, not a patient record.
+  useEffect(() => {
+    const term = lookupQ.trim();
+    if (term.length < 2) { setLookupResults(null); setLookupLoading(false); return; }
+    setLookupLoading(true);
+    const t = setTimeout(async () => {
+      try {
+        const res = await axios.get(`${BACKEND_URL}/api/digitisation/lookup`, { params: { q: term } });
+        setLookupResults(res.data.documents || []);
+      } catch (_) {
+        setLookupResults([]);
+      } finally {
+        setLookupLoading(false);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [lookupQ]);
+
   const filteredDocs = useMemo(() => {
     let docs = documents;
     const filter = statusFilters.find(f => f.id === activeFilter);
@@ -109,6 +151,9 @@ const DocumentsPipeline = () => {
 
   const queueActive = counts.in_progress;
   const queueProgressPct = Math.min(100, Math.round((queueActive / Math.max(documents.length, 1)) * 100));
+
+  const isSearching = lookupResults !== null;
+  const displayed = isSearching ? lookupResults : filteredDocs;
 
   return (
     <div className="max-w-[1280px] mx-auto space-y-xl">
@@ -168,27 +213,58 @@ const DocumentsPipeline = () => {
         </div>
       </div>
 
-      {/* Filter chips */}
+      {/* Fast document lookup + filter chips */}
       <section className="space-y-md">
-        <div className="flex items-center justify-between flex-wrap gap-md">
-          <h3 className="font-h3 text-h3 text-on-surface">Processing Pipeline</h3>
-          <div className="flex gap-base flex-wrap">
-            {statusFilters.map((f) => (
-              <button
-                key={f.id}
-                onClick={() => setActiveFilter(f.id)}
-                className={`px-md py-1 rounded-full font-label-caps text-label-caps uppercase transition-colors ${
-                  activeFilter === f.id
-                    ? 'bg-primary text-on-primary'
-                    : 'bg-surface-container-high text-on-surface-variant hover:bg-surface-variant'
-                }`}
-              >
-                {f.label} ({counts[f.id]})
-              </button>
-            ))}
-          </div>
+        {/* Find a document — patient name, ID, file number, or filename */}
+        <div className="flex items-center gap-md bg-surface-container-lowest border border-outline-variant rounded-lg px-md py-sm focus-within:border-primary transition-colors">
+          <MIcon name="search" className="text-on-surface-variant !text-[22px]" />
+          <input
+            type="search"
+            value={lookupQ}
+            onChange={(e) => setLookupQ(e.target.value)}
+            placeholder="Find a document — patient name, ID number, file number, or filename"
+            className="flex-1 min-w-0 bg-transparent border-0 focus:outline-none font-body-md text-body-md text-on-surface placeholder:text-on-surface-variant"
+          />
+          {lookupLoading && <MIcon name="progress_activity" className="text-on-surface-variant !text-[20px] animate-spin" />}
+          {lookupQ && (
+            <button onClick={() => setLookupQ('')} title="Clear" className="text-on-surface-variant hover:text-on-surface">
+              <MIcon name="close" className="!text-[20px]" />
+            </button>
+          )}
         </div>
-        {docTypes.length > 0 && (
+
+        <div className="flex items-center justify-between flex-wrap gap-md">
+          {isSearching ? (
+            <div className="flex items-center gap-md">
+              <h3 className="font-h3 text-h3 text-on-surface">
+                {lookupResults.length} result{lookupResults.length === 1 ? '' : 's'} for "{lookupQ.trim()}"
+              </h3>
+              <button onClick={() => setLookupQ('')} className="font-body-sm text-body-sm font-semibold text-primary hover:underline">
+                Clear search
+              </button>
+            </div>
+          ) : (
+            <>
+              <h3 className="font-h3 text-h3 text-on-surface">Processing Pipeline</h3>
+              <div className="flex gap-base flex-wrap">
+                {statusFilters.map((f) => (
+                  <button
+                    key={f.id}
+                    onClick={() => setActiveFilter(f.id)}
+                    className={`px-md py-1 rounded-full font-label-caps text-label-caps uppercase transition-colors ${
+                      activeFilter === f.id
+                        ? 'bg-primary text-on-primary'
+                        : 'bg-surface-container-high text-on-surface-variant hover:bg-surface-variant'
+                    }`}
+                  >
+                    {f.label} ({counts[f.id]})
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+        {!isSearching && docTypes.length > 0 && (
           <div className="flex items-center gap-base flex-wrap">
             <span className="font-label-caps text-label-caps uppercase text-on-surface-variant">Doc type:</span>
             <button
@@ -228,14 +304,16 @@ const DocumentsPipeline = () => {
               {loading && (
                 <tr><td colSpan={4} className="px-lg py-xl text-center text-on-surface-variant">Loading documents...</td></tr>
               )}
-              {!loading && filteredDocs.length === 0 && (
+              {!loading && displayed.length === 0 && (
                 <tr>
                   <td colSpan={4} className="px-lg py-xl text-center font-body-md text-body-md text-on-surface-variant">
-                    No documents yet. Drop a PDF above to start the pipeline.
+                    {isSearching
+                      ? `No documents match "${lookupQ.trim()}".`
+                      : 'No documents yet. Drop a PDF above to start the pipeline.'}
                   </td>
                 </tr>
               )}
-              {!loading && filteredDocs.map((doc) => {
+              {!loading && displayed.map((doc) => {
                 const stage = stageFor(doc.status);
                 const errored = stage === -1;
                 const sizeKB = doc.file_size ? Math.round(doc.file_size / 1024) : null;
@@ -254,6 +332,12 @@ const DocumentsPipeline = () => {
                             DOC-{doc.id.slice(0, 8).toUpperCase()}
                           </div>
                           <div className="font-body-sm text-body-sm text-on-surface-variant truncate max-w-[260px]">{doc.filename}</div>
+                          {doc.patient_name && (
+                            <div className="font-body-sm text-body-sm text-on-surface-variant truncate max-w-[260px]">
+                              <MIcon name="person" className="!text-[14px] align-middle mr-0.5" />
+                              {doc.patient_name}{doc.id_number ? ` · ${doc.id_number}` : ''}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -285,8 +369,13 @@ const DocumentsPipeline = () => {
                       </div>
                     </td>
                     <td className="px-lg py-md text-right">
-                      <button className="p-sm hover:bg-surface-container-high rounded-full transition-colors">
-                        <MIcon name="more_vert" className="text-on-surface-variant !text-[20px]" />
+                      <button
+                        onClick={() => openViewer(doc)}
+                        title="View document (read-only)"
+                        aria-label="View document"
+                        className="p-sm hover:bg-surface-container-high rounded-full transition-colors"
+                      >
+                        <MIcon name="visibility" className="text-on-surface-variant !text-[20px]" />
                       </button>
                     </td>
                   </tr>
@@ -296,6 +385,53 @@ const DocumentsPipeline = () => {
           </table>
         </div>
       </section>
+
+      {viewer && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-lg"
+          onClick={closeViewer}
+        >
+          <div
+            className="bg-surface-container-lowest rounded-xl shadow-2xl w-full max-w-5xl h-[90vh] flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-lg py-md border-b border-outline">
+              <div className="min-w-0">
+                <div className="font-body-md text-body-md text-on-surface truncate">
+                  {viewer.doc.filename || `DOC-${viewer.doc.id.slice(0, 8).toUpperCase()}`}
+                </div>
+                <div className="font-label-caps text-label-caps text-on-surface-variant">Read-only view</div>
+              </div>
+              <button
+                onClick={closeViewer}
+                aria-label="Close"
+                className="p-sm hover:bg-surface-container-high rounded-full transition-colors"
+              >
+                <MIcon name="close" className="text-on-surface-variant !text-[22px]" />
+              </button>
+            </div>
+            <div className="flex-1 bg-surface-container-low">
+              {viewerLoading && (
+                <div className="h-full flex items-center justify-center text-on-surface-variant font-body-sm">
+                  Loading document…
+                </div>
+              )}
+              {viewerError && (
+                <div className="h-full flex items-center justify-center text-error font-body-sm gap-base">
+                  <MIcon name="error" className="!text-[20px]" /> {viewerError}
+                </div>
+              )}
+              {!viewerLoading && !viewerError && viewer.url && (
+                <iframe
+                  src={viewer.url}
+                  title="Document preview"
+                  className="w-full h-full border-0"
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
