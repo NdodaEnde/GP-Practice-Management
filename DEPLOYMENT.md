@@ -9,10 +9,19 @@ gate — I do not run these for you. Steps are ordered; don't skip ahead.
 
 ---
 
+## Current PROD status (verified 2026-05-22, project `veuwldlkunetbeqgxptc`)
+- ✅ **DB bootstrapped** — 55 tables; product catalog seeded (`module_digitisation`
+  + 6 caps); **no patient/clinical data** (clean).
+- ✅ **RLS complete** — all tenant/PHI tables on (migration 033 applied to prod;
+  `lab_results` + `prescription_items` closed).
+- ✅ **Storage buckets** `medical-records` + `digitisation-exports` exist and are **private**.
+- ⏳ **Remaining:** deploy backend + frontend on Render, set secrets, wire CORS,
+  pre-launch probe, onboard customer #1. (Steps 0–2 below are essentially done.)
+
 ## 0. Prerequisites
-- A fresh **PROD Supabase project** (Pro plan) — empty.
-- Render account (backend) + Netlify account (frontend), or all-Render.
-- `pg_dump` + `psql` locally (`brew install libpq && brew link --force libpq`).
+- PROD Supabase project (exists). Hosting: **all Render** (backend + frontend).
+- `pg_dump` + `psql` locally (`brew install libpq && brew link --force libpq`)
+  — only needed for DB work / re-bootstrap.
 - The DEV project is the source of truth for schema + reference data.
 
 ## 1. Bootstrap the PROD database  **[YOU]**
@@ -49,11 +58,16 @@ serves files via short-lived signed URLs):
 - `medical-records`  (uploaded scans / PDFs)
 - `digitisation-exports`  (generated FHIR/CSV bundles)
 
-## 3. Deploy the backend (Render)  **[YOU]**
-`backend/render.yaml` + `backend/Dockerfile` are production-correct
-(entrypoint `server:app`, healthcheck `/api/health`, binds `$PORT`).
-Create the service from the blueprint (root dir `backend/`) and set these
-secrets in the Render dashboard:
+## 3. Deploy on Render (one blueprint, two services)  **[YOU]**
+The repo-root **`render.yaml`** defines BOTH services:
+- `surgiscan-backend` — Docker, `rootDir ./backend`, healthcheck `/api/health`,
+  binds `$PORT` (entrypoint `server:app`).
+- `surgiscan-frontend` — static site, `rootDir ./frontend`, `npm ci && npm run build`,
+  publish `./build`, SPA rewrite `/* -> /index.html`.
+
+In Render: New → Blueprint → point at this repo. Both services are created.
+`autoDeploy` is off (deploy on explicit trigger). Set the **backend** secrets
+in the dashboard:
 
 | Var | Value |
 |---|---|
@@ -69,19 +83,16 @@ secrets in the Render dashboard:
 Deploy → confirm `GET https://<backend>/api/health` returns
 `{"status":"healthy","database":"connected", ...}`.
 
-## 4. Deploy the frontend (Netlify)  **[YOU]**
-`netlify.toml` (repo root) sets base `frontend`, `npm ci && npm run build`,
-publish `frontend/build`, and the SPA rewrite. In the Netlify dashboard set
-the build env var:
-- `REACT_APP_BACKEND_URL = https://<backend>.onrender.com`  (baked at build)
+## 4. Configure the frontend service (Render)  **[YOU]**
+Same blueprint (`surgiscan-frontend`). Set its build env var in the dashboard:
+- `REACT_APP_BACKEND_URL = https://<backend>.onrender.com`  (baked at BUILD time)
 
-Deploy → note the frontend URL (e.g. `https://app.surgiscan.co.za`).
-*(All-Render alternative: a Render Static Site with the same build cmd /
-publish dir / `/* -> /index.html` rewrite.)*
+Trigger its build → note the frontend URL (e.g.
+`https://surgiscan-frontend.onrender.com` or a custom domain).
 
 ## 5. Wire CORS  **[YOU]**
-Set the backend's `CORS_ORIGINS` to the **exact** frontend origin(s) from
-step 4 (comma-separated, no trailing slash) and redeploy the backend.
+Set the backend's `CORS_ORIGINS` to the **exact** frontend origin from step 4
+(comma-separated if more than one, no trailing slash) and redeploy the backend.
 
 ## 6. Pre-launch verification  **[YOU + me]**
 - [ ] `/api/health` green; `/docs` and `/openapi.json` return 404 (DEBUG off).

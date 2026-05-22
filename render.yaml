@@ -1,0 +1,60 @@
+# SurgiScan — Render Blueprint (backend + frontend, one platform).
+# Set the sync:false secrets in the Render dashboard. Supabase (Postgres +
+# Storage) is an EXTERNAL managed service — there is no Render database here.
+services:
+  # ---- Backend: FastAPI (Supabase-backed), built from Dockerfile ----
+  - name: surgiscan-backend
+    type: web
+    runtime: docker
+    rootDir: ./backend
+    dockerfilePath: ./Dockerfile     # relative to rootDir
+    dockerContext: .
+    plan: starter                    # bump to standard/pro as load grows
+    region: oregon                   # pick the region nearest your users
+    healthCheckPath: /api/health
+    numInstances: 1
+    autoDeploy: false                # deploy on explicit trigger only
+    envVars:
+      - key: DEBUG
+        value: "false"               # prod: hides API docs + arms the fail-closed JWT-secret guard
+      - key: LOG_LEVEL
+        value: INFO
+      - key: DIGITISATION_PAGE_ALLOWANCE
+        value: "1500"                # monthly fair-use page allowance (warn-not-block)
+      - key: JWT_SECRET_KEY
+        generateValue: true          # Render generates a strong secret (non-default => guard passes)
+      # --- Supabase PROD project — set in dashboard ---
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false                  # prod Postgres (session pooler)
+      # --- third-party keys — set in dashboard ---
+      - key: OPENAI_API_KEY
+        sync: false                  # semantic search embeddings
+      - key: LANDING_AI_API_KEY
+        sync: false                  # document parse/extract
+      - key: VISION_AGENT_API_KEY
+        sync: false
+      # --- CORS: set to the frontend's Render URL after its first deploy ---
+      - key: CORS_ORIGINS
+        sync: false                  # e.g. https://surgiscan-frontend.onrender.com
+
+  # ---- Frontend: CRA/craco SPA, static site ----
+  - name: surgiscan-frontend
+    type: web
+    runtime: static
+    rootDir: ./frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./build
+    autoDeploy: false
+    envVars:
+      - key: REACT_APP_BACKEND_URL
+        sync: false                  # set to the backend's Render URL (baked at BUILD time)
+      - key: CI
+        value: "false"               # don't fail the CRA build on lint warnings
+    routes:
+      - type: rewrite                # SPA: serve index.html for any non-asset path
+        source: /*
+        destination: /index.html
