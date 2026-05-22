@@ -1,12 +1,16 @@
 #!/usr/bin/env python
 """
-onboard_practice.py — concierge provisioning for a new Essential-tier practice.
+onboard_practice.py — concierge provisioning for a new practice (Essential or Professional).
 
-Creates, in one shot, everything a new digitisation customer needs to log in:
+Creates, in one shot, everything a new customer needs to log in:
   1. tenant
   2. workspace (the practice)
-  3. practice_entitlements row for module_digitisation (Essential tier),
-     billed 'manual' (you invoice out-of-band)
+  3. practice_entitlements row for the chosen TIER product, billed 'manual'
+     (you invoice out-of-band):
+       --plan essential     -> platform_essential / module_digitisation (digitisation only)
+       --plan professional  -> platform_professional (digitisation + full EHR)
+     NB: never the sunset internal `legacy_full_access_grant` (the dev "everything"
+     bundle the demo workspace rides on) — that gives away unpaid modules.
   4. first admin user (bcrypt password — same hashing the login uses)
 
 Run:
@@ -14,6 +18,7 @@ Run:
       --practice "Wellness Medical Centre" \
       --email dr@wellness.co.za \
       --name "Thandi Khumalo" \
+      [--plan essential|professional]     # default: essential
       [--password 'StrongPass123']        # omit to auto-generate
       [--workspace-id wellness-medical]   # omit to derive from name
       [--dry-run]
@@ -39,9 +44,22 @@ load_dotenv(os.path.join(_BACKEND, ".env"))
 
 from app.api.auth import supabase as sb, get_password_hash  # noqa: E402
 
-PRODUCT_ID = "module_digitisation"   # Essential tier
-DIGITISATION_CAPS = {  # sanity-check the entitlement actually grants these
-    "digitisation_upload", "digitisation_validation",
+# Tier -> the product to entitle + the capability invariants to verify post-write.
+# 'require' must all be granted; 'forbid' must NOT be (proves the tier boundary,
+# e.g. Essential genuinely has no EHR). See migration 037 for the catalog shape.
+PLANS = {
+    "essential": {
+        "product_id": "module_digitisation",   # == platform_essential caps (digitisation only)
+        "tier_label": "essential",
+        "require": {"digitisation_upload", "digitisation_validation"},
+        "forbid": {"patient_ehr_basic"},        # Essential = digitisation only, NO EHR
+    },
+    "professional": {
+        "product_id": "platform_professional",  # digitisation + full EHR (single clean product)
+        "tier_label": "professional",
+        "require": {"digitisation_upload", "patient_ehr_basic"},  # the superset
+        "forbid": set(),
+    },
 }
 
 
@@ -64,15 +82,21 @@ def fail(msg: str, created: list):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Provision a new Essential-tier practice.")
+    ap = argparse.ArgumentParser(description="Provision a new practice (Essential or Professional).")
     ap.add_argument("--practice", required=True, help="Practice / workspace display name")
     ap.add_argument("--email", required=True, help="First admin user's email (login identity)")
     ap.add_argument("--name", required=True, help="Admin full name, e.g. 'Thandi Khumalo'")
+    ap.add_argument("--plan", default="essential", choices=sorted(PLANS),
+                    help="Tier to provision (essential = digitisation only; professional = + full EHR)")
     ap.add_argument("--password", help="Admin password (auto-generated if omitted)")
     ap.add_argument("--workspace-id", help="Explicit workspace id (derived from name otherwise)")
-    ap.add_argument("--tier", default="basic", help="legacy subscription_tier label (cosmetic; entitlements are authoritative)")
+    ap.add_argument("--tier", help="Override the cosmetic subscription_tier label (defaults to --plan)")
     ap.add_argument("--dry-run", action="store_true", help="Show what would be created; write nothing")
     args = ap.parse_args()
+
+    plan = PLANS[args.plan]
+    product_id = plan["product_id"]
+    tier_label = args.tier or plan["tier_label"]
 
     email = args.email.strip().lower()
     if "@" not in email:
@@ -90,7 +114,8 @@ def main():
     print("=== Provisioning plan ===")
     print(f"  Practice (workspace): {args.practice}  (id: {ws_id})")
     print(f"  Tenant id:            {tenant_id}")
-    print(f"  Entitlement:          {PRODUCT_ID}  status=active  payment=manual")
+    print(f"  Plan / tier:          {args.plan}")
+    print(f"  Entitlement:          {product_id}  status=active  payment=manual")
     print(f"  Admin user:           {first} {last} <{email}>  role=admin")
     print(f"  Password:             {'(provided)' if args.password else password}")
 
@@ -114,17 +139,17 @@ def main():
         sb.table("workspaces").insert({
             "id": ws_id, "tenant_id": tenant_id, "name": args.practice, "slug": ws_id,
             "type": "gp", "organization_name": args.practice, "organization_type": "gp_practice",
-            "is_active": True, "subscription_status": "active", "subscription_tier": args.tier,
+            "is_active": True, "subscription_status": "active", "subscription_tier": tier_label,
             "created_at": ts, "updated_at": ts,
         }).execute()
         created.append(f"workspaces.id = {ws_id}")
 
-        # 3. entitlement (Essential, manual billing)
+        # 3. entitlement (chosen tier, manual billing)
         sb.table("practice_entitlements").insert({
-            "practice_id": ws_id, "product_id": PRODUCT_ID,
+            "practice_id": ws_id, "product_id": product_id,
             "status": "active", "payment_status": "manual", "starts_at": ts,
         }).execute()
-        created.append(f"practice_entitlements: {ws_id} -> {PRODUCT_ID}")
+        created.append(f"practice_entitlements: {ws_id} -> {product_id}")
 
         # 4. admin user
         sb.table("users").insert({
@@ -137,18 +162,29 @@ def main():
     except Exception as e:
         fail(f"provisioning failed: {e}", created)
 
-    # --- Verify the entitlement actually grants digitisation capabilities ---
+    # --- Verify the entitlement grants the right capabilities for this tier ---
+    # require: all must be present; forbid: none may be present (proves the boundary,
+    # e.g. an Essential practice must NOT come out with patient_ehr_basic).
     try:
         caps = set(sb.rpc("practice_capabilities", {"p_practice_id": ws_id}).execute().data or [])
     except Exception:
         caps = set()
-    caps_ok = DIGITISATION_CAPS.issubset(caps)
+    missing = plan["require"] - caps
+    leaked = plan["forbid"] & caps
+    caps_ok = not missing and not leaked
 
-    print("\n✓ Practice provisioned.")
+    print("\n✓ Practice provisioned." if caps_ok else "\n⚠ Practice provisioned, but capability check FAILED.")
     print(f"  Workspace id : {ws_id}")
+    print(f"  Plan         : {args.plan}  (entitlement: {product_id})")
     print(f"  Login email  : {email}")
     print(f"  Password     : {password}")
-    print(f"  Capabilities : {'OK — ' + ', '.join(sorted(caps)) if caps_ok else 'WARNING: digitisation caps NOT granted — check products/capabilities seed: ' + str(sorted(caps))}")
+    if caps_ok:
+        print(f"  Capabilities : OK — {len(caps)} granted: {', '.join(sorted(caps))}")
+    else:
+        if missing:
+            print(f"  Capabilities : MISSING required {sorted(missing)} — check products/capabilities seed (migration 037).")
+        if leaked:
+            print(f"  Capabilities : TIER LEAK — {sorted(leaked)} granted but forbidden for '{args.plan}'.")
     print("\n  Share the email + password with the practice. They log in at the app URL,")
     print("  then add their own staff via the in-app user management (admin role).")
     if not caps_ok:
