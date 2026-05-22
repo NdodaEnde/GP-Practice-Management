@@ -187,6 +187,7 @@ ROUTE_CAPABILITIES: dict = {
     ("GET", "/api/patients/{patient_id}"): "patient_ehr_basic",
     ("GET", "/api/patients/{patient_id}/conditions"): "patient_ehr_basic",
     ("GET", "/api/patients/{patient_id}/medications"): "patient_ehr_basic",
+    ("GET", "/api/patients/{patient_id}/documents"): "patient_ehr_basic",
     ("GET", "/api/encounters/patient/{patient_id}"): "patient_ehr_basic",
     ("GET", "/api/encounters/{encounter_id}"): "patient_ehr_basic",
     ("GET", "/api/prescriptions/patient/{patient_id}"): "prescription_writing",

@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Upload, FileText, Activity } from 'lucide-react';
+import { ArrowLeft, Activity } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { patientAPI, encounterAPI, documentAPI } from '@/services/api';
+import { patientAPI, encounterAPI } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 
 const NewEncounter = () => {
@@ -15,7 +15,6 @@ const NewEncounter = () => {
   const { toast } = useToast();
   const [patient, setPatient] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [selectedFile, setSelectedFile] = useState(null);
 
   const [encounterData, setEncounterData] = useState({
     chief_complaint: '',
@@ -65,12 +64,6 @@ const NewEncounter = () => {
     }));
   };
 
-  const handleFileSelect = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      setSelectedFile(e.target.files[0]);
-    }
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -84,25 +77,14 @@ const NewEncounter = () => {
         vitals: Object.values(encounterData.vitals).some(v => v) ? encounterData.vitals : null
       };
 
-      const encounterRes = await encounterAPI.create(encounterPayload);
-      const encounterId = encounterRes.data.id;
-
-      // Upload document if selected
-      if (selectedFile) {
-        const formData = new FormData();
-        formData.append('file', selectedFile);
-        formData.append('encounter_id', encounterId);
-        formData.append('patient_id', patientId);
-
-        await documentAPI.upload(formData);
-      }
+      await encounterAPI.create(encounterPayload);
 
       toast({
         title: 'Success',
         description: 'Encounter created successfully'
       });
 
-      navigate(`/validation/${encounterId}`);
+      navigate(`/patients/${patientId}`);
     } catch (error) {
       console.error('Error creating encounter:', error);
       toast({
@@ -238,49 +220,6 @@ const NewEncounter = () => {
               onChange={(e) => handleInputChange('gp_notes', e.target.value)}
               data-testid="gp-notes-textarea"
             />
-          </CardContent>
-        </Card>
-
-        {/* Document Upload */}
-        <Card className="border-0 shadow-lg">
-          <CardHeader>
-            <CardTitle className="text-xl font-bold text-slate-800 flex items-center gap-2">
-              <FileText className="w-5 h-5" />
-              Upload Medical Document
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="border-2 border-dashed border-slate-300 rounded-lg p-8 text-center hover:border-teal-400 transition-colors duration-200">
-              <Upload className="w-12 h-12 text-slate-400 mx-auto mb-4" />
-              <input
-                type="file"
-                id="file-upload"
-                className="hidden"
-                accept=".pdf,.jpg,.jpeg,.png"
-                onChange={handleFileSelect}
-                data-testid="file-upload-input"
-              />
-              <label
-                htmlFor="file-upload"
-                className="cursor-pointer text-teal-600 hover:text-teal-700 font-medium"
-              >
-                Click to upload
-              </label>
-              <p className="text-sm text-slate-500 mt-2">
-                or drag and drop (PDF, JPG, PNG up to 10MB)
-              </p>
-              {selectedFile && (
-                <div className="mt-4 p-3 bg-teal-50 rounded-lg">
-                  <p className="text-sm font-medium text-teal-700">Selected: {selectedFile.name}</p>
-                  <p className="text-xs text-teal-600 mt-1">
-                    {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                  </p>
-                </div>
-              )}
-            </div>
-            <p className="text-sm text-slate-500 mt-4">
-              Documents will be automatically parsed and available for validation
-            </p>
           </CardContent>
         </Card>
 

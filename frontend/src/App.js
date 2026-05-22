@@ -8,7 +8,6 @@ import PatientEHR from './pages/PatientEHR';
 import NewEncounter from './pages/NewEncounter';
 import AIScribe from './pages/AIScribe';
 import PatientPrescriptions from './pages/PatientPrescriptions';
-import ValidationInterface from './pages/ValidationInterface';
 import ReceptionCheckIn from './pages/ReceptionCheckIn';
 import QueueDisplay from './pages/QueueDisplay';
 import WorkstationDashboard from './pages/WorkstationDashboard';
@@ -131,7 +130,6 @@ function App() {
             <Route path="patients/:patientId/prescriptions" element={<PatientPrescriptions />} />
             <Route path="patients/:patientId/ai-scribe" element={<AIScribe />} />
             <Route path="encounters/new/:patientId" element={<NewEncounter />} />
-            <Route path="validation/:encounterId" element={<ValidationInterface />} />
             <Route path="reception" element={<ReceptionCheckIn />} />
             <Route path="vitals" element={<VitalsStation />} />
             <Route path="queue/display" element={<QueueDisplay />} />

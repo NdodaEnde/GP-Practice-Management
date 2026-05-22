@@ -1241,6 +1241,37 @@ async def get_patient_medications(patient_id: str, current_user: dict = Depends(
         logger.error(f"Error getting patient medications: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@api_router.get("/patients/{patient_id}/documents")
+async def get_patient_documents(patient_id: str, current_user: dict = Depends(get_current_user)):
+    """A patient's digitised documents (caller's workspace).
+
+    The EHR documents tab reads the digitisation pipeline's store (the single
+    ingestion path). Gated patient_ehr_basic — an EHR read — and scoped by the
+    patient's workspace ownership.
+    """
+    try:
+        workspace_id = current_user["workspace_id"]
+        if not supabase.table('patients').select('id').eq('id', patient_id).eq('workspace_id', workspace_id).execute().data:
+            raise HTTPException(status_code=404, detail="Patient not found")
+        rows = supabase.table('digitised_documents')\
+            .select('id, filename, status, doc_type, created_at, pages_count')\
+            .eq('workspace_id', workspace_id).eq('patient_id', patient_id)\
+            .order('created_at', desc=True).execute().data or []
+        documents = [{
+            'document_id': r['id'],
+            'filename': r.get('filename'),
+            'status': r.get('status'),
+            'doc_type': r.get('doc_type'),
+            'pages_count': r.get('pages_count'),
+            'uploaded_at': r.get('created_at'),
+        } for r in rows]
+        return {'status': 'success', 'documents': documents}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting patient documents: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @api_router.post("/dispense")
 async def create_dispense_event(dispense: DispenseCreate):
     """Record a dispensing event"""

@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import ReactECharts from 'echarts-for-react';
-import api, { patientAPI, encounterAPI, documentAPI } from '@/services/api';
+import api, { patientAPI, encounterAPI } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import AllergyManagement from '@/components/AllergyManagement';
 import DiagnosesManagement from '@/components/DiagnosesManagement';
@@ -76,18 +76,12 @@ const PatientEHR = () => {
       console.log('Loaded lab orders:', labOrdersRes);
       console.log('Loaded lab results:', labResults);
       
-      // Load documents for all encounters
-      if (encountersRes.data.length > 0) {
-        const allDocs = [];
-        for (const enc of encountersRes.data) {
-          try {
-            const docsRes = await documentAPI.listByEncounter(enc.id);
-            allDocs.push(...docsRes.data);
-          } catch (err) {
-            console.log('No documents for encounter', enc.id);
-          }
-        }
-        setDocuments(allDocs);
+      // The patient's digitised documents (single ingestion path).
+      try {
+        const docsRes = await api.get(`/patients/${patientId}/documents`);
+        setDocuments(docsRes.data.documents || []);
+      } catch (err) {
+        console.log('No documents for patient', patientId);
       }
     } catch (error) {
       console.error('Error loading patient:', error);

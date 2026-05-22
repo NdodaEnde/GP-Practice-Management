@@ -34,18 +34,10 @@ export const encounterAPI = {
   update: (id, data) => api.put(`/encounters/${id}`, data),
 };
 
-export const documentAPI = {
-  upload: (formData) => api.post('/documents/upload', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  }),
-  listByEncounter: (encounterId) => api.get(`/documents/encounter/${encounterId}`),
-  getOriginal: (documentId) => api.get(`/documents/${documentId}/original`),
-};
-
-export const validationAPI = {
-  getSession: (encounterId) => api.get(`/validation/${encounterId}`),
-  approve: (documentId, data) => api.post(`/validation/${documentId}/approve`, data),
-};
+// documentAPI / validationAPI removed: the manual encounter-document + encounter
+// validation flow was retired. Document ingestion + validation run through the
+// digitisation pipeline (/api/digitisation/*); the EHR documents tab reads a
+// patient's digitised documents via GET /api/patients/{id}/documents.
 
 export const dispenseAPI = {
   create: (data) => api.post('/dispense', data),
