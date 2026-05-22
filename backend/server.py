@@ -24,7 +24,7 @@ load_dotenv(ROOT_DIR / '.env')
 # is needed because route decorators below reference require_capability().
 # (auth_router and other API routers are still imported at the bottom of this
 # file per the existing pattern.)
-from app.api.auth import require_capability
+from app.api.auth import require_capability, get_current_user
 
 # MongoDB connection — OPTIONAL legacy dependency.
 #
@@ -1000,70 +1000,64 @@ async def capture_lead(lead: LeadCreate):
 
 # ==================== Patient Management ====================
 
+# ==================== Patient Management ====================
+# Rebuilt onto the unified foundation: workspace_id is derived from the
+# authenticated token (current_user), NOT DEMO_WORKSPACE_ID, and every read/
+# write is scoped to that workspace. Gating lives in the central
+# ROUTE_CAPABILITIES map (patient_ehr_basic); get_current_user supplies tenancy.
+
 @api_router.post("/patients", response_model=PatientResponse)
-async def create_patient(patient: PatientCreate):
-    """Create a new patient"""
+async def create_patient(patient: PatientCreate, current_user: dict = Depends(get_current_user)):
+    """Create a new patient in the caller's workspace."""
     try:
-        patient_id = str(uuid.uuid4())
+        workspace_id = current_user["workspace_id"]
+        tenant_id = current_user.get("tenant_id") or DEMO_TENANT_ID
+        data = patient.model_dump()
+        data.pop('workspace_id', None)   # tenancy is server-controlled, never caller-set
+        data.pop('tenant_id', None)
         patient_data = {
-            'id': patient_id,
-            'tenant_id': DEMO_TENANT_ID,
-            'workspace_id': DEMO_WORKSPACE_ID,
-            **patient.model_dump(),
-            'created_at': datetime.now(timezone.utc).isoformat()
-        }
-        
-        result = supabase.table('patients').insert(patient_data).execute()
-        
-        # Log to audit
-        await db.audit_events.insert_one({
             'id': str(uuid.uuid4()),
-            'tenant_id': DEMO_TENANT_ID,
-            'workspace_id': DEMO_WORKSPACE_ID,
-            'event_type': 'patient_created',
-            'patient_id': patient_id,
-            'timestamp': datetime.now(timezone.utc).isoformat(),
-            'details': {'action': 'Patient registered'}
-        })
-        
+            'tenant_id': tenant_id,
+            'workspace_id': workspace_id,
+            **data,
+            'created_at': datetime.now(timezone.utc).isoformat(),
+        }
+        result = supabase.table('patients').insert(patient_data).execute()
         return PatientResponse(**result.data[0])
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error creating patient: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/patients", response_model=List[PatientResponse])
-async def list_patients(search: Optional[str] = None):
-    """List all patients with optional search"""
+async def list_patients(search: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+    """List patients in the caller's workspace, with optional search."""
     try:
+        workspace_id = current_user["workspace_id"]
+        result = supabase.table('patients').select('*').eq('workspace_id', workspace_id)\
+            .order('created_at', desc=True).limit(500 if search else 100).execute()
+        rows = result.data or []
         if search:
-            # Search across multiple fields
-            search_pattern = f"%{search}%"
-            
-            # Get all patients and filter in Python (more reliable than complex Supabase queries)
-            result = supabase.table('patients').select('*').eq('workspace_id', DEMO_WORKSPACE_ID).execute()
-            
-            # Filter results
-            filtered_patients = []
-            for patient in result.data:
-                if (search.lower() in (patient.get('first_name') or '').lower() or
-                    search.lower() in (patient.get('last_name') or '').lower() or
-                    search.lower() in (patient.get('id_number') or '').lower() or
-                    search.lower() in (patient.get('contact_number') or '').lower()):
-                    filtered_patients.append(patient)
-            
-            return [PatientResponse(**p) for p in filtered_patients[:100]]
-        else:
-            result = supabase.table('patients').select('*').eq('workspace_id', DEMO_WORKSPACE_ID).order('created_at', desc=True).limit(100).execute()
-            return [PatientResponse(**p) for p in result.data]
+            s = search.lower()
+            rows = [p for p in rows if (
+                s in (p.get('first_name') or '').lower() or
+                s in (p.get('last_name') or '').lower() or
+                s in (p.get('id_number') or '').lower() or
+                s in (p.get('contact_number') or '').lower())][:100]
+        return [PatientResponse(**p) for p in rows]
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error listing patients: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/patients/{patient_id}", response_model=PatientResponse)
-async def get_patient(patient_id: str):
-    """Get patient details"""
+async def get_patient(patient_id: str, current_user: dict = Depends(get_current_user)):
+    """Get a patient in the caller's workspace."""
     try:
-        result = supabase.table('patients').select('*').eq('id', patient_id).execute()
+        result = supabase.table('patients').select('*')\
+            .eq('id', patient_id).eq('workspace_id', current_user["workspace_id"]).execute()
         if not result.data:
             raise HTTPException(status_code=404, detail="Patient not found")
         return PatientResponse(**result.data[0])
@@ -1074,10 +1068,15 @@ async def get_patient(patient_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.put("/patients/{patient_id}", response_model=PatientResponse)
-async def update_patient(patient_id: str, patient: PatientCreate):
-    """Update patient details"""
+async def update_patient(patient_id: str, patient: PatientCreate, current_user: dict = Depends(get_current_user)):
+    """Update a patient in the caller's workspace."""
     try:
-        result = supabase.table('patients').update(patient.model_dump()).eq('id', patient_id).execute()
+        workspace_id = current_user["workspace_id"]
+        data = patient.model_dump()
+        data.pop('workspace_id', None)   # never reassign tenancy
+        data.pop('tenant_id', None)
+        result = supabase.table('patients').update(data)\
+            .eq('id', patient_id).eq('workspace_id', workspace_id).execute()
         if not result.data:
             raise HTTPException(status_code=404, detail="Patient not found")
         return PatientResponse(**result.data[0])
@@ -1090,57 +1089,55 @@ async def update_patient(patient_id: str, patient: PatientCreate):
 # ==================== Encounter Management ====================
 
 @api_router.post("/encounters", response_model=EncounterResponse)
-async def create_encounter(encounter: EncounterCreate):
-    """Create a new encounter"""
+async def create_encounter(encounter: EncounterCreate, current_user: dict = Depends(get_current_user)):
+    """Create an encounter for a patient in the caller's workspace."""
     try:
-        encounter_id = str(uuid.uuid4())
+        workspace_id = current_user["workspace_id"]
+        # The patient must belong to the caller's workspace (no cross-tenant encounters).
+        pt = supabase.table('patients').select('id')\
+            .eq('id', encounter.patient_id).eq('workspace_id', workspace_id).execute()
+        if not pt.data:
+            raise HTTPException(status_code=404, detail="Patient not found")
         vitals_dict = encounter.vitals.model_dump() if encounter.vitals else None
-        
         encounter_data = {
-            'id': encounter_id,
+            'id': str(uuid.uuid4()),
             'patient_id': encounter.patient_id,
-            'workspace_id': DEMO_WORKSPACE_ID,
+            'workspace_id': workspace_id,
             'encounter_date': datetime.now(timezone.utc).isoformat(),
             'status': 'in_progress',
             'chief_complaint': encounter.chief_complaint,
             'vitals_json': vitals_dict,
             'gp_notes': encounter.gp_notes,
-            'created_at': datetime.now(timezone.utc).isoformat()
+            'created_at': datetime.now(timezone.utc).isoformat(),
         }
-        
         result = supabase.table('encounters').insert(encounter_data).execute()
-        
-        # Log to audit
-        await db.audit_events.insert_one({
-            'id': str(uuid.uuid4()),
-            'tenant_id': DEMO_TENANT_ID,
-            'workspace_id': DEMO_WORKSPACE_ID,
-            'event_type': 'encounter_created',
-            'patient_id': encounter.patient_id,
-            'encounter_id': encounter_id,
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        })
-        
         return EncounterResponse(**result.data[0])
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error creating encounter: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/encounters/patient/{patient_id}", response_model=List[EncounterResponse])
-async def get_patient_encounters(patient_id: str):
-    """Get all encounters for a patient"""
+async def get_patient_encounters(patient_id: str, current_user: dict = Depends(get_current_user)):
+    """Get a patient's encounters (caller's workspace only)."""
     try:
-        result = supabase.table('encounters').select('*').eq('patient_id', patient_id).order('encounter_date', desc=True).execute()
+        result = supabase.table('encounters').select('*')\
+            .eq('patient_id', patient_id).eq('workspace_id', current_user["workspace_id"])\
+            .order('encounter_date', desc=True).execute()
         return [EncounterResponse(**e) for e in result.data]
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting encounters: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/encounters/{encounter_id}", response_model=EncounterResponse)
-async def get_encounter(encounter_id: str):
-    """Get encounter details"""
+async def get_encounter(encounter_id: str, current_user: dict = Depends(get_current_user)):
+    """Get an encounter in the caller's workspace."""
     try:
-        result = supabase.table('encounters').select('*').eq('id', encounter_id).execute()
+        result = supabase.table('encounters').select('*')\
+            .eq('id', encounter_id).eq('workspace_id', current_user["workspace_id"]).execute()
         if not result.data:
             raise HTTPException(status_code=404, detail="Encounter not found")
         return EncounterResponse(**result.data[0])
@@ -1151,19 +1148,19 @@ async def get_encounter(encounter_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.put("/encounters/{encounter_id}")
-async def update_encounter(encounter_id: str, gp_notes: Optional[str] = None, status: Optional[str] = None):
-    """Update encounter notes and status"""
+async def update_encounter(encounter_id: str, gp_notes: Optional[str] = None, status: Optional[str] = None,
+                           current_user: dict = Depends(get_current_user)):
+    """Update an encounter's notes/status (caller's workspace only)."""
     try:
         update_data = {}
         if gp_notes is not None:
             update_data['gp_notes'] = gp_notes
         if status is not None:
             update_data['status'] = status
-        
         if not update_data:
             raise HTTPException(status_code=400, detail="No update data provided")
-        
-        result = supabase.table('encounters').update(update_data).eq('id', encounter_id).execute()
+        result = supabase.table('encounters').update(update_data)\
+            .eq('id', encounter_id).eq('workspace_id', current_user["workspace_id"]).execute()
         if not result.data:
             raise HTTPException(status_code=404, detail="Encounter not found")
         return EncounterResponse(**result.data[0])
