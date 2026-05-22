@@ -913,21 +913,19 @@ async def create_encounter_from_document(patient_id: str, parsed_data: Dict[str,
         logger.error(f"Error creating encounter from document: {e}")
         raise
 
-async def get_next_queue_number() -> int:
-    """Generate next queue number for the day"""
+def get_next_queue_number(workspace_id: str, today: str) -> int:
+    """Next queue number for the day, per workspace (Supabase-backed)."""
     try:
-        today = datetime.now(timezone.utc).date().isoformat()
-        
-        # Get the highest queue number for today
-        result = await db.queue_entries.find_one(
-            {'date': today},
-            sort=[('queue_number', -1)]
-        )
-        
-        if result and result.get('queue_number'):
-            return result['queue_number'] + 1
-        else:
-            return 1
+        result = supabase.table('queue_entries')\
+            .select('queue_number')\
+            .eq('workspace_id', workspace_id)\
+            .eq('queue_date', today)\
+            .order('queue_number', desc=True)\
+            .limit(1)\
+            .execute()
+        if result.data and result.data[0].get('queue_number'):
+            return result.data[0]['queue_number'] + 1
+        return 1
     except Exception as e:
         logger.error(f"Error getting next queue number: {e}")
         return 1
@@ -1518,62 +1516,52 @@ async def get_financial_analytics(current_user: dict = Depends(get_current_user)
         logger.error(f"Error getting financial analytics: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# ==================== GP Microservice Proxy Endpoints ====================
+# ==================== Reception / Workflow Queue ====================
+# Supabase-backed (migration 034), tenant-scoped by workspace_id from the
+# caller's token. Gated in the central ROUTE_CAPABILITIES map
+# (reception_checkin for mutations, queue_display for reads).
 
 @api_router.post("/queue/check-in")
-async def queue_check_in(check_in: QueueCheckIn):
-    """Check in a patient and add them to the queue"""
+async def queue_check_in(check_in: QueueCheckIn, current_user: dict = Depends(get_current_user)):
+    """Check in a patient (in the caller's workspace) and add them to the queue."""
     try:
+        workspace_id = current_user["workspace_id"]
+        tenant_id = current_user.get("tenant_id") or workspace_id
         patient_id = check_in.patient_id
-        
-        # Get patient details
-        patient_result = supabase.table('patients').select('*').eq('id', patient_id).execute()
+
+        # The patient must belong to the caller's workspace.
+        patient_result = supabase.table('patients').select('*')\
+            .eq('id', patient_id).eq('workspace_id', workspace_id).execute()
         if not patient_result.data:
             raise HTTPException(status_code=404, detail="Patient not found")
-        
+
         patient = patient_result.data[0]
-        
-        # Get next queue number
-        queue_number = await get_next_queue_number()
-        
-        # Create queue entry
-        queue_id = str(uuid.uuid4())
+
         today = datetime.now(timezone.utc).date().isoformat()
         now = datetime.now(timezone.utc).isoformat()
-        
+        queue_number = get_next_queue_number(workspace_id, today)
+
+        queue_id = str(uuid.uuid4())
         queue_entry = {
             'id': queue_id,
+            'workspace_id': workspace_id,
+            'tenant_id': tenant_id,
             'queue_number': queue_number,
             'patient_id': patient_id,
             'patient_name': f"{patient['first_name']} {patient['last_name']}",
             'reason_for_visit': check_in.reason_for_visit,
             'priority': check_in.priority,
-            'status': 'waiting',  # waiting, in_vitals, in_consultation, completed, cancelled
-            'station': 'reception',  # reception, vitals, consultation, dispensary
+            'status': 'waiting',
+            'station': 'reception',
+            'queue_date': today,
             'check_in_time': now,
-            'date': today,
-            'workspace_id': DEMO_WORKSPACE_ID,
-            'tenant_id': DEMO_TENANT_ID,
-            'wait_time_minutes': 0,
-            'created_at': now
+            'created_at': now,
         }
-        
-        await db.queue_entries.insert_one(queue_entry)
-        
-        # Log audit event
-        await db.audit_events.insert_one({
-            'id': str(uuid.uuid4()),
-            'tenant_id': DEMO_TENANT_ID,
-            'workspace_id': DEMO_WORKSPACE_ID,
-            'event_type': 'patient_checked_in',
-            'patient_id': patient_id,
-            'queue_id': queue_id,
-            'queue_number': queue_number,
-            'timestamp': now
-        })
-        
+
+        supabase.table('queue_entries').insert(queue_entry).execute()
+
         logger.info(f"Patient {patient_id} checked in with queue number {queue_number}")
-        
+
         return {
             'status': 'success',
             'message': 'Patient checked in successfully',
@@ -1588,34 +1576,30 @@ async def queue_check_in(check_in: QueueCheckIn):
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/queue/current")
-async def get_current_queue(station: Optional[str] = None):
-    """Get current queue for today"""
+async def get_current_queue(station: Optional[str] = None,
+                            current_user: dict = Depends(get_current_user)):
+    """Get the active queue for today, in the caller's workspace."""
     try:
         today = datetime.now(timezone.utc).date().isoformat()
-        
-        # Build filter
-        queue_filter = {
-            'date': today,
-            'status': {'$in': ['waiting', 'in_vitals', 'in_consultation']}
-        }
-        
+
+        query = supabase.table('queue_entries').select('*')\
+            .eq('workspace_id', current_user["workspace_id"])\
+            .eq('queue_date', today)\
+            .in_('status', ['waiting', 'in_vitals', 'in_consultation'])
         if station:
-            queue_filter['station'] = station
-        
-        # Get queue entries
-        cursor = db.queue_entries.find(queue_filter).sort('queue_number', 1)
-        queue = await cursor.to_list(length=None)
-        
-        # Convert ObjectId to string
+            query = query.eq('station', station)
+
+        queue = query.order('queue_number').execute().data or []
+
+        # Live wait time from check-in.
+        now = datetime.now(timezone.utc)
         for entry in queue:
-            if entry.get('_id'):
-                entry['_id'] = str(entry['_id'])
-            
-            # Calculate wait time
-            check_in_time = datetime.fromisoformat(entry['check_in_time'])
-            wait_time = (datetime.now(timezone.utc) - check_in_time).total_seconds() / 60
-            entry['wait_time_minutes'] = int(wait_time)
-        
+            try:
+                check_in_time = datetime.fromisoformat(entry['check_in_time'])
+                entry['wait_time_minutes'] = int((now - check_in_time).total_seconds() / 60)
+            except Exception:
+                entry['wait_time_minutes'] = 0
+
         return {
             'status': 'success',
             'date': today,
@@ -1627,52 +1611,34 @@ async def get_current_queue(station: Optional[str] = None):
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.post("/queue/{queue_id}/call-next")
-async def call_next_patient(queue_id: str, station: str):
-    """Call the next patient to a station"""
+async def call_next_patient(queue_id: str, station: str,
+                            current_user: dict = Depends(get_current_user)):
+    """Call a patient to a station (caller's workspace only)."""
     try:
-        # Get queue entry
-        queue_entry = await db.queue_entries.find_one({'id': queue_id})
-        
-        if not queue_entry:
+        workspace_id = current_user["workspace_id"]
+        entry_result = supabase.table('queue_entries').select('*')\
+            .eq('id', queue_id).eq('workspace_id', workspace_id).execute()
+        if not entry_result.data:
             raise HTTPException(status_code=404, detail="Queue entry not found")
-        
-        # Update status based on station
+        queue_entry = entry_result.data[0]
+
         status_map = {
             'vitals': 'in_vitals',
             'consultation': 'in_consultation',
             'dispensary': 'in_dispensary'
         }
-        
         new_status = status_map.get(station, 'in_consultation')
-        
-        # Update queue entry
+
         now = datetime.now(timezone.utc).isoformat()
-        await db.queue_entries.update_one(
-            {'id': queue_id},
-            {
-                '$set': {
-                    'status': new_status,
-                    'station': station,
-                    'called_at': now,
-                    'updated_at': now
-                }
-            }
-        )
-        
-        # Log audit event
-        await db.audit_events.insert_one({
-            'id': str(uuid.uuid4()),
-            'tenant_id': DEMO_TENANT_ID,
-            'workspace_id': DEMO_WORKSPACE_ID,
-            'event_type': 'patient_called',
-            'patient_id': queue_entry['patient_id'],
-            'queue_id': queue_id,
+        supabase.table('queue_entries').update({
+            'status': new_status,
             'station': station,
-            'timestamp': now
-        })
-        
+            'called_at': now,
+            'updated_at': now,
+        }).eq('id', queue_id).eq('workspace_id', workspace_id).execute()
+
         logger.info(f"Patient {queue_entry['patient_id']} called to {station}")
-        
+
         return {
             'status': 'success',
             'message': f"Patient called to {station}",
@@ -1686,49 +1652,32 @@ async def call_next_patient(queue_id: str, station: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.put("/queue/{queue_id}/update-status")
-async def update_queue_status(queue_id: str, update: QueueUpdate):
-    """Update queue entry status"""
+async def update_queue_status(queue_id: str, update: QueueUpdate,
+                              current_user: dict = Depends(get_current_user)):
+    """Update a queue entry's status (caller's workspace only)."""
     try:
-        queue_entry = await db.queue_entries.find_one({'id': queue_id})
-        
-        if not queue_entry:
+        workspace_id = current_user["workspace_id"]
+        entry_result = supabase.table('queue_entries').select('*')\
+            .eq('id', queue_id).eq('workspace_id', workspace_id).execute()
+        if not entry_result.data:
             raise HTTPException(status_code=404, detail="Queue entry not found")
-        
-        # Update fields
+
         update_fields = {
             'status': update.status,
             'updated_at': datetime.now(timezone.utc).isoformat()
         }
-        
         if update.station:
             update_fields['station'] = update.station
-        
         if update.notes:
             update_fields['notes'] = update.notes
-        
         if update.status == 'completed':
             update_fields['completed_at'] = datetime.now(timezone.utc).isoformat()
-        
-        await db.queue_entries.update_one(
-            {'id': queue_id},
-            {'$set': update_fields}
-        )
-        
-        # Log audit event
-        await db.audit_events.insert_one({
-            'id': str(uuid.uuid4()),
-            'tenant_id': DEMO_TENANT_ID,
-            'workspace_id': DEMO_WORKSPACE_ID,
-            'event_type': 'queue_status_updated',
-            'patient_id': queue_entry['patient_id'],
-            'queue_id': queue_id,
-            'old_status': queue_entry['status'],
-            'new_status': update.status,
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        })
-        
+
+        supabase.table('queue_entries').update(update_fields)\
+            .eq('id', queue_id).eq('workspace_id', workspace_id).execute()
+
         logger.info(f"Queue {queue_id} status updated to {update.status}")
-        
+
         return {
             'status': 'success',
             'message': 'Queue status updated',
@@ -1741,15 +1690,15 @@ async def update_queue_status(queue_id: str, update: QueueUpdate):
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/queue/stats")
-async def get_queue_stats():
-    """Get queue statistics for today"""
+async def get_queue_stats(current_user: dict = Depends(get_current_user)):
+    """Get queue statistics for today, in the caller's workspace."""
     try:
         today = datetime.now(timezone.utc).date().isoformat()
-        
-        # Get all queue entries for today
-        cursor = db.queue_entries.find({'date': today})
-        all_entries = await cursor.to_list(length=None)
-        
+
+        all_entries = supabase.table('queue_entries').select('*')\
+            .eq('workspace_id', current_user["workspace_id"])\
+            .eq('queue_date', today).execute().data or []
+
         # Calculate statistics
         total_checked_in = len(all_entries)
         waiting = len([e for e in all_entries if e['status'] == 'waiting'])

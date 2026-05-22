@@ -193,9 +193,11 @@ ROUTE_CAPABILITIES: dict = {
     ("GET", "/api/prescriptions/{prescription_id}"): "prescription_writing",
     ("GET", "/api/referrals/patient/{patient_id}"): "patient_ehr_basic",
     # --- C. clinical-ops / sensitive metadata ---
-    ("POST", "/api/queue/check-in"): "queue_display",
-    ("POST", "/api/queue/{queue_id}/call-next"): "queue_display",
-    ("PUT", "/api/queue/{queue_id}/update-status"): "queue_display",
+    # Reception queue (Supabase, migration 034): mutations need the reception
+    # capability; the read-only displays need queue_display.
+    ("POST", "/api/queue/check-in"): "reception_checkin",
+    ("POST", "/api/queue/{queue_id}/call-next"): "reception_checkin",
+    ("PUT", "/api/queue/{queue_id}/update-status"): "reception_checkin",
     ("GET", "/api/queue/current"): "queue_display",
     ("GET", "/api/queue/stats"): "queue_display",
     # --- D. Professional clinical data + billing (gated 2026-05-22, Pass A) ---
