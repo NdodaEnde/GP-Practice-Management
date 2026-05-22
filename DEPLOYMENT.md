@@ -15,8 +15,26 @@ gate — I do not run these for you. Steps are ordered; don't skip ahead.
 - ✅ **RLS complete** — all tenant/PHI tables on (migration 033 applied to prod;
   `lab_results` + `prescription_items` closed).
 - ✅ **Storage buckets** `medical-records` + `digitisation-exports` exist and are **private**.
-- ⏳ **Remaining:** deploy backend + frontend on Render, set secrets, wire CORS,
-  pre-launch probe, onboard customer #1. (Steps 0–2 below are essentially done.)
+- ✅ **Essential tier verified** (2026-05-22, on the deploy code + prod DB): gating
+  fence holds, cross-tenant isolation holds, end-to-end workflow works
+  (validation → CSV/FHIR export → lookup → approve&promote). 15/15 checks.
+
+## ⭐ ESSENTIAL LAUNCH CHECKLIST — do these at deploy (don't forget the ⚠ ones)
+- [ ] 1. Deploy the Render blueprint (both services come up).
+- [ ] 2. Set **backend secrets** in Render: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`,
+      `DATABASE_URL`, `OPENAI_API_KEY`, `LANDING_AI_API_KEY`, `VISION_AGENT_API_KEY`.
+      (`JWT_SECRET_KEY` auto-gens; `DEBUG=false` already set.)
+- [ ] 3. Set frontend `REACT_APP_BACKEND_URL` → the backend's Render URL.
+- [ ] 4. Wire backend `CORS_ORIGINS` → the frontend's Render URL; redeploy backend.
+- [ ] 5. Smoke: `/api/health` green; `/docs` + `/openapi.json` → 404 (DEBUG off); login works.
+- [ ] ⚠ 6. **Cross-tenant probe against the LIVE prod backend** — verified on DEV +
+      prod DB, but NOT yet against the deployed prod API. Ask me; I'll run it (~2 min).
+- [ ] ⚠ 7. **One live LandingAI OCR smoke** — upload a single real GP PDF in prod and
+      drive it through validate → approve. The OCR/extract stage is the one part not
+      re-run this session (synthetic only, to save credits). Confirms the full chain
+      works in prod with real extraction.
+- [ ] 8. Confirm Supabase Pro **backups** are on.
+- [ ] 9. Onboard customer #1: `onboard_practice.py` pointed at prod (see ONBOARDING_RUNBOOK.md).
 
 ## 0. Prerequisites
 - PROD Supabase project (exists). Hosting: **all Render** (backend + frontend).
