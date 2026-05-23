@@ -748,10 +748,12 @@ const PatientEHR = () => {
           <Card className="border-0 shadow-lg">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-lg font-bold text-slate-800">Medication History</CardTitle>
-              <Button className="bg-gradient-to-r from-teal-500 to-cyan-600 text-white">
-                <Plus className="w-4 h-4 mr-2" />
-                Add Medication
-              </Button>
+              <Link to={`/patients/${patientId}/prescriptions`}>
+                <Button className="bg-gradient-to-r from-teal-500 to-cyan-600 text-white">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Medication
+                </Button>
+              </Link>
             </CardHeader>
             <CardContent>
               {/* Active Medications */}
