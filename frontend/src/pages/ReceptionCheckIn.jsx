@@ -214,9 +214,20 @@ const ReceptionCheckIn = () => {
                       placeholder="Search by name, ID number, or phone..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') { e.preventDefault(); searchPatients(); }
+                      }}
                       className="pl-10"
                     />
                   </div>
+                  <Button
+                    onClick={searchPatients}
+                    disabled={isSearching || !searchQuery.trim()}
+                    className="bg-teal-600 hover:bg-teal-700 text-white"
+                  >
+                    <Search className="w-4 h-4 mr-2" />
+                    Search
+                  </Button>
                   <Button variant="outline" onClick={() => navigate('/patients')}>
                     <UserPlus className="w-4 h-4 mr-2" />
                     New Patient
