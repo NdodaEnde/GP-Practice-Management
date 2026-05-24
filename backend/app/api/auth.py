@@ -648,19 +648,36 @@ async def change_password(
     password_data: ChangePasswordRequest,
     current_user: dict = Depends(get_current_user)
 ):
+    """Change the current user's password.
+
+    Verifies the supplied current password against the stored bcrypt hash,
+    then writes a new bcrypt hash to the user's row. 401 on a wrong current
+    password (the safety check), 400 on a too-short or unchanged new password.
     """
-    Change user password
-    TODO: Implement with database
-    """
-    # This is a placeholder
-    # In production, verify current password and update in database
-    
-    logger.info(f"Password change requested for: {current_user.get('email')}")
-    
-    return {
-        "status": "success",
-        "message": "Password changed successfully (demo mode)"
-    }
+    user_id = current_user.get("user_id")
+    email = current_user.get("email")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="No user in token")
+
+    res = supabase.table('users').select('password_hash').eq('id', user_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="User not found")
+    stored_hash = res.data[0].get('password_hash')
+    if not stored_hash or not verify_password(password_data.current_password, stored_hash):
+        raise HTTPException(status_code=401, detail="Current password is incorrect")
+
+    if not password_data.new_password or len(password_data.new_password) < 8:
+        raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
+    if password_data.new_password == password_data.current_password:
+        raise HTTPException(status_code=400, detail="New password must differ from current password")
+
+    supabase.table('users').update({
+        'password_hash': get_password_hash(password_data.new_password),
+        'updated_at': datetime.now(timezone.utc).isoformat(),
+    }).eq('id', user_id).execute()
+
+    logger.info(f"Password changed for {email}")
+    return {"status": "success", "message": "Password changed successfully"}
 
 @router.post("/reset-password")
 async def reset_password(reset_data: ResetPasswordRequest):

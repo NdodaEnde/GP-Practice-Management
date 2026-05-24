@@ -19,6 +19,7 @@ import ClaimsManagement from './pages/ClaimsManagement';
 import PaymentSuccess from './pages/PaymentSuccess';
 import PaymentCancelled from './pages/PaymentCancelled';
 import ExtractionConfiguration from './pages/ExtractionConfiguration';
+import ChangePassword from './pages/ChangePassword';
 import DigitisationDashboard from './pages/DigitisationDashboard';
 import DigitisationStub from './pages/DigitisationStub';
 import DocumentsPipeline from './pages/DocumentsPipeline';
@@ -132,6 +133,7 @@ function App() {
             <Route path="queue/workstation" element={<WorkstationDashboard />} />
             <Route path="billing" element={<Billing />} />
             <Route path="analytics" element={<Analytics />} />
+            <Route path="account/change-password" element={<ChangePassword />} />
             <Route path="financial-dashboard" element={<FinancialDashboard />} />
             <Route path="claims-management" element={<ClaimsManagement />} />
             <Route path="extraction-config" element={<ExtractionConfiguration />} />

@@ -36,7 +36,9 @@ gate — I do not run these for you. Steps are ordered; don't skip ahead.
       accounts exist in prod, or that their passwords are rotated to strong unique ones,
       before go-live.
 - [ ] 4. Wire backend `CORS_ORIGINS` → the frontend's Render URL; redeploy backend.
-- [ ] 5. Smoke: `/api/health` green; `/docs` + `/openapi.json` → 404 (DEBUG off); login works.
+- [ ] 5. Smoke: `/api/health` green; `/docs` + `/openapi.json` → 404 (DEBUG off); login works;
+      sidebar **Change Password** rotates the password (POST `/api/auth/change-password` is
+      real as of 2026-05-24, not a stub — verifies current, sets new bcrypt hash, 8-char min).
 - [ ] ⚠ 6. **Cross-tenant probe against the LIVE prod backend** — verified on DEV +
       prod DB, but NOT yet against the deployed prod API. Ask me; I'll run it (~2 min).
 - [ ] ⚠ 7. **One live LandingAI OCR smoke** — upload a single real GP PDF in prod and
@@ -44,7 +46,13 @@ gate — I do not run these for you. Steps are ordered; don't skip ahead.
       re-run this session (synthetic only, to save credits). Confirms the full chain
       works in prod with real extraction.
 - [ ] 8. Confirm Supabase Pro **backups** are on.
-- [ ] 9. Onboard customer #1: `onboard_practice.py` pointed at prod (see ONBOARDING_RUNBOOK.md).
+- [ ] 9. Onboard customer #1: `onboard_practice.py --plan essential` pointed at prod
+      (see ONBOARDING_RUNBOOK.md). Tell the customer to rotate their issued password
+      on first login (Settings → Change Password).
+- [ ] 10. **Forgot-password = concierge (v1)**. No email-driven self-service reset; if a
+      customer locks themselves out, use `scripts/reset_user_password.py --email <…>`
+      to generate a new strong password and send it over a secure channel. Self-service
+      reset (email flow) is a deliberate post-launch build.
 
 ## 0. Prerequisites
 - PROD Supabase project (exists). Hosting: **all Render** (backend + frontend).

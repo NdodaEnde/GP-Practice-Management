@@ -187,6 +187,15 @@ const Layout = () => {
                   </div>
                 </div>
                 <Button
+                  onClick={() => navigate('/account/change-password')}
+                  variant="outline"
+                  size="sm"
+                  className="w-full gap-base text-body-sm border-outline-variant text-on-surface-variant hover:bg-surface-container mb-2"
+                >
+                  <MIcon name="key" className="!text-[16px]" />
+                  Change Password
+                </Button>
+                <Button
                   onClick={handleLogout}
                   variant="outline"
                   size="sm"

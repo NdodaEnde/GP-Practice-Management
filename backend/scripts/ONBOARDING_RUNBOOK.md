@@ -33,10 +33,28 @@ does not leak forbidden ones (an Essential practice must not come out with
 
 ## Hand-off to the customer
 
-1. Send them the **login email + password** (over a secure channel).
+1. Send them the **login email + password** (over a secure channel — not plain email).
 2. They log in at the app URL and should land on the digitisation Dashboard.
-3. They add their own staff in-app (admin → user management); new staff
+3. **Tell them to rotate the password on first login** via the sidebar →
+   *Change Password*. The endpoint (`POST /api/auth/change-password`) verifies
+   the current password and writes a new bcrypt hash; 8-character minimum.
+4. They add their own staff in-app (admin → user management); new staff
    inherit the workspace + its entitlement.
+
+## If a customer is locked out / forgot their password (v1 concierge fallback)
+
+There is no self-service forgot-password email flow in v1 (intentionally
+deferred — see DEPLOYMENT.md). The concierge fallback is:
+
+```bash
+PYTHONPATH=. ./.venv/bin/python scripts/reset_user_password.py \
+  --email dr@wellness.co.za
+# add --dry-run first to preview; --password 'StrongPass123' to set explicitly
+```
+
+This generates a strong random password, writes the new bcrypt hash to the
+user's row, and prints the new password **once**. Send it over a secure
+channel; ask the customer to rotate it on next login.
 
 ## Billing (manual)
 
