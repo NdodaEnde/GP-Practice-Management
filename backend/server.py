@@ -2600,6 +2600,13 @@ api_router.include_router(billing_router, tags=["Billing & Payments"])
 api_router.include_router(payfast_router, prefix="/payfast", tags=["PayFast Payment Gateway"])
 api_router.include_router(extraction_mappings_router, tags=["Extraction Mappings"])
 
+# ==================== Mining Gateway / Financial-Disclosure ====================
+# First module in the Mining gateway. Lives in /api/fd/* alongside Healthcare's
+# /api/v1/gp/* — same multi-tenant substrate, separate domain layers per the
+# spec §1.2 reuse rule.
+from app.api.fd_endpoints import router as fd_router
+api_router.include_router(fd_router, prefix="/fd", tags=["Mining / Financial-Disclosure"])
+
 # ==================== Authentication & User Management ====================
 from app.api.auth import router as auth_router
 from app.api.users import router as users_router
