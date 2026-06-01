@@ -20,6 +20,8 @@ import PaymentSuccess from './pages/PaymentSuccess';
 import PaymentCancelled from './pages/PaymentCancelled';
 import ExtractionConfiguration from './pages/ExtractionConfiguration';
 import ChangePassword from './pages/ChangePassword';
+import MiningGateway from './pages/MiningGateway';
+import FinancialDisclosureCopilot from './pages/FinancialDisclosureCopilot';
 import DigitisationDashboard from './pages/DigitisationDashboard';
 import DigitisationStub from './pages/DigitisationStub';
 import DocumentsPipeline from './pages/DocumentsPipeline';
@@ -137,6 +139,13 @@ function App() {
             <Route path="financial-dashboard" element={<FinancialDashboard />} />
             <Route path="claims-management" element={<ClaimsManagement />} />
             <Route path="extraction-config" element={<ExtractionConfiguration />} />
+
+            {/* Mining gateway — first module: Financial-Disclosure (Exxaro Transition Intelligence). */}
+            {/* Note: the public marketing `/mining` route already exists (line ~101), so the */}
+            {/* gateway landing lives under /intel/mining to avoid the collision. The Copilot */}
+            {/* itself nests under /mining/financial-disclosure (sub-path, no collision). */}
+            <Route path="intel/mining" element={<MiningGateway />} />
+            <Route path="mining/financial-disclosure" element={<FinancialDisclosureCopilot />} />
 
             {/* Type C Digitisation Workspace (no EHR; capability-gated nav) */}
             <Route path="digitisation" element={<DigitisationDashboard />} />
