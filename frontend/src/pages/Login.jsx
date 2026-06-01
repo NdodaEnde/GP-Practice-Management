@@ -31,18 +31,20 @@ const Login = () => {
           description: `Welcome back, ${result.user.first_name}!`,
         });
 
-        // Redirect by capability shape, not role. A Type C workspace only
-        // bought Module 01 (Digitisation) — they have no EHR, so we land
-        // them on the Digitisation Workspace, not the Healthcare dashboard.
+        // Redirect by workspace shape. Mining-tier tenants (tenant_id
+        // starts with "mining-") land on the Mining gateway; Digitisation-
+        // only tenants land on the unified engine; full-practice tenants
+        // land on the EHR home (whose nav includes the same digitisation
+        // engine). Capability-based, never role-based.
         const caps = result.user.capabilities || [];
         const hasDigitisation = caps.includes('digitisation_upload');
         const hasEhr = caps.includes('patient_ehr_basic');
+        const isMiningTenant = typeof result.user.tenant_id === 'string'
+          && result.user.tenant_id.startsWith('mining-');
 
-        // Capability-based landing only — never the legacy /digitization
-        // or /document-upload screens. Digitisation-only tenants land on
-        // the unified engine; full-practice tenants land on the EHR home
-        // (whose nav now includes the SAME unified digitisation engine).
-        if (hasEhr) {
+        if (isMiningTenant) {
+          navigate('/intel/mining');
+        } else if (hasEhr) {
           navigate('/dashboard');
         } else if (hasDigitisation) {
           navigate('/digitisation');

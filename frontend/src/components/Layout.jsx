@@ -108,18 +108,34 @@ const Layout = () => {
     { name: 'Workspace Management', path: '/workspace-management', icon: 'corporate_fare' },
   ] : [];
 
+  // Mining-gateway nav. Gated on tenant_id (mining-* tenants), which is
+  // carried on the JWT and ends up on user.tenant_id. No capability gate
+  // yet — the FD endpoints are workspace-scoped, not capability-gated, and
+  // adding a mining_fd_copilot capability would need a products/migration.
+  const isMiningWorkspace = typeof user?.tenant_id === 'string' && user.tenant_id.startsWith('mining-');
+  const miningNav = isMiningWorkspace ? [
+    { name: 'Mining Gateway',        path: '/intel/mining',                icon: 'landscape' },
+    { name: 'Financial-Disclosure',  path: '/mining/financial-disclosure', icon: 'auto_awesome' },
+  ] : [];
+
   // Digitisation-only tier: just the engine. Full GP-Practice tier: the
   // SAME engine nav + the EHR-only screens. One digitisation experience
   // everywhere; per-item hasCapability filter (below) still applies.
-  const baseNav = isTypeCWorkspace
-    ? digitisationNav
-    : [...digitisationNav, ...healthcareNav];
+  // Mining tier: skip both — they're not healthcare workspaces.
+  const baseNav = isMiningWorkspace
+    ? []
+    : (isTypeCWorkspace
+       ? digitisationNav
+       : [...digitisationNav, ...healthcareNav]);
   const navigation = [
+    ...miningNav,
     ...baseNav.filter(item => !item.capability || hasCapability(item.capability)),
     ...adminNav,
   ];
 
-  const subtitle = isTypeCWorkspace ? 'Digitisation Workspace' : (user?.workspace_name || 'Healthcare');
+  const subtitle = isMiningWorkspace
+    ? 'Mining Gateway'
+    : (isTypeCWorkspace ? 'Digitisation Workspace' : (user?.workspace_name || 'Healthcare'));
 
   // Active nav = the LONGEST nav path that prefixes the current route. A plain
   // startsWith lit every item whose path is a prefix of another — e.g. the
