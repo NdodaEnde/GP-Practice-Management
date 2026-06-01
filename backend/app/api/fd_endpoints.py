@@ -38,6 +38,7 @@ from app.services.fd_processor import FDDocumentProcessor
 from app.services.fd_query_library import (
     QUERY_DISPATCH,
     SUGGESTED_PROMPTS,
+    grounded_open_search,
 )
 
 logger = logging.getLogger(__name__)
@@ -350,7 +351,23 @@ async def query_copilot(
         query_id = _classify_intent(body.question)
 
     if not query_id or query_id not in QUERY_DISPATCH:
-        # Layer 4: spec §7.1 refusal. (Layer 3 grounded retrieval is step 6.)
+        # Spec §7.1 layer-3: grounded retrieval. Tries to surface relevant
+        # source spans before falling through to the layer-4 refusal.
+        if body.question:
+            try:
+                grounded = grounded_open_search(supabase, workspace_id, body.question)
+            except Exception as exc:
+                grounded = None
+                # Swallow: grounded is a best-effort fallback. Final refusal
+                # below still fires if it doesn't return rows.
+            if grounded and grounded.rows:
+                try:
+                    return _render_answer(grounded)
+                except AnswerContractError as exc:
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc),
+                    )
+        # Layer 4: spec §7.1 constrained refusal.
         return _build_refusal()
 
     fn = QUERY_DISPATCH[query_id]

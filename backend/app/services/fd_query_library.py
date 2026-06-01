@@ -866,3 +866,103 @@ QUERY_DISPATCH = {
     "Q_COMPLIANCE": Q_COMPLIANCE_expansion_into_coal,
     "Q_DELTA": Q_DELTA_year_over_year,
 }
+
+
+# =============================================================================
+# Layer-3 grounded retrieval (spec §7.1)
+# =============================================================================
+
+
+def grounded_open_search(
+    supabase: Any,
+    workspace_id: str,
+    question: str,
+    *,
+    top_k: int = 5,
+) -> QueryResult:
+    """
+    Spec §7.1 layer-3: when no rail / intent match exists, embed the question
+    and pull the top-K most-similar source spans. The returned QueryResult is
+    a "we found this in the reports" answer — each row carries the verbatim
+    quote (the answer) + the span as evidence + a 'disclosed' chip.
+
+    This never invents content beyond what the spans say. The model is NOT
+    asked to extract a specific value here; the answer is the source text
+    itself, surfaced for the user to read. If the question is truly out of
+    scope (no relevant spans), the cosine distances will be high enough to
+    indicate that, and the caller falls back to the §7.1 layer-4 refusal.
+    """
+    if not question or not question.strip():
+        return QueryResult(query_id="GROUNDED", title=question, rows=[], not_in_reports=True)
+
+    # Embed the question with the same model the spans use.
+    try:
+        from openai import OpenAI
+        import os
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError("OPENAI_API_KEY not set; grounded retrieval unavailable.")
+        client = OpenAI(api_key=api_key)
+        resp = client.embeddings.create(
+            model="text-embedding-3-large",
+            input=question,
+            dimensions=1536,
+        )
+        q_vec = resp.data[0].embedding
+    except Exception as exc:
+        # Embedding service unavailable → refuse rather than fabricate.
+        logger.warning("Grounded retrieval embed failed: %s", exc)
+        return QueryResult(query_id="GROUNDED", title=question, rows=[],
+                           notes=f"Embedding service unavailable: {exc}",
+                           not_in_reports=True)
+
+    # Cosine-similarity search via the Postgres function.
+    rpc_resp = supabase.rpc(
+        "fd_search_source_spans",
+        {"p_workspace_id": workspace_id, "p_query_vec": q_vec, "p_limit": top_k},
+    ).execute()
+    hits = getattr(rpc_resp, "data", None) or []
+
+    # Filter out very-distant hits — pgvector cosine distance > ~0.6 is
+    # generally noise. (Distance ranges 0..2; 0 = identical, 1 = orthogonal,
+    # 2 = opposite. Empirically the cutoff for "actually relevant" is ~0.55
+    # for text-embedding-3-large.)
+    DISTANCE_CUTOFF = 0.6
+    relevant = [h for h in hits if float(h.get("distance") or 1.0) <= DISTANCE_CUTOFF]
+    if not relevant:
+        return QueryResult(
+            query_id="GROUNDED", title=question, rows=[],
+            notes=("No source spans were similar enough to confidently answer this. "
+                   "Consider one of the suggested prompts."),
+            not_in_reports=True,
+        )
+
+    rows: List[AnswerRow] = []
+    # LandingAI markdown chunks start with anchor tags like <a id='…'></a> —
+    # noise for the human reading the answer, kept on the underlying span
+    # for traceability.
+    import re
+    _anchor_strip = re.compile(r"<a\s+id\s*=\s*['\"][^'\"]*['\"]\s*>\s*</a>\s*", re.IGNORECASE)
+    for h in relevant:
+        raw_quote = h.get("quote") or ""
+        clean_quote = _anchor_strip.sub("", raw_quote).strip()
+        doc_id = h.get("doc_id") or ""
+        page = int(h.get("page") or 0)
+        distance = float(h.get("distance") or 0.0)
+        snippet = (clean_quote[:200] + "…") if len(clean_quote) > 200 else clean_quote
+        rows.append(AnswerRow(
+            label=f"{doc_id}, p.{page}",
+            value_raw=None,
+            value_display=snippet,
+            assertion_type="disclosed",
+            evidence=[Evidence(doc_id=doc_id, page=page, quote=clean_quote or raw_quote)],
+            extras={"distance": round(distance, 4), "scope": "grounded_open_search"},
+        ))
+
+    return QueryResult(
+        query_id="GROUNDED",
+        title=f"Source spans matching: {question[:100]}",
+        rows=rows,
+        notes=("Grounded retrieval (spec §7.1 layer-3). Answers are the verbatim "
+               "source text — no value extraction. Cite the spans before quoting them."),
+    )

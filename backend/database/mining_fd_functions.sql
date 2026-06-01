@@ -108,3 +108,50 @@ CREATE UNIQUE INDEX IF NOT EXISTS fd_edges_unique_when_valid_from_null
 
 COMMENT ON INDEX fd_edges_unique_when_valid_from_null IS
     'Spec §4.3 idempotency: closes the NULL-not-equal-NULL gap in the natural fd_edges UNIQUE constraint for edges without temporal information (EVIDENCED_BY, SUPERSEDES, undated linkages).';
+
+
+-- ------------------------------------------------------------
+-- pgvector index + cosine-search function (spec §7.1 layer-3)
+-- ------------------------------------------------------------
+-- Deferred from mining_financial_disclosure_migration.sql §2 (was waiting
+-- for at least some embedded rows so ivfflat's `lists` parameter has data
+-- to cluster). With ~70+ spans embedded, lists=100 fits the rule of thumb
+-- (lists ≈ rows / 1000 for small sets, capped at 100).
+-- ------------------------------------------------------------
+CREATE INDEX IF NOT EXISTS fd_source_spans_embedding_idx
+    ON fd_source_spans USING ivfflat (embedding vector_cosine_ops)
+    WITH (lists = 100);
+
+COMMENT ON INDEX fd_source_spans_embedding_idx IS
+    'Spec §7.1 layer-3 grounded retrieval: cosine-similarity index on the OpenAI text-embedding-3-large@1536 embeddings of fd_source_spans.quote.';
+
+
+CREATE OR REPLACE FUNCTION fd_search_source_spans(
+    p_workspace_id UUID,
+    p_query_vec    vector(1536),
+    p_limit        INT DEFAULT 8
+)
+RETURNS TABLE (
+    id            UUID,
+    doc_id        TEXT,
+    page          INTEGER,
+    quote         TEXT,
+    distance      FLOAT
+)
+LANGUAGE plpgsql
+STABLE
+AS $$
+BEGIN
+    -- pgvector cosine distance: smaller = more similar. Range [0, 2].
+    RETURN QUERY
+    SELECT s.id, s.doc_id, s.page, s.quote, (s.embedding <=> p_query_vec) AS distance
+      FROM fd_source_spans s
+     WHERE s.workspace_id = p_workspace_id
+       AND s.embedding IS NOT NULL
+     ORDER BY s.embedding <=> p_query_vec
+     LIMIT p_limit;
+END
+$$;
+
+COMMENT ON FUNCTION fd_search_source_spans(UUID, vector, INT) IS
+    'Spec §7.1 layer-3: cosine-similarity search over fd_source_spans.embedding. Returns the top-N most-similar spans for a query embedding. Caller embeds the question with text-embedding-3-large@1536.';
