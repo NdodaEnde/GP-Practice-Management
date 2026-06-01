@@ -271,8 +271,13 @@ def _matches_expected(expected_norm: str, expected_num: Optional[float], ans_row
       * String: substring on the normalised forms (covers "path" / "—" /
         "no clean split available" etc.).
     """
-    # 1. Numeric comparison.
+    # 1. Numeric comparison. Tolerance scales with magnitude: rand-million
+    #    figures are typically rounded once to one decimal (e.g. "R10.4 bn"
+    #    → 10400 vs the precise "R10 423 million" → 10423, a 23m / 0.2%
+    #    rounding artefact). 0.5% relative tolerance lets honest rounding
+    #    flow through; anything beyond that is a real value mismatch.
     if expected_num is not None:
+        tol = max(0.5, abs(expected_num) * 0.005)
         candidates: List[float] = []
         vr = ans_row.get("value_raw")
         if isinstance(vr, (int, float)):
@@ -285,7 +290,7 @@ def _matches_expected(expected_norm: str, expected_num: Optional[float], ans_row
             if n is not None:
                 candidates.append(n)
         for c in candidates:
-            if abs(c - expected_num) < 0.5:
+            if abs(c - expected_num) <= tol:
                 return True
     # 2. String substring on normalised forms.
     candidates_str = []
