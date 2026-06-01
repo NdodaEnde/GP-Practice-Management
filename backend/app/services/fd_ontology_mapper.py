@@ -429,16 +429,18 @@ def map_and_persist(
             result.rejected.append(f"{field_path}: no provenance span")
             continue
 
-        # The source can be an Asset (e.g. Grootegeluk) or a CapitalFund (e.g. coal cash bucket).
-        # Try Asset first, then CapitalFund, then Org.
-        src_cid, src_type = _try_resolve_multitype(supabase, workspace_id, src_sf, ("Asset", "CapitalFund", "Org"))
-        # The destination is typically a CapitalFund (for ALLOCATED_TO) or Asset/Acquisition (for FINANCES).
-        if relation == "ALLOCATED_TO":
-            dst_cid, dst_type = _try_resolve_multitype(supabase, workspace_id, dst_sf, ("CapitalFund", "StrategicPillar"))
-        elif relation == "FINANCES":
-            dst_cid, dst_type = _try_resolve_multitype(supabase, workspace_id, dst_sf, ("Asset", "Acquisition"))
-        else:
-            dst_cid, dst_type = _try_resolve_multitype(supabase, workspace_id, dst_sf, ("Asset", "CapitalFund", "Acquisition", "Org"))
+        # Strategic-narrative endpoints are higher-level than the strict §3.2
+        # signatures — the company narrates capital flow at the level of
+        # pillars ("coal operations → renewable energy") and aggregate
+        # framings ("our coal business → energy transition minerals"). The
+        # mapper accepts any registry-typed canonical ID on either side; the
+        # §3.3 honesty stamping at _stamp_assertion_type ensures the edge's
+        # assertion_type still falls under 'strategically_attributed' when
+        # the linkage matches the Coal→Diversification or Diversification→
+        # renewable/manganese-asset shapes.
+        _NARRATIVE_TYPES = ("Asset", "CapitalFund", "StrategicPillar", "Org", "Acquisition")
+        src_cid, src_type = _try_resolve_multitype(supabase, workspace_id, src_sf, _NARRATIVE_TYPES)
+        dst_cid, dst_type = _try_resolve_multitype(supabase, workspace_id, dst_sf, _NARRATIVE_TYPES)
 
         if not (src_cid and dst_cid):
             qid = quarantine_for_review(
@@ -801,35 +803,79 @@ def _stamp_assertion_type(
     """
     Apply the spec §3.3 honesty rules at the write boundary.
 
-    Rules (in order):
-        1. Asset(Coal) -[ALLOCATED_TO]-> CapitalFund            → strategically_attributed
-        2. CapitalFund(Diversification) -[FINANCES]-> Asset      → strategically_attributed
-        3. CapitalFund(Diversification) -[FINANCES]-> Acquisition→ disclosed
-           (acquisition values are line-item disclosed; only the link is narrative)
-        4. CapitalFund(Expansion) -[FINANCES]-> Asset(Coal)      → strategically_attributed
-           (Q-COMPLIANCE: this is the violation Q-COMPLIANCE looks for; if it
-            appears at all, it's the company's strategy framing, not a ledger)
-        5. Otherwise → disclosed (we have a quote backing it)
+    The narrative endpoints come in at different levels of aggregation
+    (Asset, CapitalFund, StrategicPillar, Org), so the rules check identity
+    + commodity / fund_type / pillar at each src/dst type. Anything that
+    matches the spec's 'coal cash → green / future-minerals' or 'expansion
+    capex touching coal' shapes is stamped 'strategically_attributed';
+    everything else with a quote falls through to 'disclosed'.
+
+    Rules (in order; first match wins):
+        1. Asset(Coal) -[*]→ anything in {CapitalFund/Pillar(Green/Future)/Asset(Renewable/Manganese)}
+                                                                → strategically_attributed
+        2. StrategicPillar(Coal Ops) -[*]→ anything that's a transition destination
+                                                                → strategically_attributed
+        3. CapitalFund(Diversification) -[*]→ Asset(Renewable/Manganese)/Pillar(Green/Future)
+                                                                → strategically_attributed
+        4. CapitalFund(Diversification) -[FINANCES]→ Acquisition → disclosed
+           (acquisition value is line-item disclosed; the linkage is the only narrative bit)
+        5. CapitalFund(Expansion) -[*]→ Asset(Coal)              → strategically_attributed
+           (the Q-COMPLIANCE violation: any expansion capex into coal is, by definition,
+            a strategy assertion not a ledger trace)
+        6. Otherwise → disclosed (we already required a company_quote at §4.4)
     """
-    # Pull the src commodity / fund_type to apply rules. Single-row reads.
+    # The set of destinations that mark "transition" intent — feeding any of
+    # these from a Coal source means the company is stating a strategy, not
+    # disclosing a traced cash flow.
+    GREEN_PILLAR_IDS = {"PILLAR-GREEN-ENERGY-001", "PILLAR-FUTURE-MINERALS-001"}
+
+    def _is_transition_destination(dst_cid: str, dst_type: str) -> bool:
+        if dst_type == "StrategicPillar" and dst_cid in GREEN_PILLAR_IDS:
+            return True
+        if dst_type == "Asset":
+            r = supabase.table("fd_assets").select("commodity").match({"workspace_id": workspace_id, "canonical_id": dst_cid}).limit(1).execute()
+            rows = getattr(r, "data", None) or []
+            return bool(rows) and rows[0].get("commodity") in ("Renewable", "Manganese")
+        if dst_type == "Org" and dst_cid == "CENNERGI-001":
+            # Cennergi is the renewable subsidiary — narratives that say
+            # "coal funds Cennergi" are strategy, never a traced ledger flow.
+            return True
+        if dst_type == "CapitalFund":
+            r = supabase.table("fd_capital_funds").select("fund_type").match({"workspace_id": workspace_id, "canonical_id": dst_cid}).limit(1).execute()
+            rows = getattr(r, "data", None) or []
+            return bool(rows) and rows[0].get("fund_type") == "Diversification"
+        return False
+
+    # 1. Asset(Coal) → transition destination
     if src_type == "Asset":
-        resp = supabase.table("fd_assets").select("commodity").match({"workspace_id": workspace_id, "canonical_id": src_cid}).limit(1).execute()
-        rows = getattr(resp, "data", None) or []
-        if rows and rows[0].get("commodity") == "Coal" and relation == "ALLOCATED_TO":
+        r = supabase.table("fd_assets").select("commodity").match({"workspace_id": workspace_id, "canonical_id": src_cid}).limit(1).execute()
+        rows = getattr(r, "data", None) or []
+        if rows and rows[0].get("commodity") == "Coal" and _is_transition_destination(dst_cid, dst_type):
             return "strategically_attributed"
+
+    # 2. StrategicPillar(Coal Ops) → transition destination
+    if src_type == "StrategicPillar" and src_cid == "PILLAR-COAL-OPS-001":
+        if _is_transition_destination(dst_cid, dst_type):
+            return "strategically_attributed"
+
+    # 3, 4, 5. CapitalFund-rooted narratives
     if src_type == "CapitalFund":
-        resp = supabase.table("fd_capital_funds").select("fund_type").match({"workspace_id": workspace_id, "canonical_id": src_cid}).limit(1).execute()
-        rows = getattr(resp, "data", None) or []
+        r = supabase.table("fd_capital_funds").select("fund_type").match({"workspace_id": workspace_id, "canonical_id": src_cid}).limit(1).execute()
+        rows = getattr(r, "data", None) or []
         if rows:
             fund_type = rows[0].get("fund_type")
-            if fund_type == "Diversification" and relation == "FINANCES" and dst_type == "Asset":
-                return "strategically_attributed"
-            if fund_type == "Diversification" and relation == "FINANCES" and dst_type == "Acquisition":
-                return "disclosed"
-            if fund_type == "Expansion" and relation == "FINANCES" and dst_type == "Asset":
-                resp2 = supabase.table("fd_assets").select("commodity").match({"workspace_id": workspace_id, "canonical_id": dst_cid}).limit(1).execute()
-                rows2 = getattr(resp2, "data", None) or []
+            if fund_type == "Diversification":
+                # 3. → renewable/manganese asset, or → Green/Future pillar
+                if _is_transition_destination(dst_cid, dst_type) and dst_type in ("Asset", "StrategicPillar", "Org"):
+                    return "strategically_attributed"
+                # 4. → acquisition is the one place where the linkage is disclosed
+                if dst_type == "Acquisition":
+                    return "disclosed"
+            if fund_type == "Expansion" and dst_type == "Asset":
+                r2 = supabase.table("fd_assets").select("commodity").match({"workspace_id": workspace_id, "canonical_id": dst_cid}).limit(1).execute()
+                rows2 = getattr(r2, "data", None) or []
                 if rows2 and rows2[0].get("commodity") == "Coal":
+                    # 5. Q-COMPLIANCE violation shape — any expansion capex into coal
                     return "strategically_attributed"
     # Default
     return "disclosed"
