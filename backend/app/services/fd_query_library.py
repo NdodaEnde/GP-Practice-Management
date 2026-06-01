@@ -109,19 +109,28 @@ def Q1_coal_assets_by_attributable_fcf(
     fiscal_year: int,
 ) -> QueryResult:
     """
-    Top coal assets by ownership-weighted free cash flow for one fiscal year.
+    Cash-generating signals for the year — attributable / ownership-weighted
+    where ownership is known, disclosed otherwise. Spec §7.2 Q1.
 
-    For each Coal asset:
-        attributable_fcf = reported_fcf × Exxaro.OWNS(effective_pct, default 1.0)
-        assertion_type   = 'derived'
-        derivation       = "Rxxx m × yy.y% = Rxxx m"
-        evidence         = source spans of the FinancialFact + the OWNS edge
+    Reality: chapter-level ADE extractions emit mostly Group-level financials
+    (CapEx, EBITDA, RevenueGross, NetProfit), with only the occasional per-
+    asset row. The narrow "Coal asset + FCF" filter (in the v0.1 of this
+    query) returned zero rows on real data. The broader rule below surfaces
+    any reported cash-generating signal we have for the requested year:
+        * Coal assets with a per-asset cash metric → attributable rollup
+          (still 'derived' with arithmetic when effective_pct < 1).
+        * Group / Org-level totals → 'disclosed' rows with chip + evidence.
 
-    Spec §7.2 Q1 + §6.2 attributable rollup + §7.4 (3) visible arithmetic.
+    The order is: asset-level first (most specific), Group-level second.
     """
     rows: List[AnswerRow] = []
 
-    # 1. All Coal assets in this workspace.
+    # The cash-flow / earnings metrics we treat as Q1-relevant. Order matters
+    # for the "best available" pick when an asset has multiple metrics for the
+    # fiscal year.
+    CASH_METRICS = ("FCF", "AttributableEBITDA", "EBITDA", "RevenueGross", "OperatingProfit", "NetProfit", "CapEx")
+
+    # 1. Per-asset cash signals on Coal assets.
     assets_resp = (
         supabase.table("fd_assets")
         .select("canonical_id,name")
@@ -132,23 +141,29 @@ def Q1_coal_assets_by_attributable_fcf(
     for asset in getattr(assets_resp, "data", None) or []:
         asset_cid: str = asset["canonical_id"]
         asset_name: str = asset["name"]
-
-        # 2. FCF FinancialFact for this asset + fiscal_year, status='active'.
-        ff_id = f"{asset_cid}-FCF-{fiscal_year}"
-        ff_resp = (
-            supabase.table("fd_financial_facts")
-            .select("value_zar_m,status,basis")
-            .eq("workspace_id", workspace_id)
-            .eq("canonical_id", ff_id)
-            .limit(1)
-            .execute()
-        )
-        ff_rows = getattr(ff_resp, "data", None) or []
-        if not ff_rows or ff_rows[0]["status"] != "active":
+        ff_rows: List[Dict[str, Any]] = []
+        for metric in CASH_METRICS:
+            ff_id = f"{asset_cid}-{metric}-{fiscal_year}"
+            ff_resp = (
+                supabase.table("fd_financial_facts")
+                .select("canonical_id,metric,value_zar_m,status,basis")
+                .eq("workspace_id", workspace_id)
+                .eq("canonical_id", ff_id)
+                .limit(1)
+                .execute()
+            )
+            ff_data = getattr(ff_resp, "data", None) or []
+            if ff_data and ff_data[0].get("status") == "active":
+                ff_rows = ff_data
+                break
+        if not ff_rows:
             continue
-        reported_fcf = float(ff_rows[0]["value_zar_m"])
 
-        # 3. Ownership: Exxaro -OWNS-> asset_cid (effective_pct). Default 1.0.
+        ff = ff_rows[0]
+        metric = ff["metric"]
+        reported = float(ff["value_zar_m"])
+
+        # Ownership weighting (default 1.0 if no OWNS edge stored).
         owns_resp = (
             supabase.table("fd_edges")
             .select("payload")
@@ -160,41 +175,63 @@ def Q1_coal_assets_by_attributable_fcf(
         )
         owns_rows = getattr(owns_resp, "data", None) or []
         effective_pct = 1.0
-        owns_evidence_spans: List[Evidence] = []
+        owns_evidence: List[Evidence] = []
         if owns_rows:
             payload = owns_rows[0].get("payload") or {}
             effective_pct = float(payload.get("effective_pct") or 1.0)
-            owns_evidence_spans = _fetch_evidence_spans(supabase, workspace_id, asset_cid_or_source="EXXARO-001", relation="EVIDENCED_BY")
+            owns_evidence = _fetch_evidence_spans(supabase, workspace_id, asset_cid_or_source="EXXARO-001")
 
-        attributable = reported_fcf * effective_pct
+        attributable = reported * effective_pct
+        ff_evidence = _fetch_evidence_spans(supabase, workspace_id, asset_cid_or_source=ff["canonical_id"])
+        derivation = (f"R{reported:,.0f}m × {effective_pct*100:.1f}% = R{attributable:,.0f}m"
+                      if effective_pct < 1.0 else None)
+        rows.append(AnswerRow(
+            label=f"{asset_name} — {metric}",
+            value_raw=attributable,
+            value_display=f"R{attributable:,.0f}m",
+            assertion_type=("derived" if effective_pct < 1.0 else "disclosed"),
+            evidence=_dedupe_evidence(ff_evidence + owns_evidence),
+            derivation=derivation,
+            extras={"asset_canonical_id": asset_cid, "metric": metric,
+                    "reported_zar_m": reported, "effective_pct": effective_pct,
+                    "fiscal_year": fiscal_year, "scope": "asset"},
+        ))
 
-        # 4. Evidence on the FinancialFact itself.
-        ff_evidence_spans = _fetch_evidence_spans(supabase, workspace_id, asset_cid_or_source=ff_id, relation="EVIDENCED_BY")
-
-        # 5. Build the visible derivation only when effective_pct < 1 (else arithmetic is trivial).
-        if effective_pct < 1.0:
-            derivation = f"R{reported_fcf:,.0f}m × {effective_pct*100:.1f}% = R{attributable:,.0f}m"
-        else:
-            derivation = None
-
-        rows.append(
-            AnswerRow(
-                label=asset_name,
-                value_raw=attributable,
-                value_display=f"R{attributable:,.0f}m",
-                assertion_type="derived" if effective_pct < 1.0 else "disclosed",
-                evidence=_dedupe_evidence(ff_evidence_spans + owns_evidence_spans),
-                derivation=derivation,
-                extras={"reported_fcf_zar_m": reported_fcf, "effective_pct": effective_pct, "fiscal_year": fiscal_year},
-            )
+    # 2. Group-level totals for the same fiscal_year (Exxaro the Org). Helps
+    #    when no per-asset cash data was extracted — at least the user sees
+    #    the Group cash signals with provenance.
+    for metric in CASH_METRICS:
+        gff_id = f"EXXARO-001-{metric}-{fiscal_year}"
+        ff_resp = (
+            supabase.table("fd_financial_facts")
+            .select("canonical_id,metric,value_zar_m,status")
+            .eq("workspace_id", workspace_id)
+            .eq("canonical_id", gff_id)
+            .limit(1)
+            .execute()
         )
+        ff_data = getattr(ff_resp, "data", None) or []
+        if not ff_data or ff_data[0].get("status") != "active":
+            continue
+        ff = ff_data[0]
+        v = float(ff["value_zar_m"])
+        rows.append(AnswerRow(
+            label=f"Group — {metric}",
+            value_raw=v,
+            value_display=f"R{v:,.0f}m",
+            assertion_type="disclosed",
+            evidence=_fetch_evidence_spans(supabase, workspace_id, asset_cid_or_source=ff["canonical_id"]),
+            derivation=None,
+            extras={"metric": metric, "fiscal_year": fiscal_year, "scope": "group"},
+        ))
 
     rows.sort(key=lambda r: (r.value_raw or 0), reverse=True)
     return QueryResult(
         query_id="Q1",
-        title=f"Coal assets by attributable free cash flow, FY{fiscal_year}",
+        title=f"Cash-generating signals, FY{fiscal_year}",
         rows=rows,
-        notes="Attributable = reported FCF × effective ownership. Derived from disclosed figures (spec §6.2).",
+        notes=("Attributable = reported × effective ownership when known. "
+               "Per-asset rows first, then Group totals. Spec §6.2."),
         not_in_reports=(len(rows) == 0),
     )
 
@@ -215,14 +252,17 @@ def Q2_renewable_or_future_mineral_funding(
     """
     rows: List[AnswerRow] = []
 
-    # Diversification-fund FINANCES edges.
-    fund_id = "FUND-DIVERSIFICATION-001"
+    # Real narratives surface as ALLOCATED_TO at pillar or fund granularity —
+    # not always as FINANCES from a CapitalFund. Accept any outgoing strategic
+    # edge from the Diversification fund OR the Coal-Ops pillar.
+    SRC_IDS = ("FUND-DIVERSIFICATION-001", "PILLAR-COAL-OPS-001")
+    fund_id = SRC_IDS[0]  # kept for evidence backref below
     edges_resp = (
         supabase.table("fd_edges")
-        .select("dst_canonical_id,dst_type,payload,assertion_type")
+        .select("src_canonical_id,dst_canonical_id,dst_type,payload,assertion_type")
         .eq("workspace_id", workspace_id)
-        .eq("src_canonical_id", fund_id)
-        .eq("relation", "FINANCES")
+        .in_("src_canonical_id", list(SRC_IDS))
+        .in_("relation", ["FINANCES", "ALLOCATED_TO"])
         .execute()
     )
     for edge in getattr(edges_resp, "data", None) or []:
@@ -271,106 +311,70 @@ def Q3_funding_path(
     destination_id: str = "CENNERGI-001",
 ) -> QueryResult:
     """
-    Trace edges Asset -[GENERATES]-> FinancialFact -[ALLOCATED_TO]-> CapitalFund
-    -[FINANCES]-> destination. Each ALLOCATED_TO / FINANCES edge carries its
-    assertion_type from the write boundary (spec §3.3); the answer-contract
-    layer renders the §7.3 wording for any 'strategically_attributed' link.
+    Strategic linkages from a coal-side source to a transition destination.
+    Spec §7.2 Q3 + §7.3 honesty framing.
 
-    Returns rows in path order: source → ff → fund → destination. The UI
-    animates them as the funding path (spec §7.5 Demo 1).
+    Real ADE output writes these as direct ALLOCATED_TO / FINANCES edges at
+    pillar or fund granularity — *not* as the four-edge canonical path
+    Asset→FinancialFact→CapitalFund→destination the spec sketches. The v1
+    of this query did a strict 4-edge join and returned zero rows on real
+    data. The v2 below surfaces ANY strategically_attributed (or disclosed,
+    quote-backed) outgoing edge from a coal-side source, ordered by how
+    closely it matches the requested destination.
     """
     rows: List[AnswerRow] = []
 
-    # Pull all candidate paths via three separate queries.
-    gen_resp = (
+    # Coal-side sources: the asset directly, the Coal-Ops pillar (the
+    # company's framing of its coal business), and the Diversification fund
+    # (deploys the coal cash). Real narratives surface from any of these.
+    COAL_SIDE_SRCS = [source_asset_id, "PILLAR-COAL-OPS-001", "FUND-DIVERSIFICATION-001"]
+
+    edges_resp = (
         supabase.table("fd_edges")
-        .select("dst_canonical_id,payload")
+        .select("src_canonical_id,src_type,dst_canonical_id,dst_type,relation,payload,assertion_type")
         .eq("workspace_id", workspace_id)
-        .eq("src_canonical_id", source_asset_id)
-        .eq("relation", "GENERATES")
+        .in_("src_canonical_id", COAL_SIDE_SRCS)
+        .in_("relation", ["ALLOCATED_TO", "FINANCES"])
         .execute()
     )
-    candidate_ff_ids: List[str] = [e["dst_canonical_id"] for e in getattr(gen_resp, "data", None) or []]
-
-    for ff_id in candidate_ff_ids:
-        # ALLOCATED_TO from FinancialFact -> CapitalFund
-        alloc_resp = (
-            supabase.table("fd_edges")
-            .select("dst_canonical_id,payload,assertion_type")
-            .eq("workspace_id", workspace_id)
-            .eq("src_canonical_id", ff_id)
-            .eq("relation", "ALLOCATED_TO")
-            .execute()
+    for e in getattr(edges_resp, "data", None) or []:
+        src_label = _resolve_label_for(supabase, workspace_id, e["src_canonical_id"], e["src_type"])
+        dst_label = _resolve_label_for(supabase, workspace_id, e["dst_canonical_id"], e["dst_type"])
+        quote = (e.get("payload") or {}).get("company_quote")
+        evidence = _dedupe_evidence(
+            _fetch_evidence_spans(supabase, workspace_id, asset_cid_or_source=e["src_canonical_id"])
+            + _fetch_evidence_spans(supabase, workspace_id, asset_cid_or_source=e["dst_canonical_id"])
         )
-        # Also catch the ALLOCATED_TO that originates directly from the Asset
-        # (the StrategicNarrative pattern from the mapper)
-        alloc_from_asset_resp = (
-            supabase.table("fd_edges")
-            .select("dst_canonical_id,payload,assertion_type")
-            .eq("workspace_id", workspace_id)
-            .eq("src_canonical_id", source_asset_id)
-            .eq("relation", "ALLOCATED_TO")
-            .execute()
-        )
-        alloc_rows = (getattr(alloc_resp, "data", None) or []) + (getattr(alloc_from_asset_resp, "data", None) or [])
+        matches_destination = _matches_destination(supabase, workspace_id, e["dst_canonical_id"], e["dst_type"], destination_id)
+        rows.append(AnswerRow(
+            label=f"{src_label} → {dst_label}",
+            value_raw=None,
+            value_display=e["relation"],
+            assertion_type=e.get("assertion_type"),
+            evidence=evidence,
+            company_quote=quote,
+            extras={
+                "src_canonical_id": e["src_canonical_id"], "dst_canonical_id": e["dst_canonical_id"],
+                "src_type": e["src_type"], "dst_type": e["dst_type"],
+                "relation": e["relation"], "matches_destination": matches_destination,
+            },
+        ))
 
-        for alloc in alloc_rows:
-            fund_id = alloc["dst_canonical_id"]
-            # FINANCES from CapitalFund -> destination
-            fin_resp = (
-                supabase.table("fd_edges")
-                .select("dst_canonical_id,dst_type,payload,assertion_type")
-                .eq("workspace_id", workspace_id)
-                .eq("src_canonical_id", fund_id)
-                .eq("relation", "FINANCES")
-                .execute()
-            )
-            for fin in getattr(fin_resp, "data", None) or []:
-                dst_cid = fin["dst_canonical_id"]
-                if not _matches_destination(supabase, workspace_id, dst_cid, fin["dst_type"], destination_id):
-                    continue
-                # Each path produces one row.
-                source_label = _resolve_label_for(supabase, workspace_id, source_asset_id, "Asset")
-                fund_label = _resolve_label_for(supabase, workspace_id, fund_id, "CapitalFund")
-                dst_label = _resolve_label_for(supabase, workspace_id, dst_cid, fin["dst_type"])
-
-                alloc_quote = (alloc.get("payload") or {}).get("company_quote")
-                fin_quote = (fin.get("payload") or {}).get("company_quote")
-                alloc_assertion = alloc.get("assertion_type")
-                fin_assertion = fin.get("assertion_type")
-
-                # Worst-case (most cautious) assertion_type drives the row's chip.
-                row_assertion = "strategically_attributed" if "strategically_attributed" in (alloc_assertion, fin_assertion) else "disclosed"
-
-                evidence = _dedupe_evidence(
-                    _fetch_evidence_spans(supabase, workspace_id, asset_cid_or_source=source_asset_id)
-                    + _fetch_evidence_spans(supabase, workspace_id, asset_cid_or_source=fund_id)
-                    + _fetch_evidence_spans(supabase, workspace_id, asset_cid_or_source=dst_cid)
-                )
-
-                rows.append(
-                    AnswerRow(
-                        label=f"{source_label} → {fund_label} → {dst_label}",
-                        value_raw=None,
-                        value_display="path",
-                        assertion_type=row_assertion,
-                        evidence=evidence,
-                        company_quote=alloc_quote or fin_quote,
-                        extras={
-                            "source_asset_id": source_asset_id,
-                            "fund_id": fund_id,
-                            "destination_id": dst_cid,
-                            "alloc_assertion": alloc_assertion,
-                            "fin_assertion": fin_assertion,
-                        },
-                    )
-                )
+    # Sort: direct match to destination first, then any strategically_attributed,
+    # then everything else. Keeps the demo's "Grootegeluk → Cennergi" hit on top
+    # when it exists.
+    rows.sort(key=lambda r: (
+        not r.extras.get("matches_destination"),
+        r.assertion_type != "strategically_attributed",
+        r.label,
+    ))
 
     return QueryResult(
         query_id="Q3",
-        title=f"Funding path from {source_asset_id} to {destination_id}",
+        title=f"Strategic linkages from coal-side sources to {destination_id}",
         rows=rows,
-        notes="If any link is strategically_attributed, the path reflects Exxaro's stated strategy, not a traced ledger flow (spec §3.3, §7.3).",
+        notes=("Edges marked 'strategically_attributed' reflect Exxaro's stated strategy, "
+               "not a traced rand-for-rand flow (spec §3.3, §7.3)."),
         not_in_reports=(len(rows) == 0),
     )
 
@@ -389,10 +393,10 @@ def Q4_diversification_split(supabase: Any, workspace_id: str) -> QueryResult:
     fund_id = "FUND-DIVERSIFICATION-001"
     edges_resp = (
         supabase.table("fd_edges")
-        .select("dst_canonical_id,dst_type,payload,assertion_type")
+        .select("src_canonical_id,dst_canonical_id,dst_type,payload,assertion_type")
         .eq("workspace_id", workspace_id)
-        .eq("src_canonical_id", fund_id)
-        .eq("relation", "FINANCES")
+        .in_("src_canonical_id", [fund_id, "PILLAR-COAL-OPS-001"])
+        .in_("relation", ["FINANCES", "ALLOCATED_TO"])
         .execute()
     )
     edges = getattr(edges_resp, "data", None) or []
@@ -436,12 +440,36 @@ def Q4_diversification_split(supabase: Any, workspace_id: str) -> QueryResult:
 
     total = manganese + renewables + other
     if total <= 0:
+        # Fallback: no R-amounts were attached to the diversification edges
+        # (real ADE chapters often emit narratives with company_quote only,
+        # not a rand amount). Surface what we DO have — the destinations,
+        # marked with their stamped assertion_type — so the user sees the
+        # strategy framing even without a clean numeric split.
+        fallback_rows: List[AnswerRow] = []
+        for e in edges:
+            dst_cid = e["dst_canonical_id"]
+            dst_type = e.get("dst_type")
+            dst_label = _resolve_label_for(supabase, workspace_id, dst_cid, dst_type)
+            quote = (e.get("payload") or {}).get("company_quote")
+            ev = _dedupe_evidence(
+                _fetch_evidence_spans(supabase, workspace_id, asset_cid_or_source=e["src_canonical_id"])
+                + _fetch_evidence_spans(supabase, workspace_id, asset_cid_or_source=dst_cid)
+            )
+            fallback_rows.append(AnswerRow(
+                label=dst_label or dst_cid, value_raw=None, value_display="—",
+                assertion_type=e.get("assertion_type"),
+                evidence=ev, company_quote=quote,
+                extras={"dst_canonical_id": dst_cid, "dst_type": dst_type},
+            ))
         return QueryResult(
             query_id="Q4",
-            title="Diversification capital split — manganese vs renewables",
-            rows=[],
-            notes="The ingested reports don't disclose enough diversification-fund FINANCES edges to compute a split.",
-            not_in_reports=True,
+            title="Diversification capital destinations (no clean split available)",
+            rows=fallback_rows,
+            notes=("The ingested chapters narrate WHERE diversification capital flows but don't "
+                   "disclose rand amounts per destination — so the percentage split can't be "
+                   "computed. The strategic destinations are shown below with their company quotes "
+                   "and source citations."),
+            not_in_reports=(len(fallback_rows) == 0),
         )
 
     pct_mn = round(100 * manganese / total)
@@ -613,46 +641,65 @@ def Q_DELTA_year_over_year(
                 .execute()
             )
             old = (getattr(old_resp, "data", None) or [{}])[0]
-            change_type = "restated"
             prior_value = old.get("value_zar_m")
             evidence = _fetch_evidence_spans(supabase, workspace_id, asset_cid_or_source=ff_cid)
             rows.append(
                 AnswerRow(
                     label=f"{ff['metric']} (fy{ff['fiscal_year']})",
                     value_raw=float(ff["value_zar_m"]),
-                    value_display=f"R{float(ff['value_zar_m']):,.0f}m  (was R{float(prior_value or 0):,.0f}m)",
+                    value_display=f"R{float(ff['value_zar_m']):,.0f}m  (was R{float(prior_value or 0):,.0f}m, restated)",
                     assertion_type="disclosed",
                     evidence=evidence,
                     extras={"change_type": "restated", "prior_value_zar_m": prior_value, "fact_canonical_id": ff_cid},
                 )
             )
         else:
-            # New if no FinancialFact exists in `prev` for the same metric+subject.
+            # No SUPERSEDES — compare against the prior-year fact directly.
+            # Same subject prefix + same metric, fiscal_year = prev.
             metric = ff["metric"]
             subj = ff_cid.rsplit("-", 2)[0] if "-" in ff_cid else ""
             prior_id = f"{subj}-{metric}-{prev}"
             prior_resp = (
                 supabase.table("fd_financial_facts")
-                .select("canonical_id")
+                .select("canonical_id,value_zar_m")
                 .eq("workspace_id", workspace_id)
                 .eq("canonical_id", prior_id)
                 .limit(1)
                 .execute()
             )
-            change_type = "unchanged" if (getattr(prior_resp, "data", None) or []) else "new"
-            if change_type == "unchanged":
-                continue
+            prior_rows = getattr(prior_resp, "data", None) or []
+            curr_value = float(ff["value_zar_m"])
             evidence = _fetch_evidence_spans(supabase, workspace_id, asset_cid_or_source=ff_cid)
-            rows.append(
-                AnswerRow(
+
+            if not prior_rows:
+                rows.append(AnswerRow(
                     label=f"{ff['metric']} (fy{ff['fiscal_year']})",
-                    value_raw=float(ff["value_zar_m"]),
-                    value_display=f"R{float(ff['value_zar_m']):,.0f}m  (new)",
+                    value_raw=curr_value,
+                    value_display=f"R{curr_value:,.0f}m  (new)",
                     assertion_type="disclosed",
                     evidence=evidence,
                     extras={"change_type": "new", "fact_canonical_id": ff_cid},
-                )
-            )
+                ))
+            else:
+                prior_value = float(prior_rows[0]["value_zar_m"])
+                if abs(curr_value - prior_value) < 1e-9:
+                    # Truly unchanged — skip (no story).
+                    continue
+                delta = curr_value - prior_value
+                arrow = "↑" if delta > 0 else "↓"
+                rows.append(AnswerRow(
+                    label=f"{ff['metric']} ({subj})",
+                    value_raw=curr_value,
+                    value_display=f"R{curr_value:,.0f}m  (was R{prior_value:,.0f}m, {arrow} R{abs(delta):,.0f}m)",
+                    assertion_type="disclosed",
+                    evidence=evidence,
+                    extras={
+                        "change_type": "changed",
+                        "prior_value_zar_m": prior_value,
+                        "delta_zar_m": delta,
+                        "fact_canonical_id": ff_cid,
+                    },
+                ))
 
     # 2. Withdrawn: rows present in prev with status='withdrawn'.
     withdrawn_resp = (
@@ -675,9 +722,12 @@ def Q_DELTA_year_over_year(
             )
         )
 
-    summary = f"{sum(1 for r in rows if r.extras.get('change_type') == 'new')} new, " \
-              f"{sum(1 for r in rows if r.extras.get('change_type') == 'restated')} restated, " \
-              f"{sum(1 for r in rows if r.extras.get('change_type') == 'withdrawn')} withdrawn"
+    summary = (
+        f"{sum(1 for r in rows if r.extras.get('change_type') == 'new')} new, "
+        f"{sum(1 for r in rows if r.extras.get('change_type') == 'changed')} changed, "
+        f"{sum(1 for r in rows if r.extras.get('change_type') == 'restated')} restated, "
+        f"{sum(1 for r in rows if r.extras.get('change_type') == 'withdrawn')} withdrawn"
+    )
     return QueryResult(
         query_id="Q_DELTA",
         title=f"What changed between FY{prev} and FY{curr}?",
