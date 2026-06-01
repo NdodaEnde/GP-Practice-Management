@@ -28,8 +28,17 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from pydantic import BaseModel, Field
 
 from app.api.auth import get_current_user
+from app.services.fd_answer_contract import (
+    AnswerContractError,
+    refusal as _build_refusal,
+    render as _render_answer,
+)
 from app.services.fd_ontology_mapper import IngestError
 from app.services.fd_processor import FDDocumentProcessor
+from app.services.fd_query_library import (
+    QUERY_DISPATCH,
+    SUGGESTED_PROMPTS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -283,6 +292,126 @@ async def list_needs_review(
         q = q.eq("resolved", resolved)
     resp = q.order("created_at", desc=True).execute()
     return {"items": getattr(resp, "data", None) or []}
+
+
+# =============================================================================
+# Query (Copilot)
+# =============================================================================
+
+
+class QueryBody(BaseModel):
+    """
+    Two ways to call POST /query:
+
+      1. Rail-safe (UI buttons): pass `query_id` directly with any required
+         `params`. Skips the intent classifier; goes straight to the named
+         query function. Zero text-to-SQL risk on the happy path.
+
+      2. Open question: pass `question` (free text). The server runs the
+         spec §7.1 layered resolver — exact-text match against the suggested
+         prompts, then a simple keyword classifier, then the constrained
+         refusal copy.
+
+    `params` carries the parameterised-query inputs (fiscal_year for Q1,
+    prev/curr for Q_DELTA, source_asset_id / destination_id for Q3, etc.).
+    """
+
+    question: Optional[str] = Field(None, description="Open-question text. Ignored if query_id is set.")
+    query_id: Optional[str] = Field(None, description="One of Q1, Q2, Q3, Q4, Q_COMPLIANCE, Q_DELTA. Rail-safe path.")
+    params: Dict[str, Any] = Field(default_factory=dict, description="Parameters for the chosen query.")
+
+
+@router.get("/prompts")
+async def list_suggested_prompts(current_user: dict = Depends(get_current_user)):
+    """Return the catalogue of suggested-prompt buttons the Copilot UI renders."""
+    _require_workspace(current_user)
+    return {"prompts": list(SUGGESTED_PROMPTS)}
+
+
+@router.post("/query")
+async def query_copilot(
+    body: QueryBody,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Run a parameterised query against the FD graph. The response shape
+    matches the answer contract (fd_answer_contract.render), which the UI
+    renders directly: every figure cites ≥1 source span, derived figures
+    show their arithmetic, strategically_attributed rows render the §7.3
+    template, and out-of-scope questions return the constrained refusal copy.
+    """
+    workspace_id = _require_workspace(current_user)
+    supabase = _require_supabase()
+
+    # Layer 1: rail-safe button path.
+    query_id = body.query_id
+    if not query_id and body.question:
+        # Layer 2: minimal intent classifier.
+        query_id = _classify_intent(body.question)
+
+    if not query_id or query_id not in QUERY_DISPATCH:
+        # Layer 4: spec §7.1 refusal. (Layer 3 grounded retrieval is step 6.)
+        return _build_refusal()
+
+    fn = QUERY_DISPATCH[query_id]
+    try:
+        result = fn(supabase, workspace_id, **(body.params or {}))
+    except TypeError as exc:
+        # Surface bad params as a 400 — easier to debug than a 500.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Bad params for {query_id}: {exc}",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+    try:
+        return _render_answer(result)
+    except AnswerContractError as exc:
+        # A row had a value but no provenance. That's a server-side rule
+        # violation — bail with 500 so the bug surfaces. The mapper's
+        # invariants should make this unreachable.
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        )
+
+
+def _classify_intent(question: str) -> Optional[str]:
+    """
+    Tiny layer-2 classifier. For MVP: lowercase substring + keyword scoring
+    against the SUGGESTED_PROMPTS labels. Returns the best query_id if its
+    score exceeds the threshold, else None (caller refuses).
+
+    NOT a real intent classifier — semantic matching is step 6 (grounded
+    retrieval). This catches the obvious paraphrases ("what coal mines
+    made the most money?" → Q1) without inviting hallucinations.
+    """
+    if not question:
+        return None
+    q = question.strip().lower()
+    if not q:
+        return None
+
+    # Direct-label match (case-insensitive). Most reliable.
+    for entry in SUGGESTED_PROMPTS:
+        if entry["label"].lower() in q or q in entry["label"].lower():
+            return entry["query_id"]
+
+    # Keyword overlap. 2+ significant (4+-letter) words shared.
+    q_words = {w.strip(",.?!:;") for w in q.split() if len(w) >= 4}
+    best: tuple[int, Optional[str]] = (0, None)
+    for entry in SUGGESTED_PROMPTS:
+        label_words = {w.strip(",.?!:;").lower() for w in entry["label"].split() if len(w) >= 4}
+        overlap = len(q_words & label_words)
+        if overlap > best[0]:
+            best = (overlap, entry["query_id"])
+    return best[1] if best[0] >= 2 else None
+
+
+# =============================================================================
+# Needs-review queue (spec §4.2 quarantine)
+# =============================================================================
 
 
 class MergeBody(BaseModel):
