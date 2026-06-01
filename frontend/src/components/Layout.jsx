@@ -114,8 +114,9 @@ const Layout = () => {
   // adding a mining_fd_copilot capability would need a products/migration.
   const isMiningWorkspace = typeof user?.tenant_id === 'string' && user.tenant_id.startsWith('mining-');
   const miningNav = isMiningWorkspace ? [
-    { name: 'Mining Gateway',        path: '/intel/mining',                icon: 'landscape' },
-    { name: 'Financial-Disclosure',  path: '/mining/financial-disclosure', icon: 'auto_awesome' },
+    { name: 'Mining Gateway',        path: '/intel/mining',                       icon: 'landscape' },
+    { name: 'Financial-Disclosure',  path: '/mining/financial-disclosure',        icon: 'auto_awesome' },
+    { name: 'Live ingest',           path: '/mining/financial-disclosure/ingest', icon: 'upload_file' },
   ] : [];
 
   // Digitisation-only tier: just the engine. Full GP-Practice tier: the

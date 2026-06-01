@@ -22,6 +22,7 @@ import ExtractionConfiguration from './pages/ExtractionConfiguration';
 import ChangePassword from './pages/ChangePassword';
 import MiningGateway from './pages/MiningGateway';
 import FinancialDisclosureCopilot from './pages/FinancialDisclosureCopilot';
+import FinancialDisclosureIngest from './pages/FinancialDisclosureIngest';
 import DigitisationDashboard from './pages/DigitisationDashboard';
 import DigitisationStub from './pages/DigitisationStub';
 import DocumentsPipeline from './pages/DocumentsPipeline';
@@ -146,6 +147,7 @@ function App() {
             {/* itself nests under /mining/financial-disclosure (sub-path, no collision). */}
             <Route path="intel/mining" element={<MiningGateway />} />
             <Route path="mining/financial-disclosure" element={<FinancialDisclosureCopilot />} />
+            <Route path="mining/financial-disclosure/ingest" element={<FinancialDisclosureIngest />} />
 
             {/* Type C Digitisation Workspace (no EHR; capability-gated nav) */}
             <Route path="digitisation" element={<DigitisationDashboard />} />
