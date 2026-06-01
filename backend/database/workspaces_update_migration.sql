@@ -55,8 +55,13 @@ CREATE TRIGGER update_workspaces_updated_at
     EXECUTE FUNCTION update_updated_at_column();
 
 -- Update existing workspace with proper data
-UPDATE workspaces 
-SET 
+-- Identify the row by slug (VARCHAR), not id (UUID) — the original literal
+-- 'demo-gp-workspace-001' is not a valid UUID and the UPDATE errored on
+-- fresh applies. The slug column was the intended key. On re-run after the
+-- slug has been rotated to 'demo-gp-workspace' (this UPDATE's own SET), the
+-- WHERE matches no rows — a safe no-op, which is the right idempotent shape.
+UPDATE workspaces
+SET
     slug = 'demo-gp-workspace',
     organization_name = name,
     organization_type = 'gp_practice',
@@ -70,7 +75,7 @@ SET
     storage_quota_gb = 100,
     is_active = true,
     is_trial = false
-WHERE id = 'demo-gp-workspace-001';
+WHERE slug = 'demo-gp-workspace-001';
 
 -- Create workspace_users table if it doesn't exist
 CREATE TABLE IF NOT EXISTS workspace_users (
