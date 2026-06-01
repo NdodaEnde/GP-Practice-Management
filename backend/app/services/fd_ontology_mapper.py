@@ -330,16 +330,40 @@ def map_and_persist(
             result.rejected.append(f"{field_path}: missing required field(s)")
             continue
         if not spans:
-            # Spec §6.2 + plan rule: no source span, no OWNS edge.
-            # The effective_pct multiplies every downstream derived rollup
-            # — without a sourced multiplier we'd silently fabricate
-            # "attributable revenue" figures. Reject hard.
-            raise IngestError(
-                f"OWNS edge from {owner_sf!r} → {owned_sf!r}: refusing to write "
-                f"effective_pct={effective_pct} without a SourceSpan. "
-                f"effective_pct is a 'derived' multiplier and must be sourced "
-                f"(spec §6.2, plan OWNS-edge provenance rule)."
+            # Spec §6.2 + plan rule: no source span, no OWNS edge. The
+            # effective_pct multiplies every downstream derived rollup — without
+            # a sourced multiplier we'd silently fabricate attributable figures.
+            #
+            # Two failure modes are indistinguishable here: either the fact
+            # isn't actually in the report (model hallucination → reject), or
+            # the fact IS in the report but ADE didn't emit grounding for it
+            # (quarantine, let a human confirm). Quarantine handles both
+            # safely: the OWNS edge is NOT written, the surface form lands in
+            # needs_review with the unsourced effective_pct in ade_output, and
+            # a human can either reject it or supply the missing span.
+            qid = quarantine_for_review(
+                supabase, workspace_id,
+                raw_surface_form=f"{owner_sf} OWNS {owned_sf} ({effective_pct})",
+                best_match_canonical_id=None,
+                surface_form_confidence=0.0,
+                ade_output={
+                    "field_path": field_path,
+                    "row": own,
+                    "reason": "OWNS edge has no grounding span — spec §6.2 refusal",
+                },
+                doc_id=doc_id,
+                page=None,
             )
+            result.quarantined += 1
+            result.rejected.append(
+                f"{field_path}: OWNS {owner_sf!r} → {owned_sf!r} effective_pct={effective_pct} "
+                f"quarantined (no source span — spec §6.2)"
+            )
+            logger.warning(
+                "Quarantined unsourced OWNS edge: %s → %s, effective_pct=%s "
+                "(needs_review row %s)", owner_sf, owned_sf, effective_pct, qid,
+            )
+            continue
 
         owner_resolve = resolve_surface_form(supabase, workspace_id, owner_sf, "Org")
         owned_type = "Asset"  # ownership is usually of an asset; could also be an Org for holding-co stakes

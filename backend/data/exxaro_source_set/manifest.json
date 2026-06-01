@@ -1,0 +1,22 @@
+[
+  {
+    "bytes": 794658,
+    "doc_id": "EXXARO-IR-2024-CH-STRATEGY",
+    "doc_type": "integrated",
+    "path": "data/exxaro_source_set/integrated/fy2024/exxaro-ir-2024-chapter-strategy.pdf",
+    "sha256": "a748778ca8c567482a64e6e9e7dc7d8e39409b4ee6c16bc584cc2d699dd8a2da",
+    "skipped": false,
+    "url": "https://investor.exxaro.com/integrated-reports2024/pdf/strategically-positioning-the-business-for-growth.pdf",
+    "year": 2024
+  },
+  {
+    "bytes": 1238147,
+    "doc_id": "EXXARO-IR-2024-CH-PERFORMANCE",
+    "doc_type": "integrated",
+    "path": "data/exxaro_source_set/integrated/fy2024/exxaro-ir-2024-chapter-performance.pdf",
+    "sha256": "2017c29e1e1eda46ca523db96a4691156c710b7606dca32a3cb15a8828c6ade4",
+    "skipped": false,
+    "url": "https://investor.exxaro.com/integrated-reports2024/pdf/creating-value.pdf",
+    "year": 2024
+  }
+]

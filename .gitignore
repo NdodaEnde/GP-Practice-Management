@@ -92,3 +92,10 @@ backend/storage/exports/
 
 # Scratch / preview pages
 frontend/src/pages/__Preview*.jsx
+
+# Mining FD: ADE response cache (regenerable via paid API calls)
+backend/.cache/
+
+# Mining FD: Exxaro public PDFs (133 MB; re-fetch via
+# backend/scripts/download_exxaro_reports.py)
+backend/data/exxaro_source_set/**/*.pdf
