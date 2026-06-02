@@ -62,12 +62,12 @@ const verticals = [
   {
     slug: 'mining',
     name: 'Mining',
-    tagline: 'Deep-earth analytics',
-    cta: 'Optimise Ops',
+    tagline: 'Capital-transition intelligence',
+    cta: 'Open Copilot',
     icon: Mountain,
     accent: 'text-amber-700 bg-amber-50 border-amber-100 hover:border-amber-700',
     ctaTone: 'text-amber-700',
-    available: false,
+    available: true,
   },
 ];
 
