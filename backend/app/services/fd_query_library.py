@@ -125,10 +125,23 @@ def Q1_coal_assets_by_attributable_fcf(
     """
     rows: List[AnswerRow] = []
 
-    # The cash-flow / earnings metrics we treat as Q1-relevant. Order matters
-    # for the "best available" pick when an asset has multiple metrics for the
-    # fiscal year.
-    CASH_METRICS = ("FCF", "AttributableEBITDA", "EBITDA", "RevenueGross", "OperatingProfit", "NetProfit", "CapEx")
+    # Metrics surfaced by Q1. The chapter narrates the year's cash story
+    # through a mix of inflows, deployment, and earnings — Q1 surfaces all
+    # of them, with the metric labelled per row so the reader doesn't
+    # compare apples-to-oranges (spec §11 "no manufactured precision").
+    # Order matters for the "best available" pick when an asset has multiple
+    # metrics for the fiscal year.
+    CASH_METRICS = (
+        # Earnings + revenue
+        "FCF", "AttributableEBITDA", "EBITDA", "RevenueGross", "Revenue",
+        "OperatingProfit", "NetProfit", "HeadlineEarnings",
+        # Capital deployment (still part of the cash story)
+        "CapEx", "CapExSustaining", "CapExExpansion",
+        # Cash inflow / outflow narrative aggregates
+        "CashInflows", "CashFromOperationsNetOfTax", "CashGenerated",
+        "DividendsPaidToShareholders", "DividendIncomeReceived",
+        "NetCashBalance",
+    )
 
     # 1. Per-asset cash signals on Coal assets.
     assets_resp = (

@@ -177,7 +177,13 @@ class ExtractedFinancialFact(BaseModel):
             "The figure normalised to ZAR MILLIONS. Convert from billions (×1000), "
             "from other currencies (if the report provides a stated rate), and from "
             "thousand-separator variants. Example: 'R3.5 billion' → 3500.0. Example: "
-            "'R20 600 million' → 20600.0."
+            "'R20 600 million' → 20600.0. "
+            "PRECISION RULE: when the SAME metric / period appears in the document "
+            "as BOTH a rounded form (e.g. 'R10.4 billion' in an executive summary) "
+            "AND a precise figure (e.g. 'R10 423 million' in the financial-review "
+            "prose or a waterfall chart), ALWAYS take the precise figure with more "
+            "significant digits. The exec-summary rounding is a presentation choice; "
+            "the financial-review precise figure is the authoritative one."
         ),
     )
     currency: Optional[str] = Field(

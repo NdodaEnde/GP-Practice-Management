@@ -65,7 +65,13 @@ class GroupFinancialFigure(BaseModel):
         description=(
             "Value normalised to ZAR millions. 'R10 423 million' → 10423.0; "
             "'R10.4 billion' → 10400.0; '-R4 million' → -4.0. Keep negatives "
-            "negative. NEVER zero unless the report literally says zero."
+            "negative. NEVER zero unless the report literally says zero. "
+            "PRECISION RULE: when the same metric/period appears in both a "
+            "rounded form (e.g. 'R10.4 billion' in the exec summary) AND a "
+            "precise figure (e.g. 'R10 423 million' in the financial review or "
+            "a waterfall chart), ALWAYS take the precise figure with more "
+            "significant digits. The financial-review form is authoritative; "
+            "the exec-summary rounding is a presentation choice."
         ),
     )
     fiscal_year: Optional[int] = Field(None, description="4-digit fiscal year (2023, 2024, ...).")

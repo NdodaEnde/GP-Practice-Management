@@ -159,7 +159,39 @@ BEGIN
      'refusal', v_captured_by, v_captured_at,
      '(Completely unrelated to FD scope; refusal expected.)',
      NULL, '{}'::jsonb,
-     'Sanity check: completely-unrelated questions must refuse.')
+     'Sanity check: completely-unrelated questions must refuse.'),
+
+    -- ============ Cash-flow fact-type coverage ============
+    -- The targeted re-extract surfaced ~10 cash-flow-adjacent metrics, some
+    -- correct (DividendsPaidToShareholders R7,400m for FY2023), some wrong
+    -- and now quarantined (CashDividendPaid R90m; see
+    -- mining_quarantine_known_bad_facts.sql). These gold rows give the
+    -- gate visibility into the fact-type that was producing garbage outside
+    -- the gate's previous reach. They're scoped to ingested chapters; if
+    -- subsequent ingest changes a value, the gate catches the drift.
+    (v_workspace_id,
+     'What dividends were paid to external shareholders in FY2024?',
+     'R7,700m', 'EXXARO-IR-2024-CH-PERFORMANCE', 6,
+     'disclosed', v_captured_by, v_captured_at,
+     'Pay dividends to external shareholders of R7.7 billion (2023: R7.4 billion)',
+     'Q1', '{"fiscal_year": 2024}'::jsonb,
+     'Tests cash-flow coverage. After Q1 broadening, dividend-paid metric should surface for FY2024 with disclosed chip. If the quarantined CashDividendPaid-2023 R90m row resurfaces (wrong concept reactivated), this row''s gate result drifts.'),
+
+    (v_workspace_id,
+     'What were total cash inflows in FY2024?',
+     'R12,300m', 'EXXARO-IR-2024-CH-PERFORMANCE', 6,
+     'disclosed', v_captured_by, v_captured_at,
+     'we had cash inflows of R12.3 billion (2023: R16 billion)',
+     'Q1', '{"fiscal_year": 2024}'::jsonb,
+     'Tests cash-flow coverage for FY2024. The same sentence cites the 2023 comparator (R16bn) which is stored under CashInflows-2023.'),
+
+    (v_workspace_id,
+     'What was sustaining capex in FY2024?',
+     'R2,150m', 'EXXARO-IR-2024-CH-PERFORMANCE', 6,
+     'disclosed', v_captured_by, v_captured_at,
+     'Sustain our operations with capital expenditure of R2.15 billion (2023: R2.46 billion)',
+     'Q1', '{"fiscal_year": 2024}'::jsonb,
+     'Tests sustaining-capex specifically (not total CapEx). If the recovery extract conflated CapExSustaining with the broader CapEx, this row catches it.')
 
     ON CONFLICT (workspace_id, question, expected_doc_id, expected_page)
         DO UPDATE SET
