@@ -140,6 +140,7 @@ def Q1_coal_assets_by_attributable_fcf(
         # Cash inflow / outflow narrative aggregates
         "CashInflows", "CashFromOperationsNetOfTax", "CashGenerated",
         "DividendsPaidToShareholders", "DividendIncomeReceived",
+        "DividendPaidToNCI", "DividendsReceived", "DividendsPaid",
         "NetCashBalance",
     )
 

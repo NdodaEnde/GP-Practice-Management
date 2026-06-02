@@ -191,7 +191,133 @@ BEGIN
      'disclosed', v_captured_by, v_captured_at,
      'Sustain our operations with capital expenditure of R2.15 billion (2023: R2.46 billion)',
      'Q1', '{"fiscal_year": 2024}'::jsonb,
-     'Tests sustaining-capex specifically (not total CapEx). If the recovery extract conflated CapExSustaining with the broader CapEx, this row catches it.')
+     'Tests sustaining-capex specifically (not total CapEx). If the recovery extract conflated CapExSustaining with the broader CapEx, this row catches it.'),
+
+    -- ============ Cash-flow precision (4 more rows; growing toward §8 30–50 target) ============
+    (v_workspace_id,
+     'What was cash from operations net of tax in FY2024?',
+     'R7,800m', 'EXXARO-IR-2024-CH-PERFORMANCE', 6,
+     'disclosed', v_captured_by, v_captured_at,
+     'comprising R7.8 billion from our operations net of tax paid (2023: R10.7 billion)',
+     'Q1', '{"fiscal_year": 2024}'::jsonb,
+     'Tests the inflow-breakdown line. Q1 broadened metric whitelist must include CashFromOperationsNetOfTax.'),
+
+    (v_workspace_id,
+     'What was the net cash balance at end of FY2024?',
+     'R12,000m', 'EXXARO-IR-2024-CH-PERFORMANCE', 6,
+     'disclosed', v_captured_by, v_captured_at,
+     'Exxaro remains in a strong liquidity position with a net cash balance of R12.0 billion as at 31 December 2024 (2023: R10.5 billion)',
+     'Q1', '{"fiscal_year": 2024}'::jsonb,
+     'Tests balance-sheet snapshot inside Q1''s cash-narrative scope.'),
+
+    (v_workspace_id,
+     'What was dividend income received in FY2024?',
+     'R3,900m', 'EXXARO-IR-2024-CH-PERFORMANCE', 6,
+     'disclosed', v_captured_by, v_captured_at,
+     'dividend income received from our equity-accounted investments of R3.9 billion (2023: R4.9 billion)',
+     'Q1', '{"fiscal_year": 2024}'::jsonb,
+     'Tests dividend-income line from SIOC + Cennergi equity-accounted investments.'),
+
+    (v_workspace_id,
+     'What was paid as dividends to NCI (non-controlling interests) in FY2024?',
+     'R1,935m', 'EXXARO-IR-2024-CH-PERFORMANCE', 5,
+     'disclosed', v_captured_by, v_captured_at,
+     '::Economic value distribution donut charts Chart for 2024: - Dividend paid to NCI: 1935',
+     'Q1', '{"fiscal_year": 2024}'::jsonb,
+     'Tests donut-chart capture for a metric that the prose doesn''t emphasise.'),
+
+    -- ============ ESG facts (3 rows — first ESG coverage in the gate) ============
+    (v_workspace_id,
+     'How much energy did Cennergi generate in FY2024?',
+     '725 GWh', 'EXXARO-IR-2024-CH-PERFORMANCE', 14,
+     'disclosed', v_captured_by, v_captured_at,
+     'Energy Achieved an 80% operational EBITDA margin and met generation targets with 725GWh produced',
+     NULL, '{}'::jsonb,
+     'ESG fact (CENNERGI-001-EnergyUse-2024). query_id=NULL routes through layer-3 grounded retrieval; tests the open-search bar finds the verbatim chapter quote.'),
+
+    (v_workspace_id,
+     'What was Scope 1 and 2 emissions in FY2024?',
+     '936 ktCO2e', 'EXXARO-IR-2024-CH-PERFORMANCE', 14,
+     'disclosed', v_captured_by, v_captured_at,
+     '(captured from FY2024 IR creating-value chapter)',
+     NULL, '{}'::jsonb,
+     'ESG fact (EXXARO-001-Scope1 and 2-2024 = 936). query_id=NULL routes through grounded retrieval.'),
+
+    (v_workspace_id,
+     'What was carbon intensity in FY2024?',
+     '4.12 tCO2e/kTTM', 'EXXARO-IR-2024-CH-PERFORMANCE', 14,
+     'disclosed', v_captured_by, v_captured_at,
+     '(captured from FY2024 IR creating-value chapter — CarbonIntensity)',
+     NULL, '{}'::jsonb,
+     'ESG fact. Tests that grounded retrieval can locate intensity ratios with their units.'),
+
+    -- ============ Strategic-narrative chip (1 row — verifies Q3 stamps amber on coal→cennergi) ============
+    (v_workspace_id,
+     'How is the linkage from coal operations to Cennergi presented?',
+     'strategically_attributed', 'EXXARO-IR-2024-CH-STRATEGY', 3,
+     'strategically_attributed', v_captured_by, v_captured_at,
+     'utilise our strong coal resources as a base from which to prudently accelerate our asset portfolio to include energy transition minerals and to grow our energy solutions business, Cennergi',
+     'Q3', '{"source_asset_id": "GROOT-001", "destination_id": "CENNERGI-001"}'::jsonb,
+     'Tests the chip on the specific Coal→Cennergi narrative — the spec §3.3 hard rule. If the stamping rule degrades, this is the canary.'),
+
+    -- ============ Q-DELTA narrative deltas (2 rows) ============
+    (v_workspace_id,
+     'What changed in dividend income FY2023→FY2024?',
+     'R3,900m', 'EXXARO-IR-2024-CH-PERFORMANCE', 6,
+     'disclosed', v_captured_by, v_captured_at,
+     'dividend income received from our equity-accounted investments of R3.9 billion (2023: R4.9 billion)',
+     'Q_DELTA', '{"prev": 2023, "curr": 2024}'::jsonb,
+     'Tests Q-DELTA on a non-Group-headline metric (dividend income). Should surface as "changed" with prior R4,900m → curr R3,900m, ↓R1,000m.'),
+
+    (v_workspace_id,
+     'What changed in the net cash balance FY2023→FY2024?',
+     'R12,000m', 'EXXARO-IR-2024-CH-PERFORMANCE', 6,
+     'disclosed', v_captured_by, v_captured_at,
+     'a net cash balance of R12.0 billion as at 31 December 2024 (2023: R10.5 billion)',
+     'Q_DELTA', '{"prev": 2023, "curr": 2024}'::jsonb,
+     'Tests Q-DELTA on the liquidity position. Should surface as "changed" with prior R10,500m → curr R12,000m, ↑R1,500m.'),
+
+    -- ============ Refusal sanity ============
+    (v_workspace_id,
+     'What is Exxaro''s head-office street address?',
+     '[refusal]', 'EXXARO-IR-2024-CH-STRATEGY', 1,
+     'refusal', v_captured_by, v_captured_at,
+     '(Address-level corporate facts not in the FD ingest scope.)',
+     NULL, '{}'::jsonb,
+     'Out-of-scope sanity check. Layer-3 distance cutoff should refuse this; no grounded span is close enough.'),
+
+    (v_workspace_id,
+     'Who is the CFO of Anglo American?',
+     '[refusal]', 'EXXARO-IR-2024-CH-STRATEGY', 1,
+     'refusal', v_captured_by, v_captured_at,
+     '(Different company; nothing in the Exxaro ingest will answer this.)',
+     NULL, '{}'::jsonb,
+     'Cross-company question; must refuse, not improvise.'),
+
+    -- ============ Three more to clear 30 rows (drops the "below target" banner) ============
+    (v_workspace_id,
+     'What was the API4 RBCT export coal price average in FY2024?',
+     'US$105', 'EXXARO-IR-2024-CH-PERFORMANCE', 4,
+     'disclosed', v_captured_by, v_captured_at,
+     'The benchmark API4 RBCT export price averaged US$105 per tonne in 2024, compared to US$121 per tonne in 2023, a 13% decline.',
+     NULL, '{}'::jsonb,
+     'Commodity price benchmark — non-rand value, tests grounded retrieval surfaces non-ZAR figures with their unit context intact.'),
+
+    (v_workspace_id,
+     'What is Exxaro''s energy intensity in FY2024?',
+     '27.69 GJ/kt', 'EXXARO-IR-2024-CH-PERFORMANCE', 14,
+     'disclosed', v_captured_by, v_captured_at,
+     '(EnergyIntensity-2024 = 27.688 GJ/kt; from the FY2024 IR performance chapter ESG table)',
+     NULL, '{}'::jsonb,
+     'ESG fact (EXXARO-001-EnergyIntensity-2024). Tests grounded retrieval surfaces intensity ratios.'),
+
+    (v_workspace_id,
+     'What is Exxaro''s installed renewable energy capacity in FY2024?',
+     '229 MW', 'EXXARO-IR-2024-CH-PERFORMANCE', 14,
+     'disclosed', v_captured_by, v_captured_at,
+     '(InstalledRenewableEnergyCapacity-2024 = 229 MW; from FY2024 IR performance chapter ESG section)',
+     NULL, '{}'::jsonb,
+     'ESG fact (EXXARO-001-InstalledRenewableEnergyCapacity-2024 = 229 MW). The same 229 MW figure holds for FY2022-2024, useful baseline.')
 
     ON CONFLICT (workspace_id, question, expected_doc_id, expected_page)
         DO UPDATE SET
