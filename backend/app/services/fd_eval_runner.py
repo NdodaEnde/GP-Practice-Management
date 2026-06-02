@@ -271,13 +271,21 @@ def _matches_expected(expected_norm: str, expected_num: Optional[float], ans_row
       * String: substring on the normalised forms (covers "path" / "—" /
         "no clean split available" etc.).
     """
-    # 1. Numeric comparison. Tolerance scales with magnitude: rand-million
-    #    figures are typically rounded once to one decimal (e.g. "R10.4 bn"
-    #    → 10400 vs the precise "R10 423 million" → 10423, a 23m / 0.2%
-    #    rounding artefact). 0.5% relative tolerance lets honest rounding
-    #    flow through; anything beyond that is a real value mismatch.
+    # 1. Numeric comparison. Tight absolute tolerance — anything that drifts
+    #    by what a human reader would notice ON SCREEN fails the gate. The
+    #    earlier 0.5% relative tolerance silently passed a R10,400 displayed
+    #    value against a R10,423 gold value (gap 23m / 0.22%); the
+    #    "discipline is real but the tolerance hides drift" failure mode the
+    #    review caught. Fixed band:
+    #      values < 1m       : 0.001 (penny-rounding only)
+    #      values 1m–100m    : 0.5
+    #      values >= 100m    : 5.0 (≤0.05% on a R10bn figure — survives
+    #                          last-decimal float noise, fails actual drift)
     if expected_num is not None:
-        tol = max(0.5, abs(expected_num) * 0.005)
+        a = abs(expected_num)
+        if a < 1.0:        tol = 0.001
+        elif a < 100.0:    tol = 0.5
+        else:              tol = 5.0
         candidates: List[float] = []
         vr = ans_row.get("value_raw")
         if isinstance(vr, (int, float)):
@@ -408,7 +416,14 @@ def _compute_metrics(results: List[CaseResult]) -> Dict[str, float]:
 
 def _print_report(er: EvalResult) -> None:
     print(f"\n{'='*72}")
-    print(f"  FD eval — {er.total_cases} cases  ({'PASS' if er.gate_passed else 'FAIL'})")
+    suffix = ""
+    if er.total_cases < 30:
+        # Spec §8 calls for a 30–50 row gold set. Below 30 the gate is
+        # statistically weak: 100% on 12 is much softer evidence than 100%
+        # on 30. Always print the row count alongside the verdict so the
+        # strength of the signal isn't oversold.
+        suffix = f"  [row count {er.total_cases} — below spec target 30–50; strengthen before any external claim]"
+    print(f"  FD eval — {er.total_cases} cases  ({'PASS' if er.gate_passed else 'FAIL'}){suffix}")
     print(f"{'='*72}")
     for k, v in er.metrics.items():
         thr = THRESHOLDS[k]

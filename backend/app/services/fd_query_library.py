@@ -225,13 +225,23 @@ def Q1_coal_assets_by_attributable_fcf(
             extras={"metric": metric, "fiscal_year": fiscal_year, "scope": "group"},
         ))
 
-    rows.sort(key=lambda r: (r.value_raw or 0), reverse=True)
+    # Sort: per-asset rows first, then Group rows, then within each group
+    # by value desc. Mixed metrics aren't directly rankable side-by-side
+    # (EBITDA vs OperatingProfit vs RevenueGross etc.); the label per row
+    # carries the metric so the reader can compare like-for-like.
+    rows.sort(key=lambda r: (
+        0 if r.extras.get("scope") == "asset" else 1,
+        -(r.value_raw or 0),
+    ))
     return QueryResult(
         query_id="Q1",
-        title=f"Cash-generating signals, FY{fiscal_year}",
+        title=f"Cash-generating signals, FY{fiscal_year} — mixed metrics, labelled per row",
         rows=rows,
-        notes=("Attributable = reported × effective ownership when known. "
-               "Per-asset rows first, then Group totals. Spec §6.2."),
+        notes=("Each row labels its metric (EBITDA, OperatingProfit, FCF, RevenueGross, "
+               "CapEx, etc.) because the chapters surface different metrics for different "
+               "subjects. Rows are NOT directly comparable across metrics — compare "
+               "like-for-like. Per-asset rows are listed first, then Group totals. "
+               "Attributable = reported × effective ownership when known (spec §6.2)."),
         not_in_reports=(len(rows) == 0),
     )
 
@@ -463,11 +473,14 @@ def Q4_diversification_split(supabase: Any, workspace_id: str) -> QueryResult:
             ))
         return QueryResult(
             query_id="Q4",
-            title="Diversification capital destinations (no clean split available)",
+            title="Diversification capital destinations (no clean split in ingested chapters)",
             rows=fallback_rows,
-            notes=("The ingested chapters narrate WHERE diversification capital flows but don't "
-                   "disclose rand amounts per destination — so the percentage split can't be "
-                   "computed. The strategic destinations are shown below with their company quotes "
+            notes=("In the chapters we've ingested for this workspace, diversification "
+                   "destinations are narrated but no rand amounts per destination are "
+                   "disclosed — so a percentage split can't be computed from this ingest. "
+                   "This is a statement about what we've read, NOT a claim that Exxaro's "
+                   "fuller disclosure (other chapters, ESG report, AFS) lacks the split. "
+                   "The strategic destinations are shown below with their company quotes "
                    "and source citations."),
             not_in_reports=(len(fallback_rows) == 0),
         )

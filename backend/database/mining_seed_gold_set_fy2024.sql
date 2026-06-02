@@ -116,12 +116,12 @@ BEGIN
 
     (v_workspace_id,
      'What share of diversification capital went into manganese?',
-     'no clean split available',
+     'no clean split in ingested chapters',
      'EXXARO-IR-2024-CH-STRATEGY', 3,
      'disclosed', v_captured_by, v_captured_at,
      'The total project cost is estimated to be R4.7 billion, which will, in majority, be funded with project financing with a financial structure design to ensure long-term sustainability with limited recourse to the Exxaro balance sheet.',
      'Q4', '{}'::jsonb,
-     'Honest fallback: chapter doesn''t disclose a clean split, so Q4 should surface the destinations + "no clean split" note (assertion on the notes field, not a rand amount).'),
+     'Honest fallback (scoped to ingest): the ingested chapters narrate destinations but don''t disclose rand amounts per destination, so Q4 surfaces the destinations + a "no clean split in ingested chapters" note. The wording is deliberately scoped — it says nothing about Exxaro''s fuller disclosure outside these chapters.'),
 
     -- ============ Q-COMPLIANCE ============
     (v_workspace_id,
